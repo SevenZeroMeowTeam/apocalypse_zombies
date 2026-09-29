@@ -1,0 +1,698 @@
+{
+ "blender": "5.2.1 LTS",
+ "engine": "CYCLES",
+ "renders": [
+  [
+   "bride_front.png",
+   810261
+  ],
+  [
+   "bride_three_quarter_full.png",
+   831466
+  ],
+  [
+   "bride_front_cutout.png",
+   815552
+  ],
+  [
+   "bride_three_quarter_full_cutout.png",
+   838250
+  ]
+ ],
+ "errors": [],
+ "boxes": {
+  "head": {
+   "mc": [
+    -4.0,
+    -8.0,
+    -4.0,
+    4.0,
+    0.0,
+    4.0
+   ],
+   "dims": [
+    8.0,
+    8.0,
+    8.0
+   ],
+   "texOffs": [
+    0,
+    0
+   ],
+   "uv_dims": [
+    8.0,
+    8.0,
+    8.0
+   ],
+   "uv_rects": {
+    "top": [
+     8.0,
+     0,
+     8.0,
+     8.0
+    ],
+    "bottom": [
+     16.0,
+     0,
+     8.0,
+     8.0
+    ],
+    "right": [
+     0,
+     8.0,
+     8.0,
+     8.0
+    ],
+    "left": [
+     16.0,
+     8.0,
+     8.0,
+     8.0
+    ],
+    "front": [
+     8.0,
+     8.0,
+     8.0,
+     8.0
+    ],
+    "back": [
+     24.0,
+     8.0,
+     8.0,
+     8.0
+    ]
+   }
+  },
+  "hat": {
+   "mc": [
+    -4.5,
+    -8.5,
+    -4.5,
+    4.5,
+    0.5,
+    4.5
+   ],
+   "dims": [
+    9.0,
+    9.0,
+    9.0
+   ],
+   "texOffs": [
+    32,
+    0
+   ],
+   "uv_dims": [
+    8,
+    8,
+    8
+   ],
+   "uv_rects": {
+    "top": [
+     40,
+     0,
+     8,
+     8
+    ],
+    "bottom": [
+     48,
+     0,
+     8,
+     8
+    ],
+    "right": [
+     32,
+     8,
+     8,
+     8
+    ],
+    "left": [
+     48,
+     8,
+     8,
+     8
+    ],
+    "front": [
+     40,
+     8,
+     8,
+     8
+    ],
+    "back": [
+     56,
+     8,
+     8,
+     8
+    ]
+   }
+  },
+  "body": {
+   "mc": [
+    -4.0,
+    0.0,
+    -2.0,
+    4.0,
+    12.0,
+    2.0
+   ],
+   "dims": [
+    8.0,
+    12.0,
+    4.0
+   ],
+   "texOffs": [
+    16,
+    16
+   ],
+   "uv_dims": [
+    8.0,
+    12.0,
+    4.0
+   ],
+   "uv_rects": {
+    "top": [
+     20.0,
+     16,
+     8.0,
+     4.0
+    ],
+    "bottom": [
+     28.0,
+     16,
+     8.0,
+     4.0
+    ],
+    "right": [
+     16,
+     20.0,
+     4.0,
+     12.0
+    ],
+    "left": [
+     28.0,
+     20.0,
+     4.0,
+     12.0
+    ],
+    "front": [
+     20.0,
+     20.0,
+     8.0,
+     12.0
+    ],
+    "back": [
+     32.0,
+     20.0,
+     8.0,
+     12.0
+    ]
+   }
+  },
+  "rarm": {
+   "mc": [
+    -8.0,
+    0.0,
+    -2.0,
+    -4.0,
+    12.0,
+    2.0
+   ],
+   "dims": [
+    4.0,
+    12.0,
+    4.0
+   ],
+   "texOffs": [
+    40,
+    16
+   ],
+   "uv_dims": [
+    4.0,
+    12.0,
+    4.0
+   ],
+   "uv_rects": {
+    "top": [
+     44.0,
+     16,
+     4.0,
+     4.0
+    ],
+    "bottom": [
+     48.0,
+     16,
+     4.0,
+     4.0
+    ],
+    "right": [
+     40,
+     20.0,
+     4.0,
+     12.0
+    ],
+    "left": [
+     48.0,
+     20.0,
+     4.0,
+     12.0
+    ],
+    "front": [
+     44.0,
+     20.0,
+     4.0,
+     12.0
+    ],
+    "back": [
+     52.0,
+     20.0,
+     4.0,
+     12.0
+    ]
+   }
+  },
+  "larm": {
+   "mc": [
+    4.0,
+    0.0,
+    -2.0,
+    8.0,
+    12.0,
+    2.0
+   ],
+   "dims": [
+    4.0,
+    12.0,
+    4.0
+   ],
+   "texOffs": [
+    32,
+    48
+   ],
+   "uv_dims": [
+    4.0,
+    12.0,
+    4.0
+   ],
+   "uv_rects": {
+    "top": [
+     36.0,
+     48,
+     4.0,
+     4.0
+    ],
+    "bottom": [
+     40.0,
+     48,
+     4.0,
+     4.0
+    ],
+    "right": [
+     32,
+     52.0,
+     4.0,
+     12.0
+    ],
+    "left": [
+     40.0,
+     52.0,
+     4.0,
+     12.0
+    ],
+    "front": [
+     36.0,
+     52.0,
+     4.0,
+     12.0
+    ],
+    "back": [
+     44.0,
+     52.0,
+     4.0,
+     12.0
+    ]
+   }
+  },
+  "rleg": {
+   "mc": [
+    -3.9,
+    12.0,
+    -2.0,
+    0.1,
+    24.0,
+    2.0
+   ],
+   "dims": [
+    4.0,
+    12.0,
+    4.0
+   ],
+   "texOffs": [
+    0,
+    16
+   ],
+   "uv_dims": [
+    4.0,
+    12.0,
+    4.0
+   ],
+   "uv_rects": {
+    "top": [
+     4.0,
+     16,
+     4.0,
+     4.0
+    ],
+    "bottom": [
+     8.0,
+     16,
+     4.0,
+     4.0
+    ],
+    "right": [
+     0,
+     20.0,
+     4.0,
+     12.0
+    ],
+    "left": [
+     8.0,
+     20.0,
+     4.0,
+     12.0
+    ],
+    "front": [
+     4.0,
+     20.0,
+     4.0,
+     12.0
+    ],
+    "back": [
+     12.0,
+     20.0,
+     4.0,
+     12.0
+    ]
+   }
+  },
+  "lleg": {
+   "mc": [
+    -0.1,
+    12.0,
+    -2.0,
+    3.9,
+    24.0,
+    2.0
+   ],
+   "dims": [
+    4.0,
+    12.0,
+    4.0
+   ],
+   "texOffs": [
+    16,
+    48
+   ],
+   "uv_dims": [
+    4.0,
+    12.0,
+    4.0
+   ],
+   "uv_rects": {
+    "top": [
+     20.0,
+     48,
+     4.0,
+     4.0
+    ],
+    "bottom": [
+     24.0,
+     48,
+     4.0,
+     4.0
+    ],
+    "right": [
+     16,
+     52.0,
+     4.0,
+     12.0
+    ],
+    "left": [
+     24.0,
+     52.0,
+     4.0,
+     12.0
+    ],
+    "front": [
+     20.0,
+     52.0,
+     4.0,
+     12.0
+    ],
+    "back": [
+     28.0,
+     52.0,
+     4.0,
+     12.0
+    ]
+   }
+  },
+  "bust_r": {
+   "mc": [
+    -2.5,
+    1.0,
+    -3.02,
+    -0.5,
+    4.0,
+    -2.02
+   ],
+   "dims": [
+    2.0,
+    3.0,
+    1.0
+   ],
+   "texOffs": [
+    0,
+    32
+   ],
+   "uv_dims": [
+    2.0,
+    3.0,
+    1.0
+   ],
+   "uv_rects": {
+    "top": [
+     1.0,
+     32,
+     2.0,
+     1.0
+    ],
+    "bottom": [
+     3.0,
+     32,
+     2.0,
+     1.0
+    ],
+    "right": [
+     0,
+     33.0,
+     1.0,
+     3.0
+    ],
+    "left": [
+     3.0,
+     33.0,
+     1.0,
+     3.0
+    ],
+    "front": [
+     1.0,
+     33.0,
+     2.0,
+     3.0
+    ],
+    "back": [
+     4.0,
+     33.0,
+     2.0,
+     3.0
+    ]
+   }
+  },
+  "bust_l": {
+   "mc": [
+    0.5,
+    1.0,
+    -3.02,
+    2.5,
+    4.0,
+    -2.02
+   ],
+   "dims": [
+    2.0,
+    3.0,
+    1.0
+   ],
+   "texOffs": [
+    12,
+    32
+   ],
+   "uv_dims": [
+    2.0,
+    3.0,
+    1.0
+   ],
+   "uv_rects": {
+    "top": [
+     13.0,
+     32,
+     2.0,
+     1.0
+    ],
+    "bottom": [
+     15.0,
+     32,
+     2.0,
+     1.0
+    ],
+    "right": [
+     12,
+     33.0,
+     1.0,
+     3.0
+    ],
+    "left": [
+     15.0,
+     33.0,
+     1.0,
+     3.0
+    ],
+    "front": [
+     13.0,
+     33.0,
+     2.0,
+     3.0
+    ],
+    "back": [
+     16.0,
+     33.0,
+     2.0,
+     3.0
+    ]
+   }
+  }
+ },
+ "uv_alpha": {
+  "head": {
+   "top": 1.0,
+   "bottom": 1.0,
+   "right": 1.0,
+   "left": 1.0,
+   "front": 1.0,
+   "back": 1.0
+  },
+  "hat": {
+   "top": 1.0,
+   "bottom": 0.0,
+   "right": 1.0,
+   "left": 1.0,
+   "front": 0.328,
+   "back": 1.0
+  },
+  "body": {
+   "top": 1.0,
+   "bottom": 1.0,
+   "right": 1.0,
+   "left": 1.0,
+   "front": 1.0,
+   "back": 1.0
+  },
+  "rarm": {
+   "top": 1.0,
+   "bottom": 1.0,
+   "right": 1.0,
+   "left": 1.0,
+   "front": 1.0,
+   "back": 1.0
+  },
+  "larm": {
+   "top": 1.0,
+   "bottom": 1.0,
+   "right": 1.0,
+   "left": 1.0,
+   "front": 1.0,
+   "back": 1.0
+  },
+  "rleg": {
+   "top": 1.0,
+   "bottom": 1.0,
+   "right": 1.0,
+   "left": 1.0,
+   "front": 1.0,
+   "back": 1.0
+  },
+  "lleg": {
+   "top": 1.0,
+   "bottom": 1.0,
+   "right": 1.0,
+   "left": 1.0,
+   "front": 1.0,
+   "back": 1.0
+  },
+  "bust_r": {
+   "top": 1.0,
+   "bottom": 1.0,
+   "right": 1.0,
+   "left": 1.0,
+   "front": 1.0,
+   "back": 1.0
+  },
+  "bust_l": {
+   "top": 1.0,
+   "bottom": 1.0,
+   "right": 1.0,
+   "left": 1.0,
+   "front": 1.0,
+   "back": 1.0
+  }
+ },
+ "image": [
+  64,
+  64,
+  "F:/mcmod/src/main/resources/assets/apocalypse_zombies/textures/entity/bride_zombie.png"
+ ],
+ "blender_bbox": [
+  -8.0,
+  -4.5,
+  -24.0,
+  8.0,
+  4.5,
+  8.5
+ ],
+ "blender_center": [
+  0.0,
+  0.0,
+  -7.75
+ ],
+ "span": 32.5,
+ "front_view": "F:/mcmod/art/bride/bride_front.png",
+ "three_quarter_view": "F:/mcmod/art/bride/bride_three_quarter.png",
+ "files": [
+  "F:/mcmod/art/bride/bride_front.png",
+  "F:/mcmod/art/bride/bride_side.png",
+  "F:/mcmod/art/bride/bride_three_quarter.png",
+  "F:/mcmod/art/bride/bride_three_quarter_full.png",
+  "F:/mcmod/art/bride/bride_bust_front.png",
+  "F:/mcmod/art/bride/bride_bust_three_quarter.png",
+  "F:/mcmod/art/bride/bride_front_cutout.png",
+  "F:/mcmod/art/bride/bride_three_quarter_cutout.png",
+  "F:/mcmod/art/bride/bride_three_quarter_full_cutout.png",
+  "F:/mcmod/art/bride/bride_bust_three_quarter_cutout.png",
+  "F:/mcmod/art/bride/bride_bust_annotated.png"
+ ],
+ "rendered_now": [
+  "F:/mcmod/art/bride/bride_front.png",
+  "F:/mcmod/art/bride/bride_three_quarter_full.png",
+  "F:/mcmod/art/bride/bride_front_cutout.png",
+  "F:/mcmod/art/bride/bride_three_quarter_full_cutout.png"
+ ],
+ "blend": 98716
+}

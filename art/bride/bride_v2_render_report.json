@@ -1,0 +1,183 @@
+{
+ "blender": "5.2.1 LTS",
+ "renders": [
+  [
+   "bride_v2_front.png",
+   822451
+  ],
+  [
+   "bride_v2_side.png",
+   839328
+  ],
+  [
+   "bride_v2_three_quarter.png",
+   894481
+  ],
+  [
+   "bride_v2_back_three_quarter.png",
+   868694
+  ],
+  [
+   "bride_v2_bust_front.png",
+   695791
+  ],
+  [
+   "bride_v2_bust_profile.png",
+   806429
+  ],
+  [
+   "bride_v2_bust_top.png",
+   763634
+  ],
+  [
+   "bride_v2_pose_death_chime_windup.png",
+   905506
+  ],
+  [
+   "bride_v2_pose_death_chime_burst.png",
+   930346
+  ],
+  [
+   "bride_v2_pose_consort_curtsy.png",
+   895908
+  ],
+  [
+   "bride_v2_pose_shriek_impact.png",
+   905460
+  ],
+  [
+   "bride_v2_pose_walk_mid.png",
+   890001
+  ],
+  [
+   "bride_v2_pose_walk_passing.png",
+   894394
+  ],
+  [
+   "bride_v2_pose_summon_burst.png",
+   895982
+  ],
+  [
+   "bride_v2_pose_veil_snare_burst.png",
+   941118
+  ],
+  [
+   "bride_v2_pose_sacrifice_burst.png",
+   905707
+  ],
+  [
+   "bride_v2_pose_bouquet_throw.png",
+   901374
+  ],
+  [
+   "bride_v2_pose_bridal_kiss.png",
+   899804
+  ]
+ ],
+ "errors": [],
+ "checks": [
+  {
+   "name": "胸瓣宽 2.00u",
+   "pass": true,
+   "detail": "2.0"
+  },
+  {
+   "name": "胸瓣高 3.00u",
+   "pass": true,
+   "detail": "3.0"
+  },
+  {
+   "name": "前伸 1.00u",
+   "pass": true,
+   "detail": "1.0"
+  },
+  {
+   "name": "中缝 1.00u",
+   "pass": true,
+   "detail": "1.0"
+  },
+  {
+   "name": "左右对称",
+   "pass": true,
+   "detail": "(0.5, -2.5)"
+  },
+  {
+   "name": "art↔src geo 一致",
+   "pass": true,
+   "detail": "c3dc8f1662f78021"
+  },
+  {
+   "name": "art↔src anim 一致",
+   "pass": true,
+   "detail": "90c077ef4862d019"
+  },
+  {
+   "name": "art↔src tex 一致",
+   "pass": true,
+   "detail": "a00b78402fe96c77"
+  },
+  {
+   "name": "geo UV 面键全名（GeckoLib 只认全名）",
+   "pass": true,
+   "detail": "全名面 828 个 / 单字母键 0 个"
+  },
+  {
+   "name": "所有面 UV 均被解析（无静默丢失）",
+   "pass": true,
+   "detail": "UV 面 828 个 / 未解析 0 个"
+  }
+ ],
+ "bones": 35,
+ "cubes": 138,
+ "verts": 3312,
+ "faces": 828,
+ "uv_faces": 828,
+ "uv_short_keys": 0,
+ "uv_missing": 0,
+ "mc_bbox": [
+  -6.2,
+  0.0,
+  -4.7,
+  6.2,
+  33.2,
+  8.4
+ ],
+ "geo_sha256": "c3dc8f1662f78021265343de214e8882d345e7c0c1f61c6d3176b8dacf8bedda",
+ "tex_sha256": "a00b78402fe96c779963ffda55bb1984d3ba127462a0c161a08e5e59e6fb87c9",
+ "anim_sha256": "90c077ef4862d0195e3389280a87d2ee4979e6524fd10eb8070818d93b78c165",
+ "bust_check": {
+  "chest_front_z": -2.4,
+  "bust_r_origin": [
+   0.5,
+   19.2,
+   -3.4
+  ],
+  "bust_r_size": [
+   2.0,
+   3.0,
+   1.06
+  ],
+  "bust_l_origin": [
+   -2.5,
+   19.2,
+   -3.4
+  ],
+  "bust_l_size": [
+   2.0,
+   3.0,
+   1.06
+  ],
+  "protrusion": 1.0,
+  "gap": 1.0
+ },
+ "engine": "BLENDER_EEVEE",
+ "center_bl": [
+  0.0,
+  -1.85,
+  16.6
+ ],
+ "span": 33.2,
+ "brightness_front": 0.5817,
+ "actions": [],
+ "blend": 122364
+}

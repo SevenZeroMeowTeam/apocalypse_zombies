@@ -1,0 +1,16 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven {
+            name = 'MinecraftForge'
+            url = 'https://maven.minecraftforge.net/'
+        }
+    }
+}
+
+plugins {
+    // pluginManagement is configured above; no external toolchain resolver needed
+    // (JDK 17 is pinned via org.gradle.java.installations.paths in gradle.properties)
+}
+
+rootProject.name = 'apocalypse_zombies'

@@ -1,0 +1,36 @@
+# ===== 构建与运行产物 =====
+/build/
+/.gradle/
+/run/
+/logs/
+/build.log
+
+# ===== 本机工具 / 会话残留 =====
+# hermes-update-fix：网关状态备份等本机会话残留
+# JJI54557149985_obj：与本模组构建无关的对象素材
+# x：抓取下来的中间文件
+/hermes-update-fix/
+/JJI54557149985_obj/
+/x/
+
+# ===== 美术工作素材 =====
+# 保留台账（*.md）、模型源（*.json / *.bbmodel）与脚本（*.py）；
+# 栅格图、贴图渲染、日志、中间产物不进仓库。
+/art/**/*.png
+/art/**/*.jpg
+/art/**/*.jpeg
+/art/**/*.psd
+/art/**/*.tga
+/art/**/*.ogg
+/art/**/*.wav
+/art/**/*.mp4
+/art/**/*.gif
+/art/**/*.class
+/art/**/*.log
+/art/**/*.zip
+
+# ===== Python =====
+__pycache__/
+*.pyc
+
+# 注意：gradle/wrapper/gradle-wrapper.jar 必须进仓库 —— CI 靠它启动 Gradle。

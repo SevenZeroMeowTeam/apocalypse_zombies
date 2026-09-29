@@ -1,0 +1,78 @@
+{
+ "blender": "5.2.1 LTS",
+ "renders": [
+  [
+   "top",
+   716744
+  ],
+  [
+   "side",
+   701237
+  ],
+  [
+   "three_quarter",
+   730960
+  ],
+  [
+   "front",
+   692193
+  ],
+  [
+   "draw_last_side",
+   703836
+  ],
+  [
+   "draw_last_three_quarter",
+   731159
+  ],
+  [
+   "draw_last_top",
+   724424
+  ],
+  [
+   "draw_mid_three_quarter",
+   731195
+  ],
+  [
+   "reload1_three_quarter",
+   734427
+  ],
+  [
+   "reload2_three_quarter",
+   734912
+  ],
+  [
+   "reload3_three_quarter",
+   731669
+  ],
+  [
+   "lock_closeup",
+   779667
+  ]
+ ],
+ "errors": [],
+ "bones": 21,
+ "cubes": 501,
+ "verts": 12024,
+ "faces": 3006,
+ "mc_bbox": [
+  -4.905,
+  -2.126,
+  -7.88,
+  5.045,
+  2.709,
+  7.0
+ ],
+ "engine": "BLENDER_EEVEE",
+ "center_bl": [
+  0.07,
+  0.44,
+  0.292
+ ],
+ "span": 14.88,
+ "brightness_side": 0.5711,
+ "draw_t": 1.2,
+ "reload_t": 1.6,
+ "actions": [],
+ "blend": 195600
+}

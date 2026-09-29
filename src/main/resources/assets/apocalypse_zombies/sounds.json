@@ -1,0 +1,186 @@
+{
+  "ammo_clip_pop": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_empty_mag_drop"
+      }
+    ]
+  },
+  "awm_reload_empty_raise": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_raise_first_rattle"
+      }
+    ]
+  },
+  "awm_rechamber_end": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_rechamber_end"
+      }
+    ]
+  },
+  "awm_rechamber_in": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_rechamber_in"
+      }
+    ]
+  },
+  "awm_rechamber_out": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_rechamber_out"
+      }
+    ]
+  },
+  "awm_rechamber_ejectclick": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_rechember_ejectclick"
+      }
+    ]
+  },
+  "awm_reload_ejectclick": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_ejectclick"
+      }
+    ]
+  },
+  "awm_reload_empty_boltclose": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_empty_boltclose"
+      }
+    ]
+  },
+  "awm_reload_empty_end": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_empty_end"
+      }
+    ]
+  },
+  "awm_reload_fast_rattle": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_empty_fast_01_rattle"
+      }
+    ]
+  },
+  "awm_reload_empty_maghit": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_empty_fast_maghit"
+      }
+    ]
+  },
+  "awm_reload_empty_mag_drop": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_empty_mag_drop"
+      }
+    ]
+  },
+  "awm_reload_empty_magin": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_empty_magin"
+      }
+    ]
+  },
+  "awm_reload_empty_magout": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_empty_magout"
+      }
+    ]
+  },
+  "awm_reload_empty_rattle": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_empty_rattle"
+      }
+    ]
+  },
+  "awm_reload_end": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_end"
+      }
+    ]
+  },
+  "awm_reload_maghit": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_maghit"
+      }
+    ]
+  },
+  "awm_reload_magin": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_magin"
+      }
+    ]
+  },
+  "awm_reload_magout": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_magout"
+      }
+    ]
+  },
+  "awm_reload_raise": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_raise"
+      }
+    ]
+  },
+  "awm_reload_rattle": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_reload_rattle"
+      }
+    ]
+  },
+  "awm_shoot": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_shoot"
+      }
+    ]
+  },
+  "awm_shoot_3p": {
+    "category": "player",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:awm/awp_shoot_3p"
+      }
+    ]
+  }
+}

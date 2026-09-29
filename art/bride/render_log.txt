@@ -1,0 +1,27 @@
+F:\mcmod\art\bride\bride_zombie_scene.py:187: DeprecationWarning: 'Material.use_nodes' is expected to be removed in Blender 6.0
+  ma.use_nodes = True
+F:\mcmod\art\bride\bride_zombie_scene.py:251: DeprecationWarning: 'World.use_nodes' is expected to be removed in Blender 6.0
+  w.use_nodes = True
+00:30.078  render           | Saved: 'F:\mcmod\art\bride\bride_front.png'
+00:53.828  render           | Saved: 'F:\mcmod\art\bride\bride_side.png'
+01:34.468  render           | Saved: 'F:\mcmod\art\bride\bride_three_quarter.png'
+02:34.390  render           | Saved: 'F:\mcmod\art\bride\bride_bust_front.png'
+03:30.812  render           | Saved: 'F:\mcmod\art\bride\bride_bust_three_quarter.png'
+04:01.750  render           | Saved: 'F:\mcmod\art\bride\bride_front_cutout.png'
+04:46.687  render           | Saved: 'F:\mcmod\art\bride\bride_three_quarter_cutout.png'
+05:51.500  render           | Saved: 'F:\mcmod\art\bride\bride_bust_three_quarter_cutout.png'
+BBOX [-8.0, -4.5, -24.0, 8.0, 4.5, 8.5] center [0.0, 0.0, -7.75] span 32.50
+CHEST_BL [-0.0, 3.0199999809265137, -2.5]
+RENDER F:/mcmod/art/bride/bride_front.png 805273 bytes
+RENDER F:/mcmod/art/bride/bride_side.png 773941 bytes
+RENDER F:/mcmod/art/bride/bride_three_quarter.png 871126 bytes
+RENDER F:/mcmod/art/bride/bride_bust_front.png 814070 bytes
+RENDER F:/mcmod/art/bride/bride_bust_three_quarter.png 869272 bytes
+RENDER F:/mcmod/art/bride/bride_front_cutout.png 809845 bytes
+RENDER F:/mcmod/art/bride/bride_three_quarter_cutout.png 884496 bytes
+RENDER F:/mcmod/art/bride/bride_bust_three_quarter_cutout.png 863383 bytes
+Info: Saved as "bride_zombie_scene.blend"
+BUILD_REPORT {"blender": "5.2.1 LTS", "engine": "CYCLES", "renders": [["bride_front.png", 805273], ["bride_side.png", 773941], ["bride_three_quarter.png", 871126], ["bride_bust_front.png", 814070], ["bride_bust_three_quarter.png", 869272], ["bride_front_cutout.png", 809845], ["bride_three_quarter_cutout.png", 884496], ["bride_bust_three_quarter_cutout.png", 863383]], "errors": [], "image": [64, 64, "F:/mcmod/src/main/resources/assets/apocalypse_zombies/textures/entity/bride_zombie.png"], "blender_bbox": [-8.0, -4.5, -24.0, 8.0, 4.5, 8.5], "blender_center": [0.0, 0.0, -7.75], "span": 32.5, "front_view": "F:/mcmod/art/bride/bride_front.png", "three_quarter_view": "F:/mcmod/art/bride/bride_three_quarter.png", "files": ["F:/mcmod/art/bride/bride_front.png", "F:/mcmod/art/bride/bride_side.png", "F:/mcmod/art/bride/bride_three_quarter.png", "F:/mcmod/art/bride/bride_bust_front.png", "F:/mcmod/art/bride/bride_bust_three_quarter.png", "F:/mcmod/art/bride/bride_front_cutout.png", "F:/mcmod/art/bride/bride_three_quarter_cutout.png", "F:/mcmod/art/bride/bride_bust_three_quarter_cutout.png"], "blend": 98728}
+Blender 5.2.1 LTS (hash 9e2066aef7ef built 2026-08-25 02:38:20)
+
+Blender quit

@@ -1,0 +1,14 @@
+{
+  "mappings": {
+    "software/bernie/geckolib/mixin/client/TextureManagerMixin": {
+      "getTexture(Lnet/minecraft/resources/ResourceLocation;)Lnet/minecraft/client/renderer/texture/AbstractTexture;": "Lnet/minecraft/client/renderer/texture/TextureManager;m_118506_(Lnet/minecraft/resources/ResourceLocation;)Lnet/minecraft/client/renderer/texture/AbstractTexture;"
+    }
+  },
+  "data": {
+    "searge": {
+      "software/bernie/geckolib/mixin/client/TextureManagerMixin": {
+        "getTexture(Lnet/minecraft/resources/ResourceLocation;)Lnet/minecraft/client/renderer/texture/AbstractTexture;": "Lnet/minecraft/client/renderer/texture/TextureManager;m_118506_(Lnet/minecraft/resources/ResourceLocation;)Lnet/minecraft/client/renderer/texture/AbstractTexture;"
+      }
+    }
+  }
+}

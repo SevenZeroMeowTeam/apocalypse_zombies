@@ -1,0 +1,18 @@
+# Mod Info
+mod_id = "apocalypse_zombies"
+mod_name = "Apocalypse Zombies"
+mod_author = "Hermes"
+mod_license = "GPL-3.0-or-later / CC BY-NC-ND 4.0"
+mod_version = "1.1.5"
+mod_description = "A zombie apocalypse mod with evolving zombies, lunar events, zombie hordes and four special hostiles. Forge 1.20.1"
+
+# Dependencies
+mappings_channel = "official"
+mappings_version = "1.20.1"
+yarn_mappings_channel = "official"
+yarn_mappings_version = "1.20.1"
+
+# Mod Properties
+mod_type = "forge"
+mod_category = "adventure"
+mod_features = "events,zombies,biomes"
