@@ -44,8 +44,34 @@ jobs:
       # 命令行 -D 覆盖成 runner 自己的 JDK，免得 Gradle 工具链找不到。
       - name: Build
         run: |
+          set -o pipefail
           ./gradlew build cleanJar --no-daemon --stacktrace \
-            -Dorg.gradle.java.installations.paths="$JAVA_HOME"
+            -Dorg.gradle.java.installations.paths="$JAVA_HOME" 2>&1 | tee build.log
+
+      # 失败时把日志尾部打成注解：workflow command 生成的 annotation 走
+      # check-runs API 就能匿名读到，不必有仓库 admin 权限去下整包日志。
+      - name: Report failure tail
+        if: failure()
+        run: |
+          python - <<'PY'
+          import pathlib
+          p = pathlib.Path('build.log')
+          if not p.exists():
+              print('::warning::构建没有产出 build.log（失败发生在 Gradle 启动之前？）')
+              raise SystemExit(0)
+          lines = [l.rstrip() for l in p.read_text('utf-8', 'replace').splitlines()]
+          lines = [l for l in lines if l.strip()][-45:]
+          msg = '\n'.join(lines).replace('%', '%25').replace('\r', '')
+          print('::error title=Gradle 失败尾部（build.log）::' + msg.replace('\n', '%0A'))
+          PY
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
 
       - name: Upload jars
         uses: actions/upload-artifact@v4
