@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -40,14 +40,13 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "mod_version = $V"
 
-      # JDK 17 的定位属于机器专属配置，已从仓库的 gradle.properties 移到用户级
-      # ~/.gradle/gradle.properties（Windows 绝对路径在 Linux 上会被当 URI 解析，配置期直接崩）。
-      # 这里再显式给一份命令行覆盖，保证 runner 用 setup-java 装的那个 JDK。
+      # JDK 与 Gradle 都由仓库自己解决：setup-java 下载 runner 上的 JDK 17（设好 JAVA_HOME），
+      # settings.gradle 里还有 foojay 解析器，Gradle 找不到工具链时会自己再下一个 —— 
+      # 仓库不依赖任何机器专属路径。
       - name: Build
         run: |
           set -o pipefail
-          ./gradlew build cleanJar --no-daemon --stacktrace \
-            -Dorg.gradle.java.installations.paths="$JAVA_HOME" 2>&1 | tee build.log
+          ./gradlew build cleanJar --no-daemon --stacktrace 2>&1 | tee build.log
 
       # 失败时把日志尾部打成注解：workflow command 生成的 annotation 走
       # check-runs API 就能匿名读到，不必有仓库 admin 权限去下整包日志。

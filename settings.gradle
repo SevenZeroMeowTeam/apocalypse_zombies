@@ -9,8 +9,9 @@ pluginManagement {
 }
 
 plugins {
-    // pluginManagement is configured above; no external toolchain resolver needed
-    // (JDK 17 is pinned via org.gradle.java.installations.paths in gradle.properties)
+    // 工具链自动下载：本机/runner 上找不到 JDK 17 时，Gradle 自己去 Foojay 拉一个下来。
+    // 仓库因此不依赖任何机器专属路径（Windows 绝对路径在 Linux 上会被 Gradle 当 URI 解析并崩）。
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
 }
 
 rootProject.name = 'apocalypse_zombies'
