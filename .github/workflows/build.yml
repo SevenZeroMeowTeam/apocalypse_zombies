@@ -27,7 +27,7 @@ jobs:
           java-version: '17'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
 
       # 仓库来自 Windows 开发机，补可执行位，免得 checkout 丢了 +x 后 ./gradlew 报 Permission denied
       - name: Make gradlew executable
@@ -67,14 +67,14 @@ jobs:
 
       - name: Upload build log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: build-log
           path: build.log
           if-no-files-found: ignore
 
       - name: Upload jars
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: apocalypse_zombies-${{ steps.ver.outputs.version }}
           path: build/libs/*.jar
