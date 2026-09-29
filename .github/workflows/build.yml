@@ -40,8 +40,9 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "mod_version = $V"
 
-      # gradle.properties 把 JDK 搜索路径钉在开发机的 D:\java（runner 上不存在）；
-      # 命令行 -D 覆盖成 runner 自己的 JDK，免得 Gradle 工具链找不到。
+      # JDK 17 的定位属于机器专属配置，已从仓库的 gradle.properties 移到用户级
+      # ~/.gradle/gradle.properties（Windows 绝对路径在 Linux 上会被当 URI 解析，配置期直接崩）。
+      # 这里再显式给一份命令行覆盖，保证 runner 用 setup-java 装的那个 JDK。
       - name: Build
         run: |
           set -o pipefail
