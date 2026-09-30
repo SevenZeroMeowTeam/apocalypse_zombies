@@ -17,6 +17,7 @@ import net.minecraft.world.BossEvent;
 import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.AreaEffectCloud;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MobSpawnType;
@@ -115,6 +116,14 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
     public static final String ANIM_RAGE = "skill_rage";
     /** 垂死崩解（1.6s，命中 0.9s）。 */
     public static final String ANIM_DEATH = "skill_death";
+    /** 尸笼坠击（2.2s，命中 1.1s）。 */
+    public static final String ANIM_CAGE = "skill_cage";
+    /** 汲魂（2.6s，命中 1.3s）。 */
+    public static final String ANIM_DRAIN = "skill_drain";
+    /** 疫雾（1.9s，命中 1.0s）。 */
+    public static final String ANIM_MIST = "skill_mist";
+    /** 尸潮尖啸（2.3s，命中 1.15s）。 */
+    public static final String ANIM_SCREECH = "skill_screech";
 
     // ---------------------------------------------------------------- 技能轮转表
 
@@ -122,16 +131,27 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
     private static final EliteAbility[] ROTATION_PHASE_1 = {
             EliteAbility.BOSS_SWEEP, EliteAbility.BONE_VOLLEY,
     };
-    /** Phase 2（≤ 2/3，4200 → ≤2800）：加上踏地与召唤，进场先来一记踏地。 */
+    /** Phase 2（≤ 2/3，4200 → ≤2800）：加上踏地、坠击、疫雾与召唤，进场先来一记踏地。 */
     private static final EliteAbility[] ROTATION_PHASE_2 = {
-            EliteAbility.BOSS_SWEEP, EliteAbility.GROUND_QUAKE,
-            EliteAbility.RAISE_HORDE, EliteAbility.BONE_VOLLEY,
+            EliteAbility.BOSS_SWEEP, EliteAbility.GROUND_QUAKE, EliteAbility.CAGE_SLAM,
+            EliteAbility.PLAGUE_MIST, EliteAbility.RAISE_HORDE, EliteAbility.BONE_VOLLEY,
     };
-    /** Phase 3（≤ 1/3，4200 → ≤1400）：五招齐全 + 垂死崩解；进场放血怒。 */
+    /**
+     * Phase 3（≤ 1/3，4200 → ≤1400）：九招齐全；进场放血怒。
+     *
+     * <p>表长 9 意味着「打完一圈」要一分多钟 —— 故意的：最后三分之一的血量里，
+     * 玩家要同时应付招架近战（横扫 / 坠击）、拉不开的远程（骨刺 / 汲魂）、
+     * 清不完的增援（召唤 / 尖啸）与地面控制（踏地 / 疫雾），
+     * 而不是「记住两招的节奏」。亡语排在末尾，它同时也是一个可轮转到的招。</p>
+     */
     private static final EliteAbility[] ROTATION_PHASE_3 = {
-            EliteAbility.BOSS_SWEEP, EliteAbility.GROUND_QUAKE, EliteAbility.RAISE_HORDE,
-            EliteAbility.BONE_VOLLEY, EliteAbility.DEATH_WAIL,
+            EliteAbility.BOSS_SWEEP, EliteAbility.CAGE_SLAM, EliteAbility.SOUL_DRAIN,
+            EliteAbility.PLAGUE_MIST, EliteAbility.HORDE_SCREECH, EliteAbility.GROUND_QUAKE,
+            EliteAbility.RAISE_HORDE, EliteAbility.BONE_VOLLEY, EliteAbility.DEATH_WAIL,
     };
+
+    /** 骨刺齐射的最小距离（格）：比这更近就该用斧头，而不是「拉弓射贴脸的人」。 */
+    private static final double VOLLEY_MIN_RANGE = 4.0D;
 
     /** 两招之间的间隔（tick）。剪辑普遍 22~40 tick，留 24 就给玩家一个换位/回血的窗口。 */
     private static final int ABILITY_GAP = 24;
@@ -171,6 +191,31 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
     private static final double WAIL_RADIUS = 8.0D;
     private static final float WAIL_DAMAGE = 12.0F;
 
+    // ---- 1.1.46 追加的四招（Phase 2 / 3 的扩充） ----
+
+    /** 尸笼坠击：正前方直线（格）× 半宽（格）、伤害、骨刺根数。 */
+    private static final double CAGE_LINE_LENGTH = 9.0D;
+    private static final double CAGE_LINE_HALF_WIDTH = 2.5D;
+    private static final float CAGE_DAMAGE = 18.0F;
+    private static final int CAGE_SPIKES = 6;
+    /** 汲魂：半径（格）、单次伤害、按伤害换算的治疗系数、单次治疗上限。 */
+    private static final double DRAIN_RADIUS = 10.0D;
+    private static final float DRAIN_DAMAGE = 7.0F;
+    private static final float DRAIN_HEAL_RATIO = 1.5F;
+    private static final float DRAIN_HEAL_CAP = 240.0F;
+    /** 疫雾：半径（格）、雾团持续时间（tick）、命中瞬间的直接伤害、中毒时长（tick）。
+     *  <p>只用中毒作为持续伤害：僵尸系对中毒免疫，所以这团雾伤活人不伤自家尸群。</p> */
+    private static final double MIST_RADIUS = 8.0D;
+    private static final int MIST_DURATION = 160;
+    private static final float MIST_DAMAGE = 5.0F;
+    private static final int MIST_POISON_TICKS = 120;
+    /** 尸潮尖啸：半径（格）、击退力度、失明时长、额外召唤数。 */
+    private static final double SCREECH_RADIUS = 16.0D;
+    private static final double SCREECH_KNOCKBACK = 2.2D;
+    private static final int SCREECH_BLIND_TICKS = 80;
+    private static final int SCREECH_SUMMON = 3;
+    private static final float SCREECH_DAMAGE = 9.0F;
+
     private final AnimatableInstanceCache geoCache = GeckoLibUtil.createInstanceCache(this);
 
     /** Boss 血条：只在有玩家看着的时候挂着，走原版的 {@code ServerBossEvent} 同步。 */
@@ -194,6 +239,9 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
 
     private int rotationIndex;
 
+    /** 累计「这一槽等不到起手、被跳过」的次数 —— 只给调试指令看，用来判断轮转是不是在空转。 */
+    private int starvedSlots;
+
     public HordeOverlord(EntityType<? extends Zombie> type, Level level) {
         super(type, level);
         this.xpReward = 500;
@@ -215,6 +263,7 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
         this.setHealth(this.getMaxHealth());
         this.phase = this.phaseFor(this.getHealth());
         this.rotationIndex = 0;
+        this.starvedSlots = 0;
         this.entryAbility = EliteAbility.NONE;
         this.rageApplied = false;
         this.deathWailFired = false;
@@ -280,6 +329,10 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
             case GROUND_QUAKE -> ANIM_QUAKE;
             case BLOOD_RAGE -> ANIM_RAGE;
             case DEATH_WAIL -> ANIM_DEATH;
+            case CAGE_SLAM -> ANIM_CAGE;
+            case SOUL_DRAIN -> ANIM_DRAIN;
+            case PLAGUE_MIST -> ANIM_MIST;
+            case HORDE_SCREECH -> ANIM_SCREECH;
             default -> null;
         };
         if (clip == null) {
@@ -318,10 +371,17 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
         };
     }
 
-    /** 驱动器的「当前技能」= 插队的入场技优先，否则轮转表里的这一招。 */
+    /**
+     * 驱动器的「当前技能」= <b>此刻真能起手</b>的入场技优先，否则轮转表里的这一招。
+     *
+     * <p>入场技必须先过 {@link #canCast} 再插队：入场技是「等玩家进圈才放」的，
+     * 如果它无条件占住 {@code ability()} 的返回值，玩家不靠近就永远只剩它在等着 ——
+     * 轮转表一招也轮不到（Boss 变成站着不动的靶子）。够不着就让它挂着等机会，
+     * 让位给现在放得出来的招。</p>
+     */
     @Override
     protected EliteAbility ability() {
-        if (this.entryAbility != EliteAbility.NONE) {
+        if (this.entryAbility != EliteAbility.NONE && this.canCast(this.entryAbility)) {
             return this.entryAbility;
         }
         EliteAbility[] table = rotationFor(this.phase);
@@ -333,30 +393,41 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
         return ABILITY_GAP;
     }
 
-    /**
-     * 起手条件 = 距离条件成立。
-     *
-     * <p>轮转到的这一招够不着时不像美女僵尸那样「数够 tick 就跳过」：
-     * Boss 的三阶段本来就是按距离分层的（近战 / 远程 / 范围），
-     * 够不着就把这一槽原地等 —— 玩家贴上来自然会放，跑远了会被远程接管。</p>
-     */
     @Override
     protected boolean canStartAbility() {
         EliteAbility wanted = this.ability();
-        if (wanted == EliteAbility.NONE) {
-            return false;
-        }
+        return wanted != EliteAbility.NONE && this.canCast(wanted);
+    }
+
+    /**
+     * 单独问一句「这一招现在能不能起手」。
+     *
+     * <p>拆出来是给 {@link #ability()} 用的：它得先知道入场技够不够得着，才知道该不该让位。
+     * 轮转到的这一招够不着时不像美女僵尸那样「数够 tick 就跳过」——Boss 的三阶段本来就是
+     * 按距离分层的（近战 / 远程 / 范围），够不着就原地等一会儿；但等满了
+     * {@link EliteAbilityDriver.Hooks#starvationTicks()} 就由 {@link #onAbilityStarved()}
+     * 换到下一槽，绝不会把整张轮转表卡死。</p>
+     */
+    private boolean canCast(EliteAbility wanted) {
         return switch (wanted) {
             // 近战：贴到 5 格以内才有意义
             case BOSS_SWEEP -> this.hasTargetInRange(1.0D, SWEEP_RADIUS + 1.0D);
             // 远程：4 格内用斧头更划算，40 格外开始收不到
-            case BONE_VOLLEY -> this.hasTargetInRange(4.0D, 40.0D);
+            case BONE_VOLLEY -> this.hasTargetInRange(VOLLEY_MIN_RANGE, 40.0D);
             // 踏地：等玩家进圈
             case GROUND_QUAKE -> this.hasTargetInRange(1.0D, QUAKE_RADIUS + 1.5D);
             // 召唤：身边有人就放，不要求贴脸
             case RAISE_HORDE -> this.hasTargetInRange(1.0D, 24.0D);
             // 亡语：崩解要有意义，范围比踏地大一格
             case DEATH_WAIL -> this.hasTargetInRange(1.0D, WAIL_RADIUS + 1.0D);
+            // 坠击：直线 9 格，够到就打，不要求贴脸
+            case CAGE_SLAM -> this.hasTargetInRange(1.0D, CAGE_LINE_LENGTH + 1.0D);
+            // 汲魂：汲取范围就是判定范围
+            case SOUL_DRAIN -> this.hasTargetInRange(1.0D, DRAIN_RADIUS);
+            // 疫雾：铺在脚下，等玩家进圈；半径外一点也算，免得「刚出圈就放空」
+            case PLAGUE_MIST -> this.hasTargetInRange(1.0D, MIST_RADIUS + 2.0D);
+            // 尖啸：范围最大的一招，靠它把贴脸的人推开
+            case HORDE_SCREECH -> this.hasTargetInRange(1.0D, SCREECH_RADIUS);
             // 血怒是变身，有人看得见就放
             case BLOOD_RAGE -> true;
             default -> false;
@@ -381,6 +452,22 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
                 this.playSound(SoundEvents.WITHER_DEATH, 1.8F, 0.7F);
                 this.ringParticles(ParticleTypes.SCULK_SOUL, 2.0D, 36);
             }
+            case CAGE_SLAM -> {
+                this.playSound(SoundEvents.RAVAGER_ATTACK, 1.8F, 0.6F);
+                this.ringParticles(ParticleTypes.SOUL_FIRE_FLAME, 1.6D, 20);
+            }
+            case SOUL_DRAIN -> {
+                this.playSound(SoundEvents.WITHER_HURT, 1.6F, 0.5F);
+                this.ringParticles(ParticleTypes.SOUL, 1.8D, 28);
+            }
+            case PLAGUE_MIST -> {
+                this.playSound(SoundEvents.SLIME_SQUISH, 1.6F, 0.6F);
+                this.ringParticles(ParticleTypes.SNEEZE, 2.2D, 32);
+            }
+            case HORDE_SCREECH -> {
+                this.playSound(SoundEvents.WARDEN_SONIC_CHARGE, 2.2F, 0.7F);
+                this.ringParticles(ParticleTypes.SCULK_SOUL, 2.4D, 44);
+            }
             default -> {
             }
         }
@@ -398,19 +485,42 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
             case GROUND_QUAKE -> this.castQuake(level);
             case BLOOD_RAGE -> this.castBloodRage(level);
             case DEATH_WAIL -> this.castDeathWail(level);
+            case CAGE_SLAM -> this.castCageSlam(level);
+            case SOUL_DRAIN -> this.castSoulDrain(level);
+            case PLAGUE_MIST -> this.castPlagueMist(level);
+            case HORDE_SCREECH -> this.castHordeScreech(level);
             default -> {
             }
         }
     }
 
     @Override
-    protected void onAbilityEnd() {
-        // 插队技能用掉就还回去。轮转表只在「正常轮转」的招上往前走一格 ——
-        // 入场技和亡语是额外送的，不该占用轮转的节奏。
-        if (this.entryAbility != EliteAbility.NONE) {
+    protected void onAbilityEnd(EliteAbility finished) {
+        // 插队技能用掉就还回去；只有「刚刚播完的确实是它」才算用掉。
+        // 不能只看 entryAbility != NONE：入场技够不着时会挂着等机会，
+        // 这段时间里播的是轮转技，把入场技顺手清掉就等于把入场技吞了（第 3 阶段的血怒会整段消失）。
+        if (this.entryAbility != EliteAbility.NONE && finished == this.entryAbility) {
             this.entryAbility = EliteAbility.NONE;
             return;
         }
+        this.advanceRotation();
+    }
+
+    /**
+     * 当前槽位干等到上限还是起不了手 —— 换下一槽，见 {@link EliteAbilityDriver#tickIdle()}。
+     *
+     * <p>触发场景就是「玩家贴脸」：骨刺齐射要求目标 ≥ 4 格，而打近战 Boss 的唯一打法就是贴脸，
+     * 这一槽能连着几分钟起不了手。以前它会把整张轮转表一起锁死（Boss 站着不动、一招不放），
+     * 现在跳过它继续往下轮。</p>
+     */
+    @Override
+    protected void onAbilityStarved() {
+        this.starvedSlots++;
+        this.advanceRotation();
+    }
+
+    /** 轮转往前走一格；入场技与亡语不占用轮转的节奏，所以只在这里移动索引。 */
+    private void advanceRotation() {
         EliteAbility[] table = rotationFor(this.phase);
         this.rotationIndex = (this.rotationIndex + 1) % table.length;
     }
@@ -667,9 +777,151 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
             victim.hurtMarked = true;
         }
         this.castRaiseHorde(level, SUMMON_COUNT);
-        this.removeAllEffects();
+        // 只清负面效果。原来这里是 removeAllEffects()：亡语在 Phase 3 里是一个可轮转到的槽位，
+        // 每轮一次就把血怒那四条增益一起抹掉 —— 玩家看到的是「第 3 阶段打着打着又变回一只大僵尸」。
+        for (MobEffectInstance active : List.copyOf(this.getActiveEffects())) {
+            if (!active.getEffect().isBeneficial()) {
+                this.removeEffect(active.getEffect());
+            }
+        }
         this.ringParticles(ParticleTypes.SCULK_SOUL, WAIL_RADIUS, 64);
         this.playSound(SoundEvents.WITHER_DEATH, 2.0F, 0.6F);
+    }
+
+    /**
+     * 尸笼坠击：正前方 9 格长、±2.5 格宽的直线重击，再沿这条线钉下一排骨刺。
+     *
+     * <p>判定用「视线方向的水平投影」而不是射线，理由和横扫一样：
+     * 射线会被自己三格高的碰撞箱吃掉大半。骨刺从高处垂直落下，
+     * 落点在身前 1.3 格以外，不会砸到自己。</p>
+     */
+    private void castCageSlam(ServerLevel level) {
+        Vec3 look = this.getLookAngle();
+        Vec3 flat = new Vec3(look.x, 0.0D, look.z);
+        if (flat.lengthSqr() < 1.0E-6D) {
+            flat = Vec3.directionFromRotation(0.0F, this.getYRot());
+        }
+        flat = flat.normalize();
+        Vec3 origin = this.position();
+        AABB box = this.getBoundingBox().inflate(CAGE_LINE_LENGTH + 1.0D);
+        for (LivingEntity victim : level.getEntitiesOfClass(LivingEntity.class, box)) {
+            if (victim == this || victim instanceof Zombie) {
+                continue;
+            }
+            Vec3 delta = victim.position().subtract(origin);
+            double forward = delta.x * flat.x + delta.z * flat.z;
+            if (forward < 0.5D || forward > CAGE_LINE_LENGTH) {
+                continue;
+            }
+            double lateral = Math.sqrt(Math.max(0.0D, delta.x * delta.x + delta.z * delta.z - forward * forward));
+            if (lateral > CAGE_LINE_HALF_WIDTH) {
+                continue;
+            }
+            victim.hurt(this.damageSources().mobAttack(this), CAGE_DAMAGE);
+            victim.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 80, 1));
+            victim.push(flat.x * 1.6D, 0.5D, flat.z * 1.6D);
+            victim.hurtMarked = true;
+        }
+        for (int i = 1; i <= CAGE_SPIKES; i++) {
+            Vec3 at = origin.add(flat.scale(CAGE_LINE_LENGTH * i / (CAGE_SPIKES + 1.0D)));
+            GiantArrow spike = new GiantArrow(ModEntities.GIANT_ARROW.get(), level);
+            spike.setOwner(this);
+            spike.setBaseDamage(VOLLEY_DAMAGE);
+            spike.setPos(at.x, this.getY() + 4.0D, at.z);
+            spike.shoot(0.0D, -1.0D, 0.0D, 1.4F, 0.0F);
+            level.addFreshEntity(spike);
+        }
+        this.playSound(SoundEvents.RAVAGER_ATTACK, 1.8F, 0.5F);
+    }
+
+    /**
+     * 汲魂：把 10 格内所有活体各抽一口，按抽取总量反哺自己（单次有上限）。
+     *
+     * <p>Phase 3 的续航手段。血怒之后 Boss 打得又疼又快，但只剩三分之一的血，
+     * 没有这一口的话「换血」是稳赢的打法 —— 现在贴着它打就得先想想自己那点血够不够抽。</p>
+     */
+    private void castSoulDrain(ServerLevel level) {
+        AABB box = this.getBoundingBox().inflate(DRAIN_RADIUS);
+        float healed = 0.0F;
+        for (LivingEntity victim : level.getEntitiesOfClass(LivingEntity.class, box)) {
+            if (victim == this || victim instanceof Zombie) {
+                continue;
+            }
+            victim.hurt(this.damageSources().mobAttack(this), DRAIN_DAMAGE);
+            victim.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 100, 0));
+            healed += DRAIN_DAMAGE * DRAIN_HEAL_RATIO;
+            // 抽取的手感靠「魂丝」：从受害者身上拉一条 SOUL 粒子链到自己胸口
+            Vec3 from = victim.position().add(0.0D, victim.getBbHeight() * 0.6D, 0.0D);
+            Vec3 to = this.position().add(0.0D, 1.8D, 0.0D);
+            for (int i = 1; i <= 8; i++) {
+                Vec3 point = from.lerp(to, i / 9.0D);
+                level.sendParticles(ParticleTypes.SOUL, point.x, point.y, point.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            }
+        }
+        if (healed > 0.0F) {
+            this.heal(Math.min(healed, DRAIN_HEAL_CAP));
+        }
+        this.ringParticles(ParticleTypes.SOUL, DRAIN_RADIUS * 0.6D, 40);
+        this.playSound(SoundEvents.WITHER_HURT, 1.6F, 0.6F);
+    }
+
+    /**
+     * 疫雾：脚下铺一团 8 格半径的毒雾，命中瞬间先震一下圈内的人。
+     *
+     * <p>用原版 {@link AreaEffectCloud} 而不是自己维护「雾团表」：它自带粒子、逐 tick 结算、
+     * 自动同步给客户端，还会在消失时清理；静态表是跨世界的可变状态，重载时会漏。
+     * 效果只给中毒 —— 僵尸系对中毒免疫，所以这团雾伤活人、不伤自家尸群。</p>
+     */
+    private void castPlagueMist(ServerLevel level) {
+        AABB box = this.getBoundingBox().inflate(MIST_RADIUS);
+        for (LivingEntity victim : level.getEntitiesOfClass(LivingEntity.class, box)) {
+            if (victim == this || victim instanceof Zombie) {
+                continue;
+            }
+            victim.hurt(this.damageSources().mobAttack(this), MIST_DAMAGE);
+        }
+        AreaEffectCloud cloud = new AreaEffectCloud(level, this.getX(), this.getY() + 0.4D, this.getZ());
+        cloud.setOwner(this);
+        cloud.setRadius(2.5F);
+        cloud.setRadiusPerTick((float) ((MIST_RADIUS - 2.5D) / MIST_DURATION));
+        cloud.setDuration(MIST_DURATION);
+        cloud.setWaitTime(10);
+        cloud.setRadiusOnUse(-0.05F);
+        cloud.setParticle(ParticleTypes.SNEEZE);
+        cloud.addEffect(new MobEffectInstance(MobEffects.POISON, MIST_POISON_TICKS, 1));
+        level.addFreshEntity(cloud);
+        this.playSound(SoundEvents.SLIME_SQUISH, 1.6F, 0.5F);
+    }
+
+    /**
+     * 尸潮尖啸：16 格范围的尖啸，把活人炸开 + 短暂失明，并当场再拉几只僵尸。
+     *
+     * <p>专门对付「贴脸换血」：它把围上来的人推开，同时用失明切断对方的视野，
+     * 给轮转表里那两招远程（骨刺 / 汲魂）腾出施放空间。</p>
+     */
+    private void castHordeScreech(ServerLevel level) {
+        AABB box = this.getBoundingBox().inflate(SCREECH_RADIUS);
+        for (LivingEntity victim : level.getEntitiesOfClass(LivingEntity.class, box)) {
+            if (victim == this || victim instanceof Zombie) {
+                continue;
+            }
+            Vec3 push = victim.position().subtract(this.position());
+            double distance = Math.max(1.0D, push.length());
+            double falloff = 1.0D - Mth.clamp((distance - 1.0D) / SCREECH_RADIUS, 0.0D, 0.85D);
+            victim.hurt(this.damageSources().mobAttack(this), (float) (SCREECH_DAMAGE * falloff));
+            victim.addEffect(new MobEffectInstance(MobEffects.BLINDNESS, SCREECH_BLIND_TICKS, 0));
+            double strength = SCREECH_KNOCKBACK * falloff;
+            victim.push(push.x / distance * strength, 0.45D * falloff, push.z / distance * strength);
+            victim.hurtMarked = true;
+        }
+        this.castRaiseHorde(level, SCREECH_SUMMON);
+        for (int i = 0; i < 64; i++) {
+            double angle = 2.0D * Math.PI * i / 64.0D;
+            level.sendParticles(ParticleTypes.SONIC_BOOM,
+                    this.getX() + Math.cos(angle) * 2.0D, this.getY() + 2.2D,
+                    this.getZ() + Math.sin(angle) * 2.0D, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        }
+        this.playSound(SoundEvents.WARDEN_SONIC_BOOM, 2.0F, 0.7F);
     }
 
     /** 环绕自己撒一圈粒子（起手 / 命中都用得上）。 */
@@ -717,6 +969,22 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
             return 0;
         }
         return Math.max(0, SUMMON_CAP - this.countNearbyZombies(level));
+    }
+
+    /**
+     * 阶段机的实时快照，一行一字段 —— {@code /apocalypse boss} 直接打印它。
+     *
+     * <p>阶段推进只有副作用（buff / 标题 / 轮转表），没有任何可读的 NBT 字段：
+     * 排查「没有第 3 阶段」这种问题时，与其靠 buff 猜，不如把服务端眼里的这几个值念出来。</p>
+     */
+    public String debugStatus() {
+        EliteAbility[] table = rotationFor(this.phase);
+        return String.format(
+                "overlord phase=%d/%d hp=%.1f/%.1f cast=%s@%d entry=%s rot=%d/%d rage=%s wail=%s starved=%d",
+                this.phase, PHASE_COUNT, this.getHealth(), this.getMaxHealth(),
+                this.getAbility(), this.getAbilityTick(), this.entryAbility,
+                this.rotationIndex, table.length, this.rageApplied, this.deathWailFired,
+                this.starvedSlots);
     }
 
     /** 阶段标题用得到：把阶段阈值暴露给测试与调试指令。 */

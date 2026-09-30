@@ -28,7 +28,20 @@ public final class EliteAbilityDriver {
 
         void onImpact();
 
-        default void onEnd() {
+        default void onEnd(EliteAbility finished) {
+        }
+
+        /**
+         * 一个槽位最多干等多少 tick 才认它是死槽位，见 {@code tickIdle()}。默认 2 秒。
+         */
+        default int starvationTicks() {
+            return 40;
+        }
+
+        /**
+         * 当前槽位等够了 {@link #starvationTicks()} 却依然起不了手。实现者应当换一招，别原地卡死。
+         */
+        default void onStarved() {
         }
     }
 
@@ -38,6 +51,9 @@ public final class EliteAbilityDriver {
 
     /** 剩余冷却；<= 0 且 canStart() 为真才起手。 */
     private int cooldown;
+
+    /** 当前槽位已经白等了几个 tick。命中即起手的招永远是 0，不会误触发换槽。 */
+    private int starvedTicks;
 
     public EliteAbilityDriver(Mob mob, EliteMob state, Hooks hooks) {
         this.mob = mob;
@@ -49,9 +65,10 @@ public final class EliteAbilityDriver {
     public void tick() {
         EliteAbility current = this.state.getAbility();
         if (current.isIdle()) {
-            this.tickCooldown();
+            this.tickIdle();
             return;
         }
+        this.starvedTicks = 0;
         this.advance(current);
     }
 
@@ -59,13 +76,37 @@ public final class EliteAbilityDriver {
         return this.cooldown <= 0;
     }
 
-    private void tickCooldown() {
+    /** 当前槽位白等了多少 tick —— 调试指令直接读它。 */
+    public int getStarvedTicks() {
+        return this.starvedTicks;
+    }
+
+    /**
+     * 冷却 + 起手 + <b>死槽位兜底</b>。
+     *
+     * <p>兜底这一段是必须的：起手条件由子类定（距离、视线、目标存活），而这些条件随时可能
+     * 长时间不成立 —— 玩家贴脸肉搏时，「目标 ≥ 4 格才能放」的远程招就永远起不了手。
+     * 轮转索引只在技能<b>结束</b>时前进，所以一个起不了手的槽位会把整张轮转表锁死，
+     * 表现是 Boss 站着不动、一招都不放（看着像「这个阶段没有技能」）。
+     * 干等到 {@link Hooks#starvationTicks()} 就通知子类换槽，让轮转重新流动起来。</p>
+     */
+    private void tickIdle() {
         if (this.cooldown > 0) {
             this.cooldown--;
         }
-        if (this.cooldown <= 0 && this.hooks.canStart()) {
+        if (this.cooldown > 0) {
+            return;
+        }
+        if (this.hooks.canStart()) {
+            this.starvedTicks = 0;
             this.state.setAbility(this.hooks.ability(), 0);
             this.hooks.onStart();
+            return;
+        }
+        this.starvedTicks++;
+        if (this.starvedTicks >= Math.max(1, this.hooks.starvationTicks())) {
+            this.starvedTicks = 0;
+            this.hooks.onStarved();
         }
     }
 
@@ -80,7 +121,7 @@ public final class EliteAbilityDriver {
         if (tick >= current.getDuration()) {
             this.state.setAbility(EliteAbility.NONE, -1);
             this.cooldown = this.hooks.cooldownTicks();
-            this.hooks.onEnd();
+            this.hooks.onEnd(current);
         }
     }
 

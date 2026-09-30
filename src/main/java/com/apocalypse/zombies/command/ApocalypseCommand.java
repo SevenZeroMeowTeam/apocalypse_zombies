@@ -1,6 +1,7 @@
 package com.apocalypse.zombies.command;
 
 import com.apocalypse.zombies.Config;
+import com.apocalypse.zombies.entity.HordeOverlord;
 import com.apocalypse.zombies.horde.HordeManager;
 import com.apocalypse.zombies.moon.ApocalypseData;
 import com.apocalypse.zombies.moon.MoonEvent;
@@ -18,8 +19,10 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.stream.Collectors;
 
 /** {@code /apocalypse ...} — inspection and authoring tools for testing a night. */
@@ -106,7 +109,30 @@ public final class ApocalypseCommand {
             return EvolutionTier.values().length;
         }));
 
+        root.then(Commands.literal("boss").executes(context -> bossStatus(context.getSource())));
+
         dispatcher.register(root);
+    }
+
+    /**
+     * 尸潮之主的阶段机读出口：{@code /apocalypse boss}。
+     *
+     * <p>阶段推进只有副作用（buff / 标题 / 轮转表），没有可读的 NBT 字段，光靠
+     * {@code /data get} 只能靠猜。这个子命令把每只在场 Boss 的阶段、当前技能与进度、
+     * 轮转槽位、入场技和两个一次性开关直接打出来 —— 排「没有第 N 阶段」这类问题靠它。</p>
+     */
+    private static int bossStatus(CommandSourceStack source) {
+        Vec3 origin = source.getPosition();
+        List<HordeOverlord> bosses = source.getLevel().getEntitiesOfClass(
+                HordeOverlord.class, new AABB(origin, origin).inflate(256.0D));
+        if (bosses.isEmpty()) {
+            source.sendFailure(Component.translatable("command.apocalypse_zombies.boss.none"));
+            return 0;
+        }
+        for (HordeOverlord boss : bosses) {
+            source.sendSuccess(() -> Component.literal(boss.debugStatus()), false);
+        }
+        return bosses.size();
     }
 
     private static int setMoon(CommandSourceStack source, MoonEvent event) {

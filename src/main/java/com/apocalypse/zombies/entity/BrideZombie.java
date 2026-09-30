@@ -514,7 +514,7 @@ public class BrideZombie extends AbstractEliteZombie implements GeoEntity {
 
     /** 收招：记下这一套的冷却，然后轮转到下一套。 */
     @Override
-    protected void onAbilityEnd() {
+    protected void onAbilityEnd(EliteAbility finished) {
         int index = this.rotationIndex % ROTATION.length;
         this.skillCooldown[index] = ROTATION_COOLDOWN[index];
         this.rotationIndex = (this.rotationIndex + 1) % ROTATION.length;

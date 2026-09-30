@@ -50,8 +50,17 @@ public abstract class AbstractEliteZombie extends Zombie implements EliteMob {
     protected void onAbilityStart() {
     }
 
-    /** 收招结束（进入冷却）。默认什么都不做。 */
-    protected void onAbilityEnd() {
+    /** 收招结束（进入冷却）。{@code finished} 是刚播完的那一招。默认什么都不做。 */
+    protected void onAbilityEnd(EliteAbility finished) {
+    }
+
+    /** 当前槽位干等到上限依然起不了手 —— 见 {@link EliteAbilityDriver#tickIdle()}。默认什么都不做。 */
+    protected void onAbilityStarved() {
+    }
+
+    /** 一个槽位最多干等多少 tick；0 及以下表示用驱动器的默认值（40）。 */
+    protected int abilityStarvationTicks() {
+        return 0;
     }
 
     // ------------------------------------------------------------------ 同步状态
@@ -125,8 +134,19 @@ public abstract class AbstractEliteZombie extends Zombie implements EliteMob {
         }
 
         @Override
-        public void onEnd() {
-            AbstractEliteZombie.this.onAbilityEnd();
+        public void onEnd(EliteAbility finished) {
+            AbstractEliteZombie.this.onAbilityEnd(finished);
+        }
+
+        @Override
+        public int starvationTicks() {
+            int custom = AbstractEliteZombie.this.abilityStarvationTicks();
+            return custom > 0 ? custom : EliteAbilityDriver.Hooks.super.starvationTicks();
+        }
+
+        @Override
+        public void onStarved() {
+            AbstractEliteZombie.this.onAbilityStarved();
         }
     }
 
