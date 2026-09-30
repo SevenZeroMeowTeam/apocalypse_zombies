@@ -124,10 +124,15 @@ def check_enum_append_only(fail):
         fail("枚举前 %d 条被动过：实际 %s ⇒ byId 用 ordinal，插在中间会让已有技能错位"
              % (len(FROZEN_PREFIX), order[:len(FROZEN_PREFIX)]))
     tail = ["VEIL_SWIPE", "FLOWER_DART", "VEIL_CHOP"]
-    if order[-3:] != tail:
-        fail("末尾三条不是 %s，实际 %s ⇒ 新技能只能追加在末尾" % (tail, order[-3:]))
-    if not re.search(r"VEIL_CHOP\(42,\s*22\)\s*;", enum):
-        fail("VEIL_CHOP 不是枚举里最后一条（必须以 ; 收尾）⇒ 只能追加在末尾")
+    # 追加规则：这三条是「已出货的尾段」，位置冻结 —— 新技能一律排在它们**之后**。
+    # 所以断言的是「紧跟冻结前缀的那三条就是它们」，而不是「它们必须是最后三条」：
+    # 后者每加一个技能就得回来改一次断言，改错一次这条铁律就再也挡不住插队。
+    after_prefix = order[len(FROZEN_PREFIX):len(FROZEN_PREFIX) + len(tail)]
+    if after_prefix != tail:
+        fail("冻结前缀之后的三条不是 %s，实际 %s ⇒ 新技能只能追加在末尾，不许插在它们前面"
+             % (tail, after_prefix))
+    if not re.search(r"VEIL_CHOP\(42,\s*22\)\s*[,;]", enum):
+        fail("VEIL_CHOP 的 (duration, impactTick) 不是 (42, 22)，或丢了收尾标点")
     for name, dur, imp in (("VEIL_SWIPE", 40, 20), ("FLOWER_DART", 36, 18), ("VEIL_CHOP", 42, 22)):
         if not re.search(r"%s\(%d,\s*%d\)" % (name, dur, imp), enum):
             fail("%s 的 (duration, impactTick) 不是 (%d, %d)" % (name, dur, imp))
