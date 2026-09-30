@@ -248,3 +248,58 @@ mods.toml + MANIFEST）/ 增 0 / 删 0。
   `tools/deploy_netease.py`、`NOTICE.md` 与 readme 里的相关行），仍以未提交状态留在工作树；
   混合文件用「只留我的 hunk」重建后 `git add`，索引里经 `grep -i netease` 核过为零。
   另：PR #2 正文那句「1.1.42 未部署」已过时 —— 1.1.42 正是本次部署前的在用版本。
+
+## 十一、事故与修复（1.1.46）：第 3 阶段「一招不放」—— 技能轮转被死槽位锁死
+
+- **报告**：打进第 3 阶段（血 ≤ 1400）后 Boss 站在原地不出招，跟第 1 阶段判若两怪 —— 像「第 3 阶段没实现」。
+- **定位**：阶段机本身没问题（`phase` 正确切到 3、`rot` 也在推进）。真因是 `ROTATION_PHASE_3` 的第 4 格
+  是 `BONE_VOLLEY`（骨矢齐射），起手门槛「目标 ≥ 4 格」；而打近战 Boss 的唯一办法就是贴脸 ⇒ 该槽永不
+  起手。轮转索引**只在技能结束时**才前进 ⇒ 整张表停在这一格永久空转。
+- **铁证**：无甲铁傀儡 3604 血、贴到 1.5 格，`/apocalypse boss` 读到 `rot=3/5 cast=NONE`，空转 10s+ 之后
+  60s 内再无任何出招（旧缺陷 8~12s 且**永不恢复**）。
+- **三处修法**：① 驱动器加「干等上限 → `Hooks.onStarved()`」兜底（默认 40t = 2s，子类借它跳过够不着的槽位）；
+  ② `onEnd(finished)` 把**刚播完的那一招**传回来（原实现只看 `entryAbility != NONE` 就清空，会吞掉挂起等
+  机会的入场技 —— 血怒可能整段消失）；③ `HordeOverlord.castDeathWail()` 的 `removeAllEffects()` 改成只清
+  负面效果 —— 亡语在 P3 是可轮转槽位，每轮一次会把血怒那 4 条 buff 抹光。另：`ability()` 只在入场技真的
+  起手时才插队，否则它自己会挡住轮转。
+- **阈值为什么是 40t / 判死锁 4.0s**：观测窗必须 > 理论最坏空窗 = 技能间隔 24t + 干等上限 40t + 采样 0.5s
+  ≈ 3.7s。探针判定线设 4.0s —— 设 3.0s 会把正常的兜底（3.5s）误报成死锁。
+- **副作用取证思路**（阶段推进与技能结算全是服务端私有状态、没有 NBT 可读）：断言一律绑「只有该技能会
+  产生」的跨进程可见副作用 —— 实体（6 根骨刺 / 雾团 / 僵尸数）、buff id（`Id:` 后**无 `b` 后缀**）、
+  Boss 血量的无外因自增（汲魂 1.5× 反哺）。并为阶段机补 `/apocalypse boss` 调试出口。
+
+## 十二、出货记录（1.1.46）
+
+- **流程**：`python tools/_deploy_146.py` —— 版本钉死（OLD=1.1.45 / 基线 md5 `79b845e4bab9b29d53168cfd0e6c2512`，
+  NEW=1.1.46）。断言含：变化集合逐条字节比对（**14 改 / 0 增 / 0 删**）、资产白名单（本版只许动动画 JSON +
+  两条 lang，**geo/png 出现在变化集合里就拒**）、`META-INF/NOTICE.md` 与基线逐字节相同、生成器自校验
+  601/601、`art/boss` == `src` == 包内三向对账、包内契约（12 段剪辑 / 4 个剪辑名字面量 / `starved` /
+  `onStarved`+`starvationTicks` / 新旧 11 条枚举）、四道门禁。
+- **首跑被拦下两条（都是护栏自身的问题，已修）**：① 桩断言写成 `'"skill_cage"'` —— Java 常量池里的字符串
+  **不带源码的引号**，永远匹配不到；② `check_marksman.py` 的 a 断言写的是「`BONE_LOCK` 必须是最后一条」，
+  被 1.1.46 的合法追加顶红 ⇒ 改为「**序号冻结** + 其后只许登记过的追加项」（与 `check_bride_combat.py`
+  的写法一致），并做负向双向验证（往 `VEIL_CHOP` 前插一条 → a2/a 双红；改 `BONE_LOCK(42,34)` 参数 → a 红）。
+  另：`check_boss.py` 的 `CLIPS` 表原本只覆盖 6 条 —— 新 4 条不进去，就完全不受「末尾追加 / 时长与命中同源」
+  两条断言保护。
+- **md5 / 落盘**：`3f301c03916a8bd051bc8f2093968815`（14:45:58）。`mods/` 现在只有 `apocalypse_zombies-1.1.46.jar`；
+  另外 23 个模组 md5 全等；`mods_backup/` = 1.1.45 / 1.1.44 / 1.1.43（保 3 份）；`options.txt` 用户已自选
+  资源包，按约定不覆盖。
+- **部署前的进程判定**：脚本的「游戏在跑吗」判据只认命令行带 `forgeclient` / `forgeserver` /
+  `forgeuserdev` / `net.minecraft.*.Main` 的 JVM（Gradle 守护进程、VS Code 的 Gradle 语言服务器也都叫
+  `java.exe`，光看进程名会误判）。本次拦下的是**本机 headless 开发服务端**（pid 62252），不是客户端 ——
+  确认没有 `forgeclient` 后才停掉它继续。
+- **git / CI**：main `71493fd`（5 个提交：`fix(boss)` / `feat(boss)` / `test(boss)` / `chore(release)` /
+  `docs(readme)`）。CI run `36680092676` 成功，发版 job 产出 Release **`v1.1.46`**（latest），附件
+  `apocalypse_zombies-1.1.46-clean.jar` **1,407,968 字节**（md5 `efc76eb02597d37c7afbee57df7d2f20`）。
+- **发布件回读核验**（把附件拉下来逐条验）：`mods.toml` = `1.1.46`；Boss 动画 **12 段**（含 4 个新剪辑）；
+  `HordeOverlord.class` 含 4 个剪辑名字面量与 `starved`；`EliteAbilityDriver.class` 含 `onStarved` /
+  `starvationTicks`；`geo` / `anim` / `png` 与本地 `art/boss/` **md5 三向相等**
+  （`ee328f54` / `2b8e545d` / `88727cf8`）；全部 **192 个条目** grep 网易 / netease **0 处**。
+- **运行时自查**（客户端里随手可跑，改完从主菜单重进）：
+  `/summon apocalypse_zombies:horde_overlord ~ ~1 ~` 后 `/apocalypse boss` 看阶段机状态；
+  `/damage @e[type=apocalypse_zombies:horde_overlord,limit=1] 2900 minecraft:generic` 直接进第 3 阶段，
+  贴脸站 10 秒 —— 修前站着不动，修后应连出尸笼坠击 / 疫雾（脚下毒雾）/ 汲魂（它回血）/ 尸潮尖啸（击退+失明）。
+- **网易 Java 版适配那条线按指示不进仓库**（`-netease.jar` 产物、`docs/wiki/10-…`、`tools/deploy_netease.py`、
+  `NOTICE.md` / `build.gradle` / `docs/wiki/README.md` / readme 里的相关行）—— 仍以未提交状态留在工作树。
+  readme 用 `git stash push -- readme.md` 隔离网易 hunk、只提交自己那两处，`stash pop` 再合回（自动合并成功，
+  两处都在、网易 hunk 也都在）。
