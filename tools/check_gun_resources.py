@@ -346,6 +346,65 @@ for item_id, item_class in other_items:
         check(f"item.{MOD_ID}.{item_id}" in table, f"{item_id}: {lang} 缺 item.{MOD_ID}.{item_id}")
 notes.append(f"其他物品：{', '.join(i for i, _ in other_items)} —— model json 与两套 lang 齐")
 
+# --- 10. 动画文件的 GeckoLib 形状契约 --------------------------------------
+# GeckoLib 是在**资源重载**里解析动画文件的（BakedAnimationsAdapter.addBedrockKeyframes）：
+# 通道值必须是「时间 → 三元向量」—— 裸数组，或含 vector / post / pre 的对象。
+# 写成 per-axis 嵌套（{"x": {"0.0": 0.0}}）会抛 JsonParseException；后果不是「动画不播」
+# 那么轻：整次资源重载失败，客户端随即清空用户选中的资源包（options.txt 里
+# resourcePacks 变空），字体没能重建 → 全屏文字变方框。1.1.41 就这么炸过一次，
+# 所以这道闸门罩**所有**动画文件，不只 Boss。
+ANIM_DIR = ASSETS / "animations"
+
+
+def _vector_ok(value) -> bool:
+    if isinstance(value, list):
+        return len(value) == 3 and all(isinstance(n, (int, float)) for n in value)
+    if isinstance(value, dict):
+        if "vector" in value:
+            return _vector_ok(value["vector"])
+        if "post" in value or "pre" in value:
+            return all(k not in value or _vector_ok(value[k]) for k in ("post", "pre"))
+    return False
+
+
+def _channel_problem(channel: str, val) -> str | None:
+    if channel not in ("rotation", "position", "scale"):
+        return f"通道名 {channel!r} 非法（GeckoLib 只认 rotation/position/scale）"
+    if not isinstance(val, dict):
+        return f"{channel} 应是对象，实为 {type(val).__name__}"
+    if "vector" in val:                       # 整段常量：{"vector": [x, y, z]}
+        return None if _vector_ok(val["vector"]) else f"{channel} 的常量 vector 不是三元向量"
+    for t, v in val.items():
+        try:
+            float(t)
+        except (TypeError, ValueError):
+            return f"{channel} 的时间键 {t!r} 不是数字（per-axis 嵌套？）"
+        if not _vector_ok(v):
+            return f"{channel}@{t} 的值不是三元向量：{v!r}"
+    return None
+
+
+anim_files = sorted(ANIM_DIR.glob("*.animation.json"))
+check(bool(anim_files), "animations/ 下没找到任何动画文件")
+anim_channels = 0
+for path in anim_files:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        check(False, f"{path.name}: JSON 解析失败 {exc}")
+        continue
+    problems = []
+    for clip, body in (data.get("animations") or {}).items():
+        for bone, chans in (body.get("bones") or {}).items():
+            for chan_name, val in (chans or {}).items():
+                anim_channels += 1
+                why = _channel_problem(chan_name, val)
+                if why:
+                    problems.append(f"{clip}/{bone} {why}")
+    check(not problems, f"{path.name}: 通道形状不符合 GeckoLib 契约"
+                        f"（会让资源重载失败 → 全屏方框）：" + "；".join(problems[:3]))
+notes.append(f"动画文件 {len(anim_files)} 个 / 通道 {anim_channels} 条：形状全部符合 GeckoLib 契约")
+
 print("=== 枪械资源接线自检 ===")
 for line in notes:
     print(line)
