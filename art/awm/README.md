@@ -49,6 +49,32 @@
 
 留档：`awm.pre-fill.bak.png`（修复前）、`tex_fill_compare.png`（前后对比）。
 
+## 换代（2026-09-30）：几何 + 贴图换成 9217 工程
+
+**来源**：`F:/apt/9217/awm.geo.bbmodel`（Blockbench 5.2.1 里打开的那份工程，保存时间 2026-09-30 21:41）。
+导出方式：在 Blockbench 内跑 `Codecs.bedrock.compile({model:true,animation:false})`（MCP `risky_eval`）→ 落盘 `art/awm/awm.geo.json`。
+
+| 项 | 旧（生成器产出 + TaCZ 派生） | 新（9217 工程） |
+|---|---|---|
+| 骨 / 方块 | 25 / 435 | 25 / 417 |
+| 面数 | 2610 | 2502 |
+| 逐骨包围盒 / pivot | — | **与旧版逐条相同**（枪的尺寸没变，内部重新分块） |
+| UV 空白面 | 0（2026-09-23 靠 `awm_tex_fill.py` 回填 2562 面） | **0**（图集本身画满，不需回填） |
+| 贴图 | `awm.png` 307,664 B | `awm.png` 389,646 B（**50.9% 像素不同**） |
+| 手 / 臂网格 | `lefthand` 7 块、`righthand` 8 块 | 0 块、1 块（**去掉**；Java 不驱动、动画不涉及） |
+| `mag_spare` | 6 块整匣 | 2 块薄片（动画照常驱动其位移/旋转与 `scale=0` 变体开关） |
+
+留档：`awm.geo.pre-9217.bak.json`、`awm.pre-9217.bak.png`、`awm.pre-9217.bak.bbmodel`。
+
+**关于 `tools/awm_bb_gen.js`（待定，需在 `美术规范.md` 记一笔）**：生成器产出的那版几何（435 方块）
+已被 9217 工程取代，而**9217 工程不在生成器里**（在 Blockbench 外部改的）。按"每个武器一个生成器 = 唯一真相源"的
+规矩有两条路：① 把 9217 的几何并回生成器；② **把 `art/awm/awm.bbmodel` 立为 AWM 的真相源，`awm_bb_gen.js` 退为历史**。
+目前走的是 ②（几何真相源 = `art/awm/awm.bbmodel`）。动画那条链没变，仍是
+`awm_bb_anim.js` → `awm_anim_export.py`（骨名与 pivot 全同，所以旧动画逐键继续有效）。
+
+**验证**：`check_gun_resources.py` 报 AWM 25 骨 / 10 段动画、驱动骨对齐、2502 面空白 **0**、时长常量一致；
+`check_awm_anim.py` 六项契约全绿。两者都**没改一行**。
+
 ## 动画
 
 十段，全部从 TaCZ 官方 `ai_awp` 直抄（真值来源、换算与偏离见 `tacz_ai_awp_reference.md`）。
