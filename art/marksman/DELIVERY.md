@@ -1,9 +1,11 @@
 # 骸骨射手（精英骷髅 GeckoLib 真骨骼 + 骨矢锁定）· 交付台账
 
-**日期**：2026-09-30　**当前版本**：`1.1.44`（**已部署** 12:42:24，md5 `39b7db93d4d054bb5e2d06276634c165`，2,064,366 B）
+**日期**：2026-09-30　**当前版本**：`1.1.45`（**已部署** 13:21:38，md5 `79b845e4bab9b29d53168cfd0e6c2512`，2,065,090 B）
+**1.1.45 = 本线的收尾改动**：远程怪可 opt-in「看得见就能打」，射手不再对柱顶/塔上的目标一箭不放（见 §六）
+**上一版**：`1.1.44`（`39b7db93d4d054bb5e2d06276634c165`）已随本次部署移入 `mods_backup/`
 **发布件**：GitHub Release [`v1.1.44`](https://github.com/SevenZeroMeowTeam/apocalypse_zombies/releases/tag/v1.1.44)
 → 资产 `apocalypse_zombies-1.1.44-clean.jar`（1,400,156 B；tag 指向 `e9089fc`，CI run 36670289371 绿）
-**历史版本**：`1.1.43`（`80be27db080ffeff62cfe57a865200e2`）在 `mods_backup/`，同目录还有 `1.1.42` / `1.1.41`
+**历史版本**：`1.1.43`（`80be27db080ffeff62cfe57a865200e2`）在 `mods_backup/`，同目录还有 `1.1.42`
 
 **需求（转述自对话，非逐字引文）**：把既有精英怪「骸骨射手」`MarksmanSkeleton` 从原版
 `SkeletonModel` 换成 **GeckoLib 真骨骼模型**，并挂新技能「骨矢锁定」——**100% 自瞄必中、
@@ -49,6 +51,8 @@
 | 闸门能红 | c5 正反两遍：正常 13 PASS / 抠掉 `invulnerableTime = 0` 必红 / 还原必绿 |
 | 构建 | `./gradlew clean build --offline` → BUILD SUCCESSFUL |
 | 出货闸门 | `tools/_deploy_144.py`：基线 md5 认身份 + 变更集合 12 改 / 10 增 / 2 删逐条比对 + 三向对账 + 数据包契约 + 门禁 + 备份 3 份 |
+| **1.1.45 复跑** | `tools/rcon_marksman_test.py` **5/5 PASS**（原 4 条 + ⑤ 柱顶靶）+ 4 门禁全绿 |
+| **1.1.45 出货闸门** | `tools/_deploy_145.py`：基线 md5 认身份 + 变化集合 **5 改 / 1 增 / 0 删** + **「资产零漂移」断言** + 三向对账（geo/anim/png 与 1.1.44 逐字节同）+ 数据包契约 + 门禁 + 备份 3 份 |
 
 ---
 
@@ -64,6 +68,9 @@
    但走不到」时空转**占住 TARGET 标志**，排在 p3 的玩家/铁傀儡目标永远起不来。
    验收斗场因此必须围三格高 `barrier` 围墙 —— 射手带 `KeepDistanceGoal`（7~18 格），
    没墙它会自己走下 y=100 的台子掉到地面，之后既没视线也没法寻路。
+   ★ **后续（1.1.45）：这条判断只对了一半。**「走不到」在斗场是干扰项，但在**正常游戏里同样是真
+   bug** —— 玩家只要站得比射手高一格以上（柱顶 / 塔上 / 城墙边），射手就一箭不放 45 秒。
+   根因就是这里写的那条「空转占 TARGET 标志」，修法见 §六。
 3. **验收必须区域清场** —— 斗场里残留的实体（尤其碰撞箱巨大的 Boss，常带 `Invulnerable`）
    会把每一发弹体都吃掉、`hurt()` 返回 false，表现成「技能放了却不掉血」。
    另外读属性别用 `/data get entity … Attributes`（响应会被截断，正则失配后静默返回 None），
@@ -79,11 +86,33 @@
 | 生成器 | `tools/marksman_bb_gen.js` / `.py`（几何 + 贴图）、`tools/marksman_bb_anim.js` / `marksman_anim.py`（4 段 clip + bedrock 1.8.0 导出）、`marksman_pose_shot.py`（姿态抓图） |
 | 闸门 | `tools/check_marksman.py`（c1–c5）、`tools/check_bride_combat.py`（`enum_append_only` 语义改为「冻结前缀之后」） |
 | 验收 | `tools/rcon_marksman_test.py`（口径见 §三） |
-| 出货脚本 | `tools/_deploy_144.py`（钉死 1.1.43 基线 md5 + 变更集合） |
+| 出货脚本 | `tools/_deploy_144.py`（钉死 1.1.43 基线 md5 + 变更集合）、`tools/_deploy_145.py`（钉死 1.1.44 基线 md5 + 本线的收尾改动） |
 
 * **Forge 无热重载**：换包后必须**完全退出**重开客户端（退到主菜单不算）。
 * **发布件 `.jar` 是 clean 构建**（不含 TaCZ 借用资产），已核验其中 **0 处**网易字样。
-* **未决（等用户拍板）**：射手沿用共享猎物调度器，判据是「**走得到**」——对**看得见但走不到**
-  的目标（玩家站柱顶 / 塔上 / 飞行）**不会开火**。要不要给它放宽成「有视线即可开火」，
-  尚未决定；本次按既有行为交付，未改。
-* **待用户实测**：模型 / 动画 / 粒子在客户端的观感（本台账只覆盖到 headless 数值验收）。
+* **已决（1.1.45 落地）**：原先的未决项「射手沿共享调度器、对**看得见但走不到**的目标不会开火」——
+  用户拍板放宽，实现为实体级 opt-in 接口 `SightFiring`（近战怪零影响，见 §六）。
+* **待用户实测**：模型 / 动画 / 粒子的客户端观感 + **柱顶目标能被点名**（本台账只覆盖 headless 数值验收）。
+
+---
+
+## 六、1.1.45 —— 索敌 opt-in「看得见就能打」
+
+**症状**：目标只要比射手高一格以上（柱顶 / 塔上 / 城墙边），射手**45 秒一箭不放** —— 不举弓、不移动、
+不索敌，看起来像 AI 卡死。
+**根因**：`PreyTargetGoal`（`MobAiEnhanced` 给所有 `Monster` 的全局挂载）只在 `PreyJudge.canPathTo`
+成立（高度容差 1 格）时认这个猎物；够不着的猎物让它空转**占住 TARGET 标志** ⇒ 排在 p3 的玩家 /
+铁傀儡目标永远起不来。远程怪本来就不需要走过去 —— 有视线就该开火。
+
+| 项 | 落地 |
+|---|---|
+| 接口 | 新增 `entity/ai/SightFiring`：`double sightFiringRange()`，**≤0 = 不启用**（实体自己 opt-in） |
+| 判序 | `PreyJudge.usable` = `inRange` → 贴脸(3 格) → **`sightFiring`** → `reachable`；`sightFiring()` = `mob instanceof SightFiring` && range>0 && dist²≤range² && `hasLineOfSight` |
+| 射手 | `MarksmanSkeleton implements EliteMob, GeoEntity, SightFiring`；`sightFiringRange()` 取三件武器射程的最大值 `GIANT_ARROW_MAX_RANGE=32`（另有 `LOCK_MAX_RANGE=26` / `BOW_RANGE=24`），三处武器入参**全部改用同一批常量** |
+| 不动的 | `EliteMob.hasTargetInRange`（技能起手本来就要求视线）、所有近战怪、**所有资产**（geo / anim / png / 数据包 / 伤害类型**零改动**） |
+| 闸门 | `check_marksman.py` c6 钉四条不变量：实现接口 / 接口存在 / 判序带 `instanceof` 守卫 / 射程同源。负向双向验证：抠守卫、颠倒 `reachable` 与 `sightFiring` 判序都必红 |
+| 实测 | 柱高 3 格、柱顶无甲铁傀儡：修前 **45 秒一箭不放** → 修后 **1.8 秒**射出骨矢；`tools/rcon_marksman_test.py` **5/5 PASS** |
+| 出货 | `tools/_deploy_145.py`：变化集合恰好 **5 改 / 1 增 / 0 删**，且**资产零漂移**是脚本里的硬断言（不是口头承诺） |
+
+**为什么射程必须同源**：`sightFiringRange()` 报小了**退回死锁**、报大了会**锁上打不到的目标** ——
+两种情况都是**静默**的（不报错、日志无痕），只能靠 c6 盯住这批常量与武器入参同源。
