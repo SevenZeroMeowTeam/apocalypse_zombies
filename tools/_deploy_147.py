@@ -16,6 +16,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -31,12 +32,14 @@ KEEP_BACKUPS = 3
 A = 'assets/apocalypse_zombies/'
 
 #: 上一版装机件的已知构建（只认 mods/ 里那一个）。md5 逐次构建会变（jar 里盖构建时间戳），
-#: 所以这里列的是"见过的、内容正确的"那几个，而不是长期指纹。
+#: 所以基线判据是**内容**：包内 mods.toml 的版本号属于下表之一。这张表只是给日志加一句说明。
 BASELINE = {
     'ef07a1766136baaaca535b6f43d134b2': '1.1.47 之前的预览构建（1.1.46-m1reload，含本轮 M1 改动）',
     'e62af156a482233c1cf38d6fb2b74275': '1.1.46 官方出货件（压入件纯竖直化版）',
     '3f301c03916a8bd051bc8f2093968815': '1.1.46 初版（换弹压入件修复前）',
 }
+#: 允许被覆盖的装机件版本：上一版，或本版本自己（重建后重发同一版）。
+ACCEPT = (PREV, VER)
 
 ok = True
 
@@ -59,6 +62,14 @@ def check(cond, label, detail=None):
     tail = ('  —— %s' % (detail,)) if detail not in (None, '', []) else ''
     print('  %s %s%s' % ('[OK  ]' if cond else '[FAIL]', label, tail))
     return bool(cond)
+
+
+def jar_version(path):
+    """包内 mods.toml 声明的版本（认内容，不认文件名 / md5）。"""
+    with zipfile.ZipFile(path) as z:
+        toml = z.read('META-INF/mods.toml').decode('utf-8', 'replace')
+    m = re.search(r'^version\s*=\s*"([^"]+)"', toml, re.M)
+    return m.group(1) if m else '?'
 
 
 def peak_travel(clip):
@@ -114,9 +125,10 @@ mine = [n for n in before if n.startswith(PREFIX)]
 if not check(len(mine) == 1, 'mods/ 里只有一个本模组包', mine):
     raise SystemExit(1)
 cur = mine[0]
-if check(before[cur] in BASELINE, '基线：装机件是已知构建', '%s = %s' % (cur, BASELINE.get(before[cur], '未知 md5 ' + before[cur]))):
-    pass
-else:
+cur_ver = jar_version(os.path.join(MODS, cur))
+check(cur_ver in ACCEPT, '基线：装机件版本在可覆盖集合内',
+      '%s 包内版本 %s%s' % (cur, cur_ver, '（' + BASELINE[before[cur]] + '）' if before[cur] in BASELINE else ''))
+if cur_ver not in ACCEPT:
     raise SystemExit(1)
 
 os.makedirs(BACKUP, exist_ok=True)
