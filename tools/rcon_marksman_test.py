@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """骸骨射手「骨矢锁定」在真服务端上的验收 —— 走 RCON 打真目标，不靠读代码猜。
 
-要证的四件事（每一件都能被「编译过、日志干净、游戏里却没生效」骗过去）：
+要证的五件事（每一件都能被「编译过、日志干净、游戏里却没生效」骗过去）：
   1. 无视护甲 / 保护附魔 / 抗性：目标穿满保护 IV 下界合金甲 + 抗性 V，一发 bone_lock
      该掉多少掉多少（标签级：`/damage` 直接打这个伤害类型，不经过 AI 与弹体）；
   2. 对照组：同数值的**普通**伤害在同样满防具下几乎被吃光 —— 证明 1 里的满额不是巧合；
@@ -12,6 +12,11 @@
      恰好掉 25.0 —— 1.20.1 的 hurt() 在 invulnerableTime > 10 时只结算「本次 − 上次」的
      差额（实测：先挨 1 点，骨矢 25 只掉 24.0），而这个分支没有任何 DamageTypeTags 能
      跳过（bypasses_cooldown 是 1.20.5+ 才加的），只有实体侧清零计数器才做得到。
+  5. **看得见、走不到的目标也必须开火**：靶子放到 3 格高的石柱顶上（有视线、`createPath`
+     的终点永远在地面 ⇒ 判据算「走不到」），射手仍必须在 45 秒内起手并射出骨矢。
+     这条判据是**先红后绿**写出来的：修之前实测 45 秒一箭不放（目标表被空转占死），
+     给调度器加上实体自选的「看得见就能打」射程之后才转绿。骨矢本身的伤害不看这条
+     （第 4 条已经证过），这里只看**它有没有被允许开火**。
 
 平台搭在 y=100、三格高屏障围墙的封闭斗场里（spawn 强加载区内），坐标全写死。
 **围墙不是装饰**：射手自带 KeepDistanceGoal（7~18 格），没墙它会自己走下台子掉到地面，
@@ -42,6 +47,12 @@ GOLEM_POS = (0, 101, 0)
 MARKSMAN_POS = (10, 101, 0)
 GEAR = {"head": "netherite_helmet", "chest": "netherite_chestplate",
         "legs": "netherite_leggings", "feet": "netherite_boots"}
+
+# 第 5 条判据用的柱顶靶：地面在 y=100，柱子 101..103（3 格），靶子站 104。
+# 3 格是精心选的：`PreyJudge.canPathTo` 的高度容差是 1 格，柱子再矮一格（2 格）就可能被判成
+# 「走得到」（原版台阶/跳跃能上下），判据就不红了；再高也不会更红。
+PILLAR_H = 3
+PILLAR_TOP = (0, 101 + PILLAR_H, 0)
 
 
 # --------------------------------------------------------------------------- RCON
@@ -270,9 +281,42 @@ def main():
                  "无敌帧压满时单发掉血 %s（期望恰好 %s；只走差额结算的话会少掉「上次伤害」的 1.0）"
                  % (biggest_drop, expected)))
 
+    # ---------------------------------------------------------------- 5) 柱顶靶：看得见、走不到
+    # 这条判据针对的是**目标调度**而不是技能本身：射手对「看得见但走不到」的猎物原来会空转占死
+    # 目标表（一箭不放）。修法是给调度器加实体自选的「看得见就能打」射程。
+    print("第 5 条：靶子挪到 3 格石柱顶（有视线、判据算走不到），射手仍须开火")
     rcon.cmd("kill @e[type=%s]" % MARKSMAN)
     rcon.cmd("kill @e[type=%s]" % ARROW)
     rcon.cmd("kill @e[tag=%s]" % TARGET_TAG)
+    time.sleep(0.5)
+    rcon.cmd("fill %d %d %d %d %d %d minecraft:stone"
+             % (x, y + 1, z, x, y + PILLAR_H, z))
+    tx, ty, tz = PILLAR_TOP
+    # 柱顶这只没有防具，得用 NBT 抬血量 —— 否则会被同一只射手的重箭打死，判据变成「靶死了」
+    # 而不是「没开火」。
+    rcon.cmd('summon minecraft:iron_golem %d %d %d {NoAI:1b,PersistenceRequired:1b,'
+             'Health:600f,Attributes:[{Name:"minecraft:generic.max_health",Base:600}],'
+             'Tags:["%s"]}' % (tx, ty, tz, TARGET_TAG))
+    print("     靶子：%s（立柱 %d 格）；射手：%s"
+          % (PILLAR_TOP, PILLAR_H, MARKSMAN_POS))
+    t0 = time.time()
+    rcon.cmd("summon %s %d %d %d {PersistenceRequired:1b}" % (MARKSMAN, mx, my, mz))
+    saw_pillar_arrow = False
+    while time.time() - t0 < 45:
+        if has_arrow(rcon):
+            saw_pillar_arrow = True
+            break
+        time.sleep(0.25)
+    rows.append(("看得见走不到也开火（柱顶靶）", saw_pillar_arrow,
+                 "%.1fs 内射出骨矢（靶子在柱顶、`createPath` 终点只到地面）"
+                 % (time.time() - t0) if saw_pillar_arrow
+                 else "45s 内一箭不放 —— 目标表被「走不到」的猎物空转占死（这条就是修前现场）"))
+
+    rcon.cmd("kill @e[type=%s]" % MARKSMAN)
+    rcon.cmd("kill @e[type=%s]" % ARROW)
+    rcon.cmd("kill @e[tag=%s]" % TARGET_TAG)
+    rcon.cmd("fill %d %d %d %d %d %d minecraft:air"
+             % (x, y + 1, z, x, y + PILLAR_H, z))
     rcon.cmd("fill %d %d %d %d %d %d minecraft:air" % (x - 4, y, z - 4, x + 12, y, z + 4))
     rcon.cmd("fill %d 101 %d %d 103 %d minecraft:air" % (x - 4, z - 4, x + 12, z + 4))
     rcon.close()

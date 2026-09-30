@@ -318,6 +318,96 @@ def check_iframe_reset():
                   "onHitEntity 先清零 invulnerableTime 再 hurt ⇒ 无敌帧不会吃掉这一发的伤害")
 
 
+def check_sight_firing():
+    """(c6) 「看得见就能打」这条放宽必须**存在、必须 opt-in、必须与武器射程同源**。
+
+    射手原来是「看得见但走不到就不开火」：3 格石柱顶上的靶子（有视线、而 createPath 的终点
+    永远只到地面）会占死它的目标表，45 秒一箭不放（实测）。修法是给目标调度加一条由实体
+    自己声明的例外。三件事都得盯住，因为三件都会**静默**失效：
+
+    * 删掉例外 ⇒ 退回死锁（一箭不放，日志干净）；
+    * 去掉 instanceof 守卫 ⇒ 放宽变成对全体怪生效，「看得见却走不到的村民」那次死锁原样搬回来
+      （近战怪重新站着发呆）；
+    * sightFiringRange() 与三件武器的入参脱钩（例如手写 20，而骨矢锁定上限是 26）⇒ 调度器会把
+      技能明明够得着的目标判成走不到，又退回死锁。
+    """
+    judge_path = os.path.join(JAVA, "entity", "ai", "PreyJudge.java")
+    sight_path = os.path.join(JAVA, "entity", "ai", "SightFiring.java")
+    if not os.path.isfile(MARKSMAN_JAVA):
+        return missing(MARKSMAN_JAVA)
+    if not os.path.isfile(judge_path):
+        return missing(judge_path)
+    mob = load(MARKSMAN_JAVA)
+    flat_mob = flat(mob)
+    judge = load(judge_path)
+    problems = []
+
+    if "implements EliteMob, GeoEntity, SightFiring" not in flat_mob:
+        problems.append("MarksmanSkeleton 没有实现 SightFiring（调度器不会把它当远程怪）")
+    if not os.path.isfile(sight_path):
+        problems.append("entity/ai/SightFiring.java 不存在")
+    elif "double sightFiringRange();" not in flat(load(sight_path)):
+        problems.append("SightFiring 的契约方法不是 double sightFiringRange()")
+
+    # 判序：「看得见就能打」必须排在「走得到」之前，否则永远轮不到它。
+    # 先剥注释再判序 —— c5 第一次跑就是被方法体注释里的 hurt( 误报的。
+    body = re.search(r"public boolean usable\(LivingEntity candidate\)\s*\{(.*?)\n    \}", judge, re.S)
+    if not body:
+        problems.append("PreyJudge.usable 的方法体没找到")
+    else:
+        code = re.sub(r"/\*.*?\*/", "", re.sub(r"//[^\n]*", "", body.group(1)), flags=re.S)
+        i_sight, i_reach = code.find("sightFiring("), code.find("reachable(")
+        if i_sight < 0:
+            problems.append("usable() 不再走 sightFiring() ⇒ 例外被删（退回「走不到就不打」）")
+        elif i_reach >= 0 and i_sight > i_reach:
+            problems.append("usable() 里 sightFiring() 排在 reachable() 之后 ⇒ 永远轮不到这条例外")
+
+    # opt-in 守卫：缺了它，放宽会对全体怪生效。
+    if "private boolean sightFiring(LivingEntity" not in flat(judge):
+        problems.append("PreyJudge 里没有 sightFiring 方法")
+    if "instanceof SightFiring" not in judge:
+        problems.append("没有 instanceof SightFiring 守卫 ⇒ 放宽对全体怪生效（死锁会回来）")
+    if "getSensing().hasLineOfSight(" not in flat(judge):
+        problems.append("放宽里没有视线判定（这是这条判据的另一半）")
+
+    # 同源：sightFiringRange() 的取值必须来自与三件武器入参**同一批常量**，且不小于骨矢锁定上限。
+    consts = dict(re.findall(
+        r"double\s+(BOW_RANGE|LOCK_MIN_RANGE|LOCK_MAX_RANGE|GIANT_ARROW_MIN_RANGE|GIANT_ARROW_MAX_RANGE)"
+        r"\s*=\s*([0-9.]+)D", mob))
+    if len(consts) != 5:
+        problems.append("射程常量不全（应有 5 个）：%s" % sorted(consts))
+    else:
+        values = {k: float(v) for k, v in consts.items()}
+        if values["GIANT_ARROW_MAX_RANGE"] < values["LOCK_MAX_RANGE"]:
+            problems.append("「看得见就能打」的上限 %sD < 骨矢锁定上限 %sD ⇒ 技能够得着的目标会被判成走不到"
+                            % (consts["GIANT_ARROW_MAX_RANGE"], consts["LOCK_MAX_RANGE"]))
+        if values["LOCK_MIN_RANGE"] <= 0 or values["LOCK_MAX_RANGE"] <= values["LOCK_MIN_RANGE"]:
+            problems.append("骨矢锁定的距离区间不合法（%sD ~ %sD）"
+                            % (consts["LOCK_MIN_RANGE"], consts["LOCK_MAX_RANGE"]))
+    ret = re.search(r"double sightFiringRange\(\)\s*\{\s*return ([^;]+);", mob)
+    if not ret:
+        problems.append("找不到 sightFiringRange() 的返回表达式")
+    else:
+        for name in ("GIANT_ARROW_MAX_RANGE", "LOCK_MAX_RANGE", "BOW_RANGE"):
+            if name not in ret.group(1):
+                problems.append("sightFiringRange() 没把 %s 算进去 ⇒ 与武器入参脱钩" % name)
+    for call, msg in (("new GiantArrowGoal(this, GIANT_ARROW_MIN_RANGE, GIANT_ARROW_MAX_RANGE",
+                       "重箭 Goal 的射程改回字面量了（与 sightFiringRange 脱钩）"),
+                      ("new RangedBowAttackGoal<>(this, 1.0D, 20, (float) BOW_RANGE)",
+                       "弓 Goal 的射程改回字面量了（与 sightFiringRange 脱钩）"),
+                      ("EliteMob.hasTargetInRange(MarksmanSkeleton.this, LOCK_MIN_RANGE, LOCK_MAX_RANGE)",
+                       "骨矢锁定的起手距离改回字面量了（与 sightFiringRange 脱钩）")):
+        if call not in flat(mob):
+            problems.append(msg)
+
+    if problems:
+        return record("c6", "看得见就能打（远程 opt-in）", False, "；".join(problems))
+    return record("c6", "看得见就能打（远程 opt-in）", True,
+                  "射手实现 SightFiring，射程 = max(重箭 %s / 骨矢 %s / 弓 %s)、与三件武器入参同源；"
+                  "判序 贴脸→看得见就能打→走得到，且带 instanceof 守卫（近战怪不受影响）"
+                  % (consts["GIANT_ARROW_MAX_RANGE"], consts["LOCK_MAX_RANGE"], consts["BOW_RANGE"]))
+
+
 def check_config():
     """(d) Config 五个键：少一个要么起不来，要么悄悄跑默认值。"""
     if not os.path.isfile(CONFIG_JAVA):
@@ -637,6 +727,7 @@ def main():
     check_damage_tags()
     check_tag_names()
     check_iframe_reset()
+    check_sight_firing()
     check_config()
     check_java_wiring()
     check_geo_file()
