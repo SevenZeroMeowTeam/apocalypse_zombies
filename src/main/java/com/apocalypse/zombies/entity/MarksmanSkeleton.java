@@ -31,6 +31,7 @@ import net.minecraft.world.phys.Vec3;
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.entity.ai.AllySafeHurtByTargetGoal;
 import com.apocalypse.zombies.entity.ai.GiantArrowGoal;
+import com.apocalypse.zombies.entity.ai.SightFiring;
 
 import software.bernie.geckolib.animatable.GeoEntity;
 import software.bernie.geckolib.core.animatable.instance.AnimatableInstanceCache;
@@ -55,7 +56,22 @@ import software.bernie.geckolib.util.GeckoLibUtil;
  * <p>外观是 GeckoLib 真骨骼模型（{@code client/model/MarksmanGeoModel}）：主手的原版弓
  * 只留给 {@code RangedBowAttackGoal} 做持物判定，玩家看到的是骨骼树里的 {@code bow}。</p>
  */
-public class MarksmanSkeleton extends AbstractSkeleton implements EliteMob, GeoEntity {
+public class MarksmanSkeleton extends AbstractSkeleton implements EliteMob, GeoEntity, SightFiring {
+
+    // ------------------------------------------------------------------ 射程
+    // 用常量而不是把字面量散在调用处：sightFiringRange() 必须与三件武器的入参**同源**，
+    // 报小了会对着够得着的目标发呆（退回「走不到就不打」的死锁），报大了会锁上一个真打不到的
+    // 目标。闸门 c6 钉住这层同源关系。
+    /** 普通拉弓距离（格）：{@code RangedBowAttackGoal} 的入参就是它。 */
+    public static final double BOW_RANGE = 24.0D;
+    /** 骨矢锁定的距离下限（格）：贴脸时不该放（那种距离该用重箭与乱射），所以有下限。 */
+    public static final double LOCK_MIN_RANGE = 6.0D;
+    /** 骨矢锁定的距离上限（格）。 */
+    public static final double LOCK_MAX_RANGE = 26.0D;
+    /** 精英重箭的距离下限（格）：{@code GiantArrowGoal} 的入参。 */
+    public static final double GIANT_ARROW_MIN_RANGE = 6.0D;
+    /** 精英重箭的距离上限（格）：三件武器里最远的，也就是「看得见就能打」的上限。 */
+    public static final double GIANT_ARROW_MAX_RANGE = 32.0D;
 
     // ------------------------------------------------------------------ 动作剪辑名
     // 值必须与 art/marksman/DESIGN.md 的 clip 表和 animations/marksman_skeleton.animation.json
@@ -162,7 +178,7 @@ public class MarksmanSkeleton extends AbstractSkeleton implements EliteMob, GeoE
          */
         @Override
         public boolean canStart() {
-            return EliteMob.hasTargetInRange(MarksmanSkeleton.this, 6.0D, 26.0D);
+            return EliteMob.hasTargetInRange(MarksmanSkeleton.this, LOCK_MIN_RANGE, LOCK_MAX_RANGE);
         }
 
         @Override
@@ -280,20 +296,36 @@ public class MarksmanSkeleton extends AbstractSkeleton implements EliteMob, GeoE
     @Override
     protected void registerGoals() {
         // 精英重箭：同一段逻辑，概率与伤害高一档（普通骷髅由 event/MobAiEnhanced 挂上）
-        this.goalSelector.addGoal(1, new GiantArrowGoal(this, 6.0D, 32.0D,
+        this.goalSelector.addGoal(1, new GiantArrowGoal(this, GIANT_ARROW_MIN_RANGE, GIANT_ARROW_MAX_RANGE,
                 Config.AI_MARKSMAN_GIANT_CHANCE.get().floatValue(),
                 Config.AI_MARKSMAN_GIANT_DAMAGE.get().floatValue(),
                 Config.AI_GIANT_ARROW_SPEED.get().floatValue(), 3,
                 Config.AI_GIANT_ARROW_TURN.get(), Config.AI_SKELETON_GIANT_COOLDOWN.get(),
                 Config.AI_GIANT_ARROW_WINDUP.get(), Config.AI_GIANT_ARROW_LIFE.get()));
         this.goalSelector.addGoal(2, new KeepDistanceGoal(this, 1.0D, 7.0D, 18.0D));
-        this.goalSelector.addGoal(4, new RangedBowAttackGoal<>(this, 1.0D, 20, 24.0F));
+        this.goalSelector.addGoal(4, new RangedBowAttackGoal<>(this, 1.0D, 20, (float) BOW_RANGE));
         this.goalSelector.addGoal(7, new WaterAvoidingRandomStrollGoal(this, 1.0D));
         this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0F));
         this.goalSelector.addGoal(8, new RandomLookAroundGoal(this));
         this.targetSelector.addGoal(1, new AllySafeHurtByTargetGoal(this));
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, true));
         this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, IronGolem.class, true));
+    }
+
+    /**
+     * 「看得见就能打」的射程上限（格）—— 见 {@link SightFiring}。
+     *
+     * <p>取三件武器里最远的那件：精英重箭 32 格 &gt; 骨矢锁定 26 格 &gt; 普通弓 24 格。
+     * 报这个值而不是追随距离（48 格）是有意的 —— 超出重箭射程的目标真打不到，锁上只会站着
+     * 发呆，那就把「走不到就不打」的死锁原样搬回来了。</p>
+     *
+     * <p>为什么射手需要这条：它原来是「看得见但走不到就不开火」（实测：3 格石柱顶上的靶子，
+     * 45 秒一箭不放，目标表被空转占死），而远程怪对柱顶 / 塔上 / 船上这类目标恰恰是该打的 ——
+     * 骨矢锁定的起手条件本来就只要求视线与距离（{@code EliteMob.hasTargetInRange}）。</p>
+     */
+    @Override
+    public double sightFiringRange() {
+        return Math.max(GIANT_ARROW_MAX_RANGE, Math.max(LOCK_MAX_RANGE, BOW_RANGE));
     }
 
     /**

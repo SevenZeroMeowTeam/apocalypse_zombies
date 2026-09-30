@@ -19,7 +19,10 @@ import net.minecraft.world.level.pathfinder.Path;
  * 判据必须把「用得上」定清楚：</p>
  *
  * <ul>
- *   <li><b>有视线 ≠ 用得上</b> —— 看得见却走不到的村民正是那次死锁的现场，所以视线不做判据。</li>
+ *   <li><b>有视线 ≠ 用得上</b> —— 看得见却走不到的村民正是那次死锁的现场，所以视线不做判据。
+ *       <b>例外是远程怪</b>：弓 / 枪 / 骨矢只要有视线、距离在射程内就能打，柱顶和塔上的目标对它
+ *       来说是「该打」而不是「该放弃」的 —— 这类怪自己实现 {@link SightFiring} 声明射程（见
+ *       {@link #usable} 的第二条）。不实现就完整沿用本判据，近战怪一个都不受影响。</li>
  *   <li><b>判据取「走得到」</b> —— 与 {@code TargetGoal#canReachTarget} 同一套路径判定
  *       （路径存在，且终点贴在目标所在格附近），并沿用原版的节流：路径查询不便宜。</li>
  *   <li><b>贴脸例外</b> —— {@code close} 格内不再问路径：近战与技能本来就够得着，
@@ -67,12 +70,39 @@ public final class PreyJudge {
         return this.mob.distanceToSqr(candidate) <= range * range;
     }
 
-    /** 完整的「用得上」：便宜那半 + （贴脸 或 走得到）。 */
+    /** 完整的「用得上」：便宜那半 + （贴脸 或 看得见就能打 或 走得到）。 */
     public boolean usable(LivingEntity candidate) {
         if (!this.inRange(candidate)) {
             return false;
         }
-        return this.mob.distanceToSqr(candidate) <= this.close * this.close || this.reachable(candidate);
+        if (this.mob.distanceToSqr(candidate) <= this.close * this.close) {
+            return true;
+        }
+        return this.sightFiring(candidate) || this.reachable(candidate);
+    }
+
+    /**
+     * 远程怪的例外：实体自己声明了「看得见就能打」的射程（{@link SightFiring}）时，
+     * 视线通、距离在射程内就算用得上，<b>不再问路径</b>。
+     *
+     * <p>为什么单开一条而不是放宽 {@link #reachable}：判据是全体怪共用的，无条件放宽会把
+     * 「看得见却走不到」的死锁原样搬回来（那正是本类存在的理由）。让它由实体自己 opt-in，
+     * 放宽的爆炸半径就精确等于「谁实现了谁才算」—— 实测就是这么修掉射手「对着柱顶靶
+     * 45 秒一箭不放」的。</p>
+     *
+     * <p>视线判定很便宜（一次 level clip，原版 {@code mustSee} 每 tick 也在做），而且只有
+     * 声明了射程的怪才会走到这里。</p>
+     */
+    private boolean sightFiring(LivingEntity candidate) {
+        if (!(this.mob instanceof SightFiring shooter)) {
+            return false;
+        }
+        double range = shooter.sightFiringRange();
+        if (range <= 0.0D) {
+            return false;
+        }
+        return this.mob.distanceToSqr(candidate) <= range * range
+                && this.mob.getSensing().hasLineOfSight(candidate);
     }
 
     private boolean reachable(LivingEntity candidate) {
