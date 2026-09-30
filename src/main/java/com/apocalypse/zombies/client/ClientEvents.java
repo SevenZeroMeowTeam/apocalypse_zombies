@@ -167,7 +167,8 @@ public final class ClientEvents {
             return;
         }
         if (reload) {
-            NetworkHandler.CHANNEL.sendToServer(new ReloadPacket());
+            // Sneak is the modifier: R swaps the clip, Shift+R tops off with a single round.
+            NetworkHandler.CHANNEL.sendToServer(new ReloadPacket(minecraft.options.keyShift.isDown()));
         }
         if (minecraft.options.keyAttack.isDown()
                 && minecraft.player.tickCount % FIRE_THROTTLE_TICKS == 0) {

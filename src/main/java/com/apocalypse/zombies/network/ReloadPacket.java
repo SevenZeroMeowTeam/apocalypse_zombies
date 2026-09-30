@@ -18,12 +18,23 @@ import java.util.function.Supplier;
  */
 public class ReloadPacket {
 
+    /** True when the player held sneak: ask for the single-round top-up instead of a magazine change. */
+    public final boolean single;
+
+    public ReloadPacket() {
+        this(false);
+    }
+
+    public ReloadPacket(boolean single) {
+        this.single = single;
+    }
+
     public static void encode(ReloadPacket packet, FriendlyByteBuf buf) {
-        // no payload: the server reads the sender's held item
+        buf.writeBoolean(packet.single);
     }
 
     public static ReloadPacket decode(FriendlyByteBuf buf) {
-        return new ReloadPacket();
+        return new ReloadPacket(buf.readBoolean());
     }
 
     public static void handle(ReloadPacket packet, Supplier<NetworkEvent.Context> context) {
@@ -35,7 +46,7 @@ public class ReloadPacket {
             }
             ItemStack stack = player.getMainHandItem();
             if (stack.getItem() instanceof GunItem gun) {
-                gun.beginReload(player, stack, level);
+                gun.beginReload(player, stack, level, packet.single);
             }
         });
         ctx.setPacketHandled(true);

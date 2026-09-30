@@ -58,8 +58,10 @@ public class M1GarandGeoModel extends GeoModel<M1GarandItem> {
     /** The support hand, flat under the fore-end ahead of the receiver. */
     private static final float[] SUPPORT = {0.20F, 1.02F, -6.00F};
 
-    /** How far the op-rod handle travels rearward, in model pixels — the hand pulls back with it. */
-    private static final float BOLT_TRAVEL = 1.10F;
+    /** How far the op-rod handle travels rearward, in model pixels — the hand pulls back with it.
+     *  Must equal the bolt channel's travel in {@code m1_garand.animation.json} (全行程 1.36u = 85mm,
+     * 够退过漏夹末弹底缘), or the hand lets go of the handle halfway through the pull. */
+    private static final float BOLT_TRAVEL = 1.36F;
 
     // ------------------------------------------------------------------ resources
 
@@ -112,18 +114,29 @@ public class M1GarandGeoModel extends GeoModel<M1GarandItem> {
             float pulled = HandMotion.bump(progress, 0.17F, 0.45F, 0.92F);
             return HandMotion.lerpThenShift(out, GRIP, BOLT, toHandle, 0.0F, 0.0F, BOLT_TRAVEL * pulled);
         }
+        if ("single_load".equals(action)) {
+            // 单发补弹：右手始终在导气杆手柄上 —— 拉到底、挂住等左手送弹、再扶着机柄让它可控闭锁。
+            float toHandle = HandMotion.ramp(progress, 0.03F, 0.08F);
+            float pulled = HandMotion.bump(progress, 0.06F, 0.19F, 0.78F);
+            return HandMotion.lerpThenShift(out, GRIP, BOLT, toHandle, 0.0F, 0.0F, BOLT_TRAVEL * pulled);
+        }
         if ("reload_empty".equals(action) || "reload_tactical".equals(action)) {
-            if (progress < 0.35F) {
-                // Rises off the grip and presses the clip down into the receiver.
-                float toClip = HandMotion.ramp(progress, 0.05F, 0.20F);
-                float press = HandMotion.ramp(progress, 0.20F, 0.32F);
-                return HandMotion.lerpThenShift(out, GRIP, CLIP, toClip, 0.0F, -0.35F * press, 0.0F);
+            // 三次到访，顺序跟动画一致：先拉导气杆（0.03…0.10）、再压新夹（0.30…0.44）、最后跟着
+            // 枪机前冲把它送回（0.49…0.60）。原来写成"先压夹后拉栓"，跟剪辑里的顺序是反的。
+            float pulled = HandMotion.bump(progress, 0.03F, 0.10F, 0.30F);
+            if (progress < 0.30F) {
+                float toHandle = HandMotion.ramp(progress, 0.02F, 0.06F);
+                return HandMotion.lerpThenShift(out, GRIP, BOLT, toHandle, 0.0F, 0.0F, BOLT_TRAVEL * pulled);
             }
-            // Then releases the op-rod and lets it run home, hand riding it.
-            float toHandle = HandMotion.ramp(progress, 0.35F, 0.58F);
-            float pulled = HandMotion.bump(progress, 0.58F, 0.72F, 1.0F);
+            if (progress < 0.45F) {
+                float toClip = HandMotion.ramp(progress, 0.30F, 0.36F);
+                float press = HandMotion.ramp(progress, 0.36F, 0.44F);
+                return HandMotion.lerpThenShift(out, BOLT, CLIP, toClip, 0.0F, -0.35F * press, 0.0F);
+            }
+            float toHandle = HandMotion.ramp(progress, 0.45F, 0.52F);
+            float home = HandMotion.bump(progress, 0.49F, 0.53F, 0.62F);
             float[] back = HandMotion.lerp(out, CLIP, BOLT, toHandle);
-            back[2] += BOLT_TRAVEL * pulled;
+            back[2] += BOLT_TRAVEL * home;
             return back;
         }
         System.arraycopy(GRIP, 0, out, 0, 3);
@@ -139,6 +152,9 @@ public class M1GarandGeoModel extends GeoModel<M1GarandItem> {
         float settle = 0.0F;
         if ("reload_empty".equals(action) || "reload_tactical".equals(action)) {
             settle = 0.18F * HandMotion.bump(progress, 0.10F, 0.35F, 0.80F);
+        } else if ("single_load".equals(action)) {
+            // 单发补弹：左手离开护木去送那一发（0.30…0.82 之间一个来回）。
+            settle = 0.18F * HandMotion.bump(progress, 0.30F, 0.55F, 0.82F);
         }
         out[0] = SUPPORT[0];
         out[1] = SUPPORT[1] - settle;

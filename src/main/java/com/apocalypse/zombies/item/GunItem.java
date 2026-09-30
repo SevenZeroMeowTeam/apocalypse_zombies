@@ -162,6 +162,18 @@ public interface GunItem {
     void beginReload(ServerPlayer player, ItemStack stack, ServerLevel level);
 
     /**
+     * Server-side: the reload key with a modifier held. {@code single} asks for the manual's single-round
+     * top-up rather than a magazine change.
+     *
+     * <p>A default rather than an abstract method on purpose: only the Garand has that drill, and a gun
+     * without one should ignore the flag instead of every implementation growing a parameter it never
+     * reads. The Garand overrides it.</p>
+     */
+    default void beginReload(ServerPlayer player, ItemStack stack, ServerLevel level, boolean single) {
+        beginReload(player, stack, level);
+    }
+
+    /**
      * The two shapes a sight's overlay comes in.
      *
      * <p>A single {@code enum} rather than a pair of booleans because the two are one choice, and because the
