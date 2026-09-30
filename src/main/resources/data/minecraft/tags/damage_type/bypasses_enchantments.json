@@ -1,7 +1,6 @@
 {
   "replace": false,
   "values": [
-    "apocalypse_zombies:awm_bullet",
     "apocalypse_zombies:bone_lock"
   ]
 }

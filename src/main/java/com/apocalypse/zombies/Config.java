@@ -108,6 +108,12 @@ public final class Config {
     public static final ForgeConfigSpec.DoubleValue AI_GIANT_ARROW_SCALE;
     public static final ForgeConfigSpec.IntValue AI_GIANT_ARROW_LIFE;
     public static final ForgeConfigSpec.IntValue AI_GIANT_ARROW_WINDUP;
+    // ---- 骸骨射手「骨矢锁定」（骨骼化 + 必中骨矢）----
+    public static final ForgeConfigSpec.DoubleValue AI_MARKSMAN_LOCK_RATIO;
+    public static final ForgeConfigSpec.IntValue AI_MARKSMAN_LOCK_COOLDOWN;
+    public static final ForgeConfigSpec.DoubleValue AI_MARKSMAN_LOCK_TURN;
+    public static final ForgeConfigSpec.DoubleValue AI_MARKSMAN_LOCK_SPEED;
+    public static final ForgeConfigSpec.IntValue AI_MARKSMAN_LOCK_LIFE;
     public static final ForgeConfigSpec.BooleanValue AI_VILLAGER_ENABLED;
     public static final ForgeConfigSpec.IntValue AI_VILLAGER_INTERVAL;
     public static final ForgeConfigSpec.DoubleValue AI_VILLAGER_ALERT_RADIUS;
@@ -308,6 +314,26 @@ public final class Config {
         AI_GIANT_ARROW_WINDUP = b.comment("Ticks the skeleton stands still and draws before loosing it.",
                         "This is the telegraph: 0 makes the hit feel like it came out of nowhere.")
                 .defineInRange("giant_arrow_windup", 20, 0, 100);
+        AI_MARKSMAN_LOCK_RATIO = b.comment("Bone lock damage = target max health x this ratio.",
+                        "0.25 = a quarter of the bar whoever it lands on; armour, resistance potions",
+                        "and i-frames are bypassed by the damage type, so this number is the hit.",
+                        "伤害 = 目标最大血量 × 该比例。")
+                .defineInRange("marksman_lock_ratio", 0.25D, 0.0D, 1.0D);
+        AI_MARKSMAN_LOCK_COOLDOWN = b.comment("Ticks the elite marksman waits between bone lock casts.",
+                        "The shot is unavoidable, so the cooldown IS the counter-play window.",
+                        "技能冷却（tick）：必中所以冷却就是玩家的操作窗口。")
+                .defineInRange("marksman_lock_cooldown", 160, 20, 6000);
+        AI_MARKSMAN_LOCK_TURN = b.comment("Bone lock homing rate in degrees per tick.",
+                        "60 deg/tick is 3600 deg/s: strafing, pillar hugging and doorways do not shake it,",
+                        "which is the point of a guaranteed hit. Lower it only to soften the fantasy.",
+                        "转向速率（度 / tick）：默认 60 ≈ 每秒转 10 圈，甩不掉。")
+                .defineInRange("marksman_lock_turn", 60.0D, 5.0D, 180.0D);
+        AI_MARKSMAN_LOCK_SPEED = b.comment("Bone lock flight speed (blocks / tick).")
+                .defineInRange("marksman_lock_speed", 1.6D, 0.5D, 4.0D);
+        AI_MARKSMAN_LOCK_LIFE = b.comment("Ticks a bone lock arrow lives before it gives up.",
+                        "Keep it long enough to cross the arena but short enough that a missing arrow",
+                        "does not keep circling behind the player.")
+                .defineInRange("marksman_lock_life", 100, 20, 400);
         AI_VILLAGER_ENABLED = b.comment("Villagers panic when hostiles close in, and call the nearest golem.")
                 .define("villager_enabled", true);
         AI_VILLAGER_INTERVAL = b.comment("Ticks between villager threat scans.")

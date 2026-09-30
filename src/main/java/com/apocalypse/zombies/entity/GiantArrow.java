@@ -37,9 +37,12 @@ public class GiantArrow extends Arrow {
     /** 默认自毁计时（tick），免得一发没中的箭绕着世界飞半分钟。 */
     public static final int DEFAULT_LIFE = 120;
 
-    private int seekerId = -1;
-    private double turnDegrees = DEFAULT_TURN_DEGREES;
-    private int lifeTicks = DEFAULT_LIFE;
+    /** 追踪目标的实体 id（-1 = 没有目标，直飞）。 */
+    protected int seekerId = -1;
+    /** 转向速率（度 / tick）。 */
+    protected double turnDegrees = DEFAULT_TURN_DEGREES;
+    /** 剩余寿命（tick），归零自毁。 */
+    protected int lifeTicks = DEFAULT_LIFE;
 
     public GiantArrow(EntityType<? extends Arrow> type, Level level) {
         super(type, level);
@@ -56,26 +59,43 @@ public class GiantArrow extends Arrow {
                                     float baseDamage, float speed, int knockback,
                                     double turnDegrees, int lifeTicks) {
         GiantArrow arrow = new GiantArrow(com.apocalypse.zombies.registry.ModEntities.GIANT_ARROW.get(), level);
-        arrow.setOwner(shooter);
-        arrow.setBaseDamage(baseDamage);
-        arrow.setKnockback(knockback);
-        arrow.turnDegrees = turnDegrees;
-        arrow.lifeTicks = lifeTicks;
-        arrow.seekerId = target.getId();
+        arrow.arm(level, shooter, target, baseDamage, speed, knockback, turnDegrees, lifeTicks);
+        return arrow;
+    }
+
+    /**
+     * 上膛：把这一发的参数 / 射手 / 目标写进去，定位到膛口、打上初速、入场。
+     *
+     * <p>从 {@link #launch} 里抽出来给子类复用：{@link BoneLockArrow} 换的只是实体类型
+     * 与命中结算，膛口几何、出场特效位置、音效是同一套，不该抄第二遍。</p>
+     */
+    protected void arm(ServerLevel level, LivingEntity shooter, LivingEntity target,
+                       float baseDamage, float speed, int knockback,
+                       double turnDegrees, int lifeTicks) {
+        this.setOwner(shooter);
+        this.setBaseDamage(baseDamage);
+        this.setKnockback(knockback);
+        this.turnDegrees = turnDegrees;
+        this.lifeTicks = lifeTicks;
+        this.seekerId = target.getId();
 
         Vec3 eye = shooter.getEyePosition();
         Vec3 aim = new Vec3(target.getX(), target.getY(0.5D), target.getZ());
         Vec3 direction = aim.subtract(eye).normalize();
         Vec3 muzzle = eye.add(direction.scale(0.9D));
-        arrow.setPos(muzzle.x, muzzle.y, muzzle.z);
-        arrow.shoot(direction.x, direction.y, direction.z, speed, 0.0F);
-        level.addFreshEntity(arrow);
+        this.setPos(muzzle.x, muzzle.y, muzzle.z);
+        this.shoot(direction.x, direction.y, direction.z, speed, 0.0F);
+        level.addFreshEntity(this);
 
-        level.sendParticles(ParticleTypes.CRIT, muzzle.x, muzzle.y, muzzle.z, 10,
-                0.15D, 0.15D, 0.15D, 0.2D);
+        this.spawnMuzzleParticles(level, muzzle);
         // 低音调 = 更重的一发，与普通箭的 ARROW_SHOOT 区分开
         shooter.playSound(SoundEvents.ARROW_SHOOT, 1.8F, 0.55F);
-        return arrow;
+    }
+
+    /** 出膛特效：基类是一圈暴击星；骨矢的「灵魂火 + 命中指示」由子类覆写。 */
+    protected void spawnMuzzleParticles(ServerLevel level, Vec3 muzzle) {
+        level.sendParticles(ParticleTypes.CRIT, muzzle.x, muzzle.y, muzzle.z, 10,
+                0.15D, 0.15D, 0.15D, 0.2D);
     }
 
     @Override

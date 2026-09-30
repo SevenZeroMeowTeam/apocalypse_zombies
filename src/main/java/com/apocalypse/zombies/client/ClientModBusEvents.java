@@ -3,7 +3,6 @@ package com.apocalypse.zombies.client;
 import com.apocalypse.zombies.ApocalypseZombies;
 import com.apocalypse.zombies.client.model.CorroderModel;
 import com.apocalypse.zombies.client.model.CrusherModel;
-import com.apocalypse.zombies.client.model.MarksmanModel;
 import com.apocalypse.zombies.client.model.ScreamerModel;
 import com.apocalypse.zombies.client.renderer.BrideGeoRenderer;
 import com.apocalypse.zombies.client.renderer.OverlordGeoRenderer;
@@ -11,7 +10,7 @@ import com.apocalypse.zombies.client.renderer.SoldierGeoRenderer;
 import com.apocalypse.zombies.client.renderer.CharmedZombieRenderer;
 import com.apocalypse.zombies.client.renderer.CorroderRenderer;
 import com.apocalypse.zombies.client.renderer.CrusherRenderer;
-import com.apocalypse.zombies.client.renderer.MarksmanRenderer;
+import com.apocalypse.zombies.client.renderer.MarksmanGeoRenderer;
 import com.apocalypse.zombies.client.renderer.ScreamerRenderer;
 import com.apocalypse.zombies.entity.AcidProjectile;
 import com.apocalypse.zombies.entity.BouquetProjectile;
@@ -55,8 +54,7 @@ public final class ClientModBusEvents {
         event.registerLayerDefinition(ScreamerModel.LAYER, ScreamerModel::createBodyLayer);
         event.registerLayerDefinition(CrusherModel.LAYER, CrusherModel::createBodyLayer);
         event.registerLayerDefinition(CorroderModel.LAYER, CorroderModel::createBodyLayer);
-        event.registerLayerDefinition(MarksmanModel.LAYER, MarksmanModel::createBodyLayer);
-        // 美女僵尸 Phase 2 换成 GeckoLib 骨骼模型：不再占人形层（模型自带骨骼树）
+        // 骸骨射手与美女僵尸 Phase 2 一样换成 GeckoLib 骨骼模型：不再占人形层（模型自带骨骼树）
         event.registerLayerDefinition(CharmedZombieRenderer.LAYER, CharmedZombieRenderer::createBodyLayer);
     }
 
@@ -65,7 +63,8 @@ public final class ClientModBusEvents {
         event.registerEntityRenderer(ModEntities.SCREAMER.get(), ScreamerRenderer::new);
         event.registerEntityRenderer(ModEntities.CRUSHER.get(), CrusherRenderer::new);
         event.registerEntityRenderer(ModEntities.CORRODER.get(), CorroderRenderer::new);
-        event.registerEntityRenderer(ModEntities.MARKSMAN.get(), MarksmanRenderer::new);
+        // 骸骨射手：GeckoLib 骨骼模型（32u = 2 格，命中箱不变；不要加物品层，弓在自己骨骼里）
+        event.registerEntityRenderer(ModEntities.MARKSMAN.get(), MarksmanGeoRenderer::new);
         event.registerEntityRenderer(ModEntities.BRIDE.get(), BrideGeoRenderer::new);
         event.registerEntityRenderer(ModEntities.SOLDIER.get(), SoldierGeoRenderer::new);
         // 尸潮之主：三阶段 Boss。同样是 GeckoLib 骨骼模型，模型自己 3 格高，不做缩放。
@@ -83,5 +82,7 @@ public final class ClientModBusEvents {
         // 骷髅的重箭：复用原版箭的模型与贴图，只做缩放 —— 放大绕的是实体原点，
         // 必须先沿视线回退 (scale−1)×0.675 格，箭尖才不会跑到命中点前面（见渲染器注释）
         event.registerEntityRenderer(ModEntities.GIANT_ARROW.get(), GiantArrowRenderer::new);
+        // 骨矢：同一套缩放渲染。它飞得更快、命中即碎，伤害自己按目标血量算（见 BoneLockArrow）
+        event.registerEntityRenderer(ModEntities.BONE_LOCK_ARROW.get(), GiantArrowRenderer::new);
     }
 }

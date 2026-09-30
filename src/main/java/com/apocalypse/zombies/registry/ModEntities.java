@@ -17,6 +17,7 @@ import net.minecraftforge.registries.RegistryObject;
 import com.apocalypse.zombies.ApocalypseZombies;
 import com.apocalypse.zombies.entity.AcidProjectile;
 import com.apocalypse.zombies.entity.BouquetProjectile;
+import com.apocalypse.zombies.entity.BoneLockArrow;
 import com.apocalypse.zombies.entity.BrideZombie;
 import com.apocalypse.zombies.entity.BulletProjectile;
 import com.apocalypse.zombies.entity.CharmedZombie;
@@ -165,6 +166,26 @@ public final class ModEntities {
                     .clientTrackingRange(10)
                     .updateInterval(1)
                     .build("giant_arrow"));
+
+    /**
+     * 骨矢：骸骨射手「骨矢锁定」的必中弹体。
+     *
+     * <p>继承 {@link GiantArrow} ⇒ 限速转向的追踪物理、自毁计时、原版箭渲染全部复用；
+     * 它不是「找过去打」而是「钉着打」：{@code AI_MARKSMAN_LOCK_TURN} 默认 60°/tick，
+     * 直行 / 侧闪 / 绕柱都甩不掉。命中结算自己来，不调用 {@code super.onHitEntity}。</p>
+     *
+     * <p>伤害走自定义伤害类型 {@code apocalypse_zombies:bone_lock}：数据包里挂了
+     * {@code bypasses_armor / bypasses_invulnerability / bypasses_resistance /
+     * bypasses_enchantments / bypasses_shield}，所以护甲、无敌帧、抗性药水、保护附魔、
+     * 盾牌格挡都吞不掉这一下。</p>
+     */
+    public static final RegistryObject<EntityType<BoneLockArrow>> BONE_LOCK_ARROW =
+            ENTITY_TYPES.register("bone_lock_arrow", () -> EntityType.Builder
+                    .<BoneLockArrow>of(BoneLockArrow::new, MobCategory.MISC)
+                    .sized(0.5F, 0.5F)
+                    .clientTrackingRange(10)
+                    .updateInterval(1)
+                    .build("bone_lock_arrow"));
 
     private ModEntities() {
     }
