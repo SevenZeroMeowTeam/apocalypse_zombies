@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.43` |
+| **当前版本** | `1.1.45` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.23） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -175,6 +175,44 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
 ---
 
 ## 更新日志
+
+### 1.1.45 — 2026-09-30
+
+**新增 · 远程怪可 opt-in「看得见就能打」——骸骨射手不再对柱顶/塔上的目标一箭不放**
+
+- **症状**：目标只要比射手高一格以上（柱顶、塔上、城墙边），射手**45 秒一箭不放** —— 不举弓、不移动，
+  看起来像 AI 卡死。
+- **根因**：`MobAiEnhanced` 是全局事件钩子，给所有 `Monster` 挂了 `PreyTargetGoal`；它只在「走得到」时
+  （`PreyJudge.canPathTo`，高度容差 1 格）才认这个猎物，够不着的猎物让它空转占住 TARGET 标志 ⇒
+  排在后面的玩家/铁傀儡目标永远起不来，`getTarget()` 恒 null。远程怪本不需要走过去 —— 有视线就该开火。
+- **修法**：新增实体级 opt-in 接口 `SightFiring`（`double sightFiringRange()`，≤0 = 不启用）；
+  `PreyJudge.usable` 判序改为 `inRange` → 贴脸(3 格) → **看得见就能打** → `reachable`。
+  只有实现了该接口的怪才放宽，近战怪零影响（爆炸半径 = 「谁实现谁才算」）。
+- **同源约束**：`MarksmanSkeleton.sightFiringRange()` 取三件武器射程的最大值
+  （`GIANT_ARROW_MAX_RANGE=32` / `LOCK_MAX_RANGE=26` / `BOW_RANGE=24`），**必须与武器入参同一批常量** ——
+  报小了退回死锁、报大了锁上打不到的目标。`check_marksman.py` 的 c6 钉住四条不变量
+  （实现接口 / 接口存在 / 判序带 `instanceof` 守卫 / 射程同源），并做了负向双向验证（抠守卫、颠倒判序都必红）。
+- **实测**（headless 专用服务端 + RCON，同一条判据**先红后绿**）：柱高 3 格、柱顶站无甲铁傀儡 ——
+  修前 **45 秒一箭不放**，修后 **1.8 秒**射出骨矢；`tools/rcon_marksman_test.py` **5/5 PASS**（原 4 条 + 柱顶靶一条）。
+- **工程**：`mod_version` `1.1.44` → `1.1.45`（`gradle.properties` 仍是唯一来源，`mod.toml` 与 README 跟着走）。
+
+### 1.1.44 — 2026-09-30
+
+**骸骨射手换 GeckoLib 真骨骼 + 新技能「骨矢锁定」**（本版更新日志当时漏记，在此补上）
+
+- **模型**：`marksman_skeleton` 从原版 `SkeletonModel` 换成 GeckoLib 真骨骼 —— 27 骨 / 33 体块 / 198 面，
+  贴图 128×128（斗篷 + 骨弓 + 箭袋），总高 32 u = **2.0 格**（与原版骷髅一致 ⇒ 命中箱不漂移）。
+  渲染换成 `MarksmanGeoModel` / `MarksmanGeoRenderer`，原版那对已删。
+- **技能「骨矢锁定」**：`EliteAbility` **末尾追加** `BONE_LOCK(42, 34)`（`byId` 走 ordinal，插中间会让所有
+  精英的施法状态错位）；前摇 26 tick 站定 + 粒子，命中瞬发追踪骨矢，伤害 = **目标最大血量 × 25%**
+  且无视护甲 / 附魔 / 抗性 / 盾牌。
+- **无敌帧**：1.20.1 的 `LivingEntity.hurt()` 在 `invulnerableTime > 10` 时只结算「本次 − 上次」的差额，
+  这个分支没有任何 `DamageTypeTags` 能跳过（`bypasses_invulnerability` 管的是实体标志，
+  `bypasses_cooldown` 是 1.20.5+ 才有）。修法：`BoneLockArrow.onHitEntity` 先 `target.invulnerableTime = 0;`
+  再结算，实测单发由 24.0 变成 **25.0**。
+- **实测**（headless + RCON，**4/4 PASS**）：满防具 + 抗性 V 的铁傀儡打 25 点 `bone_lock` 掉 **25.0**；
+  对照组同样 25 点 `minecraft:generic` 掉 **0.0**；目标 10 格外射手自行起手并射出骨矢。
+- 发布件仍是 `-clean.jar`（动画为完全原创的手工版，不含借用资产）。
 
 ### 1.1.43 — 2026-09-30
 
