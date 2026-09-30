@@ -1,11 +1,11 @@
 # Apocalypse Zombies
 
 Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶进化；月相改写夜晚的规则；
-尸潮分四波压境、由精英领队；四只特殊敌对生物各有一套独立技能与骨骼动画；另配套 GeckoLib 驱动的枪械。
+尸潮分五波压境、由精英领队；四只特殊敌对生物各有一套独立技能与骨骼动画；另配套 GeckoLib 驱动的枪械。
 
 | | |
 |---|---|
-| **当前版本** | `1.1.40` |
+| **当前版本** | `1.1.43` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.23） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -28,8 +28,8 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | 产物 | 含 TaCZ 借用内容 | 用途 |
 |---|---|---|
-| `apocalypse_zombies-1.1.40.jar` | **有** | 开发 / 自用。**不得商用、不得公开分发** |
-| `apocalypse_zombies-1.1.40-clean.jar` | 无 | 分发用。动画为完全原创的手工版 |
+| `apocalypse_zombies-<ver>.jar` | **有** | 开发 / 自用。**不得商用、不得公开分发** |
+| `apocalypse_zombies-<ver>-clean.jar` | 无 | 分发用。动画为完全原创的手工版 |
 | `apocalypse_zombies-borrowed-assets.zip` | 有 | 本地资源包，装进 `resourcepacks/` 把借来的音效与动画覆盖回去 |
 
 ### 部署到本地实例
@@ -86,7 +86,7 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
 月相由服务端判定并持久化在世界数据里（`ApocalypseData`），客户端通过 `ClientMoonState` 收到后
 负责天空色、雾色与月面渲染（`textures/environment/moon_phases.png`）。
 
-### 尸潮（4 波）
+### 尸潮（5 波）
 
 四波随机化尸潮依次压境，波次进度与剩余数量显示在 boss bar 上。波次越高，僵尸的起步阶越高。
 
@@ -175,6 +175,26 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
 ---
 
 ## 更新日志
+
+### 1.1.43 — 2026-09-30
+
+**修复 · 刷怪蛋召出的尸潮领主「满血却是第 2 阶段」，并把血量/护甲抬上去**（同日 1.1.42 的方框修复一并记在此）
+
+- **根因**：原版 `Attributes.MAX_HEALTH` 的上限硬编码 1024
+  （`RangedAttribute("attribute.name.generic.max_health", 20.0d, 1.0d, 1024.0d)`），且
+  `AttributeInstance.calculateValue()` 结尾是 `attribute.sanitizeValue(total)` ——
+  **修饰符叠加完还要再夹一次上限**，所以 1.1.41 起写的 2500 一直是 1024；而当时的阶段阈值是绝对数，
+  `phaseFor(1024)` → `1024 > 833` → **Phase 2**。「满血 + 第 2 阶段」就是这么来的。
+- **修法**：`ModEntities.liftHealthCap()` 反射抬 `RangedAttribute.maxValue`（按**值** 1024.0 认字段 ——
+  开发是 Mojang 名、出货包是 SRG 名，写死名字会在另一侧静默失效）；三个阈值改为由 `BOSS_MAX_HEALTH` 推导、
+  `phaseFor()` 比**运行时上限的比例**；`finalizeSpawn()` 把出生状态钉死（满血 + 按满血重算阶段 + 计数清零），
+  刷怪蛋 / `/summon` / 刷怪笼 / 尸潮第 5 波结构上同构；阶段推进逐级，一击跨两级不再吞掉中间段的入场技与标题。
+- **数值**：血量 2500 → **4200**（阈值 2800 / 1400 / 亡语 630）；护甲 5 → **15**、韧性 8 → **12**。
+  护甲 5 在 1.20.1 公式下对 15 点伤害只有 **5%** 减伤（等于没穿甲），15/12 是 **−48%**。
+- **实测**（headless 专用服务端 + RCON）：`attribute … max_health get` = **4200.0**、`Health` = **4200.0f**、
+  `armor` = **15.0**、`armor_toughness` = **12.0**（修前同样是这两个命令量出 1024.0，才定位到上限夹取）。
+- 1.1.42（同日）：修掉 `horde_overlord.animation.json` 的 per-axis 关键帧形状 —— 它在 GeckoLib 资源重载里抛
+  `JsonParseException`，让客户端清空 `resourcePacks` 并导致全屏文字变方框。
 
 ### 1.1.41 — 2026-09-28
 

@@ -1,6 +1,8 @@
 # 尸潮之主（三阶段 Boss）· 交付台账
 
-**日期**：2026-09-30　**版本**：`1.1.41`（**已部署** 08:20）　**md5**：`2ab31881da9ce8344262be00bba4dc21`（2,045,270 B）　**旧版**：`1.1.40`（md5 `6f03e60e…`）已备份出 mods/
+**日期**：2026-09-30　**当前版本**：`1.1.43`（**已部署** 10:14:49，md5 `80be27db080ffeff62cfe57a865200e2`，2,048,164 B）
+
+**历史版本**：`1.1.42`（`6191b89f48f291e65af2b3247798a106`，修全屏方框）→ `1.1.41`（`2ab31881da9ce8344262be00bba4dc21`，三阶段 Boss 首版）→ `1.1.40`（`6f03e60e…`）—— 都在 `mods_backup/`
 
 **用户逐字请求**：
 > 新增boss血量为2500点分3阶段，每阶段不同技能，使用blockbench-mcp连接blockbench新建boss模型，攻击动画（包括远程，近战，召唤等），技能动画，尸潮由原来的4波提升到5波，调用blockbench开头的所用技能
@@ -13,15 +15,15 @@
 
 | # | 需求 | 落地 |
 |---|------|------|
-| ① | 血量 **2500** | `HordeOverlord.BOSS_MAX_HEALTH = 2500.0F`；`ModEntities` 属性表 `MAX_HEALTH 2500` + **`ARMOR 5`（防御 5）** / `ARMOR_TOUGHNESS 8` / `KNOCKBACK_RESISTANCE 0.8` / **`ATTACK_DAMAGE 15`（攻击 15）** / `MOVEMENT_SPEED 0.21`（比普通僵尸 0.23 慢 —— 2500 血的怪不能追着人跑，否则没有"拉开距离打工"这个解法） |
-| ② | **分 3 阶段** | 阈值 `PHASE2_HP = 1666`（2/3）、`PHASE3_HP = 833`（1/3）；`PHASE_COUNT = 3`。每跨一段当场放一个**入场技**：Phase 2 入场 = 踏地冲击波，Phase 3 入场 = 血怒。另有一条亡语：Phase 3 里跌破 15%（375）触发「垂死崩解」 |
+| ① | 血量 **2500**<br>*（1.1.43 上调为 **4200**，护甲 5→15、韧性 8→12，见 §九）* | `HordeOverlord.BOSS_MAX_HEALTH`；`ModEntities` 属性表 `MAX_HEALTH` + `ARMOR 5`（→15） / `ARMOR_TOUGHNESS 8`（→12） / `KNOCKBACK_RESISTANCE 0.8` / `ATTACK_DAMAGE 15` / `MOVEMENT_SPEED 0.21`（比普通僵尸 0.23 慢 —— 这种血量的怪不能追着人跑，否则没有"拉开距离打工"这个解法） |
+| ② | **分 3 阶段** | 阈值 `PHASE2_HP`（2/3）、`PHASE3_HP`（1/3）；`PHASE_COUNT = 3`。每跨一段当场放一个**入场技**：Phase 2 入场 = 踏地冲击波，Phase 3 入场 = 血怒。另有一条亡语：Phase 3 里跌破 15% 触发「垂死崩解」。**1.1.43 起三个阈值一律由 `BOSS_MAX_HEALTH` 推导**（4200 → 2800 / 1400 / 630，见 §九） |
 | ③ | **每阶段不同技能** | 轮转表按阶段换：Phase 1 = 巨斧横扫 + 骨刺齐射（2 招）；Phase 2 = +踏地冲击波 + 召唤尸群（4 招）；Phase 3 = 5 招 + 亡语（近战/远程/召唤/控场/变身全覆盖） |
 | ④ | **远程 / 近战 / 召唤** 攻击动画 | 近战 = `attack_melee`（巨斧横扫，±60°/5 格扇面，伤害 15 与基础攻击同口径）；远程 = `attack_ranged`（骨刺齐射 5 根，复用 `GiantArrow`）；召唤 = `summon`（尸笼狂转 + 拍地召 **5 只**僵尸，场上上限 12） |
 | ⑤ | **技能动画** | `skill_quake`（7 格冲击波 + 上抛 + 缓慢）、`skill_rage`（给自己力量/迅捷/抗性/抗火各 12000 tick）、`skill_death`（8 格重击 + 凋零 + 再召 5 只 + 清自身负面） |
 | ⑥ | **blockbench-mcp 建模型** | Blockbench 5.2.1 + MCP 插件 1.8.1：`create_project(geckolib_model)` → `risky_eval` 灌入**已发布**的 geo/animation/贴图（`tools/boss_bb_load.js`）→ 复核（下节） |
 | ⑦ | **尸潮 4 → 5 波** | `Config.horde_waves` 默认 `4 → 5`；`HordeManager.totalWaves` 默认值同步；注释 "Four-wave" → "Five-wave" |
 | ⑧ | **只有第 5 波刷新** | 唯一自动来源 = `HordeManager.spawnOverlord`（最后一波领场，`horde_boss_on_final_wave` 可关）；**自然刷怪表（`EliteSpawnBiomeModifier` / `ModSpawns`）里没有它**、`data/` 下 0 处引用、无 `SpawnPlacements` / `addSpawn` 挂载。Boss **计入本波存活人数**（`LIVING.add`）—— 清不掉它这一波就不结算 |
-| ⑨ | **设计数值三件套** | 常量集中在 `HordeOverlord`：`ARMOR_POINTS = 5.0D`（防御 5）、`ATTACK_POWER = 15.0F`（攻击 15，横扫 `SWEEP_DAMAGE` 也引它，避免两套"攻击力"打架）、`SUMMON_COUNT = 5`（一次召 5 只，召唤技与亡语共用）。属性表**直接引用常量**，不写字面量 |
+| ⑨ | **设计数值三件套** | 常量集中在 `HordeOverlord`：`ARMOR_POINTS`（防御，1.1.43 起 15.0D）、`ARMOR_TOUGHNESS`（韧性 12.0D，1.1.43 新增常量）、`ATTACK_POWER = 15.0F`（攻击 15，横扫 `SWEEP_DAMAGE` 也引它，避免两套"攻击力"打架）、`SUMMON_COUNT = 5`（一次召 5 只，召唤技与亡语共用）。属性表**直接引用常量**，不写字面量 |
 
 ---
 
@@ -153,6 +155,96 @@
 全家 8 个动画文件 / 1387 条通道形状合规；1.1.42 与 1.1.41 的逐条字节比对 = 改 3（动画 json +
 mods.toml + MANIFEST）/ 增 0 / 删 0。
 
-**状态**：1.1.42 构建完成（md5 `6191b89f48f291e65af2b3247798a106`），验证全绿；
-部署最后一步被 Windows 文件锁挡住（客户端进程占着 1.1.41 的 jar）—— 完全退出游戏后
-重跑 `python tools/_deploy_142.py` 即完成换包 + 把被清空的资源包写回 `options.txt`。
+**状态**：1.1.42 **已部署**（`mods/apocalypse_zombies-1.1.42.jar` md5 `6191b89f48f291e65af2b3247798a106` 与 `build/libs/` 同名产物逐字节一致，08:36 落盘；1.1.41 已移入 `mods_backup/`）。
+
+---
+
+## 九、事故与修复（1.1.43）：满血却是「第 2 阶段」+ 血量与护甲上调
+
+**用户逐字请求**：
+> 修复创造模式使用刷怪蛋召唤出来的尸潮领主为2阶段，增加尸潮领主血量和护甲
+
+**现象**：创造模式用刷怪蛋召出的尸潮领主，**血条是满的，却写着「第 2 阶段」**（应该从 Phase 1 开始）。
+
+**根因（两段，缺一不可）**：
+
+1. **原版把 `Attributes.MAX_HEALTH` 的取值夹到 1024。** 从本机 1.20.1 的 `client.jar` 读字节码可证：
+   `Attributes.<clinit>` 是 `new RangedAttribute("attribute.name.generic.max_health", 20.0d, 1.0d, 1024.0d)`，
+   `RangedAttribute.sanitizeValue()` = `Mth.clamp(v, minValue, maxValue)`，而 `setBaseValue()` 会过它。
+   ⇒ 我们的 `BOSS_MAX_HEALTH = 2500` **从 1.1.41 起就一直没生效**（实际上限 1024）。
+   本机 mods 里**没有 AttributeFix** 之类的解锁模组（24 个 jar 逐个核过）。
+2. **阶段阈值当时写成绝对数**：`phaseFor(1024)` → `1024 > 1666` 否 → `1024 > 833` 是 → **Phase 2**。
+   满血 + Phase 2 就是这样来的。两条出生路径（刷怪蛋 / 尸潮第 5 波）在代码上完全同构，谁的 Boss 都是 1024。
+
+> 证据链：`phaseFor(满血) == 2` 只在 `max ∈ (833, 1666]` 时成立，而 1024 正落在区间内，
+> 且 1024 恰好是原版上限 —— 两个独立来源互证，不是猜出来的。
+
+**修法（四条不变量，全部进闸门）**：
+
+1. **抬高原版上限**（唯一有效的办法）：`ModEntities.liftHealthCap()` 把 `Attributes.MAX_HEALTH` 的
+   `maxValue` 从 1024 抬到 `RAISED_HEALTH_CAP = 1e9`。**按「值」认字段**（扫实例 `double` 字段、匹配原版上限
+   1024.0），因为字段名在开发环境是 Mojang 名（`maxValue`）、出货包里是 SRG 名（`f_xxxxx_`）——
+   写死任何一个名字都会在另一侧静默失效。作用域全局（AttributeFix 干的就是这件事），
+   但只抬「上限」，不主动改任何实体的数值。
+   > **两条被实测否掉的路线（留档）**：
+   > ① **挂 `ADDITION` 修饰符补差额**：服务端 `/attribute get max_health` 仍返回 **1024.0**
+   >    （NBT 里明明有 `Base 1024 + Amount 3176`）—— 因为 `AttributeInstance.calculateValue()`
+   >    的最后一句就是 `attribute.sanitizeValue(total)`，**修饰符叠完还要再夹一次**。
+   >    误判来源：只读了 `getValue()` / `setBaseValue`，没读到 `calculateValue()` 的末尾。
+   > ② **access transformer 打开 `maxValue`**：ForgeGradle 会去它的 `bundeled_repo` 里要一个
+   >    `1.20.1-<forge>_mapped_official_1.20.1_at_<hash>` 变体，而本构建链不生成它
+   >    （在线/离线都是 `Could not find ... _at_...`，`:compileClasspath` 直接解析失败）。
+2. **出生状态钉死**：覆写 `finalizeSpawn` —— 回满血 + `phase = phaseFor(满血)` + 轮转 / 入场技 / 血怒 /
+   亡语计数清零。刷怪蛋、`/summon`、刷怪笼、尸潮第 5 波因此**结构上同构**。
+3. **阶段阈值一律由上限推导**：`PHASE2_HP = BOSS_MAX_HEALTH * 2/3` 等；`phaseFor()` 比的是**运行时上限的比例**。
+   上限再被谁改动，分段都跟着走 —— 这类事故以后不可能重现。
+4. **阶段推进逐级**：`enterPhase(level, this.phase + 1)` 且等当前这一招收完（`!isCasting()`），
+   一击跨两级时中间段的入场技与「第 N/3 阶段」标题不会被吞。
+
+**数值（用户选定）**：总生命 `2500 → 4200`（阈值 2800 / 1400 / 亡语 630）；
+`ARMOR_POINTS 5 → 15`、新增常量 `ARMOR_TOUGHNESS 8 → 12`（原版上限 30 / 20，未顶格）。
+**护甲 5 其实等于没穿甲**：1.20.1 公式 `min(20, max(armor/5, armor − damage/(2 + toughness/4)))` 下，
+5 点对 15 点伤害只有 **5%** 减伤，15/12 是 **−48%**（剑系）/ −36%（30 伤）/ −20%（50 伤）。
+
+**验证**：
+- 闸门 **RED → GREEN**：新断言打在旧代码上 **17 条失败**（含「总生命 2500 超过原版上限 1024：没有
+  ensureHealthPool()」「phaseFor() 还在比绝对数」「没有覆写 finalizeSpawn」等），修完全绿。
+  RED 首跑还暴露了检查器自身的崩溃缺陷（缺常量时 `None` 参与 `%.0f` 格式化）—— 已改成「报错不崩」。
+- 生成器自校验 **376/376**；**geo / anim / 贴图逐字节未变**（`ee328f54` / `9e906905` / `88727cf8`）
+  ⇒ 本次只动 Java 数值与闸门，模型与动画一字未改。
+- **游戏内实测（headless 开发服务端 + RCON；命令 `attribute … get` 与 `data get entity … Health`）**：
+  - 修前：`minecraft:generic.max_health` = **1024.0**（而 NBT 里明明挂着我们的 `+3176` 修饰符）
+    → 「写大了也没用」的铁证，也是定位到上限夹取的直接依据。
+  - 修后：`max_health` = **4200.0**、`Health` = **4200.0f**（满血 ⇒ `phaseFor(4200)` = Phase 1）、
+    `armor` = **15.0**、`armor_toughness` = **12.0**、`attack_damage` = **15.0**。
+  - 服务端用 RCON 的 `stop` 干净退出（`SERVER_EXIT=0`），没有留孤儿 JVM。
+  - 能证 / 不能证：这组命令证的是**服务端数值与出生状态**；模型的视觉表现仍需客户端目视 ——
+    本次没动 geo/anim/贴图（逐字节未变），所以不存在渲染回归面。
+- **出货**：见 §十。
+
+---
+
+## 十、出货记录（1.1.43）
+
+- **流程**：`python tools/_deploy_143.py` —— 版本钉死（OLD=1.1.42 / NEW=1.1.43，基线 md5 `6191b89f…`）。
+  脚本在**变更集合与预期不符时拒绝部署**：首跑就拦下两条，逐条查清后才放行（见下）。
+- **相对 1.1.42 的逐条字节比对**：改 6 / 增 0 / 删 0 ——
+  `HordeOverlord.class`、`HordeOverlord$1.class`（主类的合成 switch-map 伴随类，`javap -c` 文本与 1.1.42
+  逐行相同）、`ModEntities.class`、`mods.toml`（版本号）、`MANIFEST.MF`（构建元数据）、
+  `META-INF/NOTICE.md`（**不是本次改的**：工作树里网易那条产出线的说明，**按指示不进仓库**，
+  这次构建自然带上，差异只多 `-netease.jar` 两段）。
+  **geo / 动画 / 贴图三向逐字节相等**（`ee328f54` / `9e906905` / `88727cf8`）—— 模型与动画一字未动。
+- **部署包常量回读**（`javap -constants` 打在 `mods/` 里那个 jar 上，不是看源码）：
+  `BOSS_MAX_HEALTH=4200.0f`、`VANILLA_HEALTH_CAP=1024.0f`、`PHASE2_HP=2800.0f`、`PHASE3_HP=1400.0f`、
+  `DEATH_WAIL_HP=630.0f`、`PHASE_COUNT=3`、`ARMOR_POINTS=15.0d`、`ARMOR_TOUGHNESS=12.0d`、
+  `ATTACK_POWER=15.0f`；`ModEntities` 里 `getDeclaredFields` / `setAccessible` / `setDouble` 三处调用在位。
+- **md5 / 落盘**：`80be27db080ffeff62cfe57a865200e2`（10:14:49）。`mods/` 现在只有
+  `apocalypse_zombies-1.1.43.jar`；另外 23 个模组 md5 全等（逐个核过，没被顺手停用）；
+  `mods_backup/` 现有 3 份（1.1.40 / 1.1.41 / 1.1.42）。`options.txt` 用户已自选资源包，按约定不覆盖。
+- **运行时自查**（客户端里随手可跑，改完从主菜单重进即可）：
+  `/attribute @e[type=apocalypse_zombies:horde_overlord,limit=1] minecraft:generic.max_health get` → `4200.0`
+- **git**：本轮改动分三个提交落在 `feat/horde-overlord`（`fix(boss)` / `test(boss)` / `chore(tools)`），
+  **未推送、未开新 PR**。**网易 Java 版适配那条线按指示不进仓库**（`-netease.jar` 产物、`docs/wiki/10-…`、
+  `tools/deploy_netease.py`、`NOTICE.md` 与 readme 里的相关行），仍以未提交状态留在工作树；
+  混合文件用「只留我的 hunk」重建后 `git add`，索引里经 `grep -i netease` 核过为零。
+  另：PR #2 正文那句「1.1.42 未部署」已过时 —— 1.1.42 正是本次部署前的在用版本。

@@ -4,6 +4,7 @@ import java.util.List;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
@@ -13,15 +14,18 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.BossEvent;
+import net.minecraft.world.DifficultyInstance;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MobSpawnType;
+import net.minecraft.world.entity.SpawnGroupData;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
@@ -40,12 +44,14 @@ import com.apocalypse.zombies.registry.ModEntities;
 import com.apocalypse.zombies.zombie.EvolutionTier;
 import com.apocalypse.zombies.zombie.ZombieEvolution;
 
+import javax.annotation.Nullable;
+
 /**
- * 尸潮之主 —— 三阶段 Boss，2500 点生命。
+ * 尸潮之主 —— 三阶段 Boss，4200 点生命。
  *
  * <p>和其余精英的差别只在「数量级」和「阶段」两件事上：</p>
  * <ul>
- *   <li><b>2500 HP 分三段</b>：1666（2/3）以上是 Phase 1，833（1/3）以上是 Phase 2，
+ *   <li><b>4200 HP 分三段</b>：2800（2/3）以上是 Phase 1，1400（1/3）以上是 Phase 2，
  *       之下是 Phase 3。阶段不是纯数值墙 —— 每跨一段都会当场放一个<b>入场技</b>，
  *       并把后续的技能轮转换成更长的表（Phase 1 两招，Phase 2 四招，Phase 3 五招 + 亡语）。</li>
  *   <li><b>技能全部走 {@link EliteAbility} 的三段切分</b>（前摇 → 命中 → 收招），
@@ -54,19 +60,37 @@ import com.apocalypse.zombies.zombie.ZombieEvolution;
  *
  * <p><b>下面这组常量与 {@code tools/boss_v1.py} 双向同步</b>：生成器写完 geo/anim 之后会回来读这几行，
  * 对不上就报 FAIL。改血量分段必须同时改生成器，否则自校验会拦住。</p>
+ *
+ * <p><b>血量必须配 {@link com.apocalypse.zombies.registry.ModEntities} 的「抬上限」</b>：原版
+ * {@code Attributes.MAX_HEALTH} 的上限硬编码 1024（{@code RangedAttribute(..., 20.0, 1.0, 1024.0)}），
+ * 而 {@code AttributeInstance.calculateValue()} 的最后一句是 {@code attribute.sanitizeValue(total)} ——
+ * <b>所有修饰符叠完还要再夹一次上限</b>，所以「写大常量」和「挂 ADDITION 修饰符」两条路都逃不过 1024
+ * （实测：Base 1024 + Amount 3176 时 {@code /attribute get max_health} 仍返回 1024.0）。
+ * 上限由 {@code META-INF/accesstransformer.cfg} 打开 {@code RangedAttribute.maxValue} 后抬到
+ * {@code ModEntities.RAISED_HEALTH_CAP}；缺任何一环，Boss 的实际上限就只有 1024 ——
+ * 满血 {@code phaseFor(1024)} 判成 Phase 2，玩家看到的就是「刷怪蛋召出来的领主一出生就是 2 阶段、
+ * 血条却是满的」（1.1.42 实测缺陷）。</p>
+ *
+ * <p>两条不变量（门禁按它们断言）：① 分段阈值一律由 {@link #BOSS_MAX_HEALTH} 推导；
+ * ② 出生时按「满血」重算阶段（{@link #finalizeSpawn}），刷怪蛋/指令/尸潮各路径同构。</p>
  */
 public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
 
     // ---------------------------------------------------------------- 阶段阈值（生成器回读）
 
     /** Boss 总生命。 */
-    public static final float BOSS_MAX_HEALTH = 2500.0F;
-    /** Phase 1 → Phase 2 的分界：2500 × 2/3。 */
-    public static final float PHASE2_HP = 1666.0F;
-    /** Phase 2 → Phase 3 的分界：2500 × 1/3。 */
-    public static final float PHASE3_HP = 833.0F;
-    /** 「垂死崩解」的触发线：跌破总生命的 15%。 */
-    public static final float DEATH_WAIL_HP = 375.0F;
+    public static final float BOSS_MAX_HEALTH = 4200.0F;
+    /**
+     * 原版 {@code Attributes.MAX_HEALTH} 的硬上限（{@code RangedAttribute} 的 {@code maxValue}）。
+     * 本模组的**实际**上限由 {@code ModEntities.RAISED_HEALTH_CAP} + AT 抬高；这个常量是「为什么必须抬」的依据。
+     */
+    public static final float VANILLA_HEALTH_CAP = 1024.0F;
+    /** Phase 1 → Phase 2 的分界：总生命的 2/3（4200 → 2800）。 */
+    public static final float PHASE2_HP = BOSS_MAX_HEALTH * 2.0F / 3.0F;
+    /** Phase 2 → Phase 3 的分界：总生命的 1/3（4200 → 1400）。 */
+    public static final float PHASE3_HP = BOSS_MAX_HEALTH / 3.0F;
+    /** 「垂死崩解」的触发线：跌破总生命的 15%（4200 → 630）。 */
+    public static final float DEATH_WAIL_HP = BOSS_MAX_HEALTH * 0.15F;
 
     /** 阶段数。三阶段的技能表见 {@link #ROTATION_PHASE_1} / 2 / 3。 */
     public static final int PHASE_COUNT = 3;
@@ -94,16 +118,16 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
 
     // ---------------------------------------------------------------- 技能轮转表
 
-    /** Phase 1（>1666）：只有近战与远程两招 —— 让玩家先学会躲斧头。 */
+    /** Phase 1（> 上限的 2/3，4200 → >2800）：只有近战与远程两招 —— 让玩家先学会躲斧头。 */
     private static final EliteAbility[] ROTATION_PHASE_1 = {
             EliteAbility.BOSS_SWEEP, EliteAbility.BONE_VOLLEY,
     };
-    /** Phase 2（≤1666）：加上踏地与召唤，进场先来一记踏地。 */
+    /** Phase 2（≤ 2/3，4200 → ≤2800）：加上踏地与召唤，进场先来一记踏地。 */
     private static final EliteAbility[] ROTATION_PHASE_2 = {
             EliteAbility.BOSS_SWEEP, EliteAbility.GROUND_QUAKE,
             EliteAbility.RAISE_HORDE, EliteAbility.BONE_VOLLEY,
     };
-    /** Phase 3（≤833）：五招齐全 + 垂死崩解；进场放血怒。 */
+    /** Phase 3（≤ 1/3，4200 → ≤1400）：五招齐全 + 垂死崩解；进场放血怒。 */
     private static final EliteAbility[] ROTATION_PHASE_3 = {
             EliteAbility.BOSS_SWEEP, EliteAbility.GROUND_QUAKE, EliteAbility.RAISE_HORDE,
             EliteAbility.BONE_VOLLEY, EliteAbility.DEATH_WAIL,
@@ -112,8 +136,17 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
     /** 两招之间的间隔（tick）。剪辑普遍 22~40 tick，留 24 就给玩家一个换位/回血的窗口。 */
     private static final int ABILITY_GAP = 24;
 
-    /** 防御 5 / 攻击 15 —— 设计给定值，改数值只改这两行（{@link #createAttributes()} 直接引用）。 */
-    public static final double ARMOR_POINTS = 5.0D;
+    /**
+     * 防御 15 / 韧性 12 / 攻击 15 —— 设计给定值，改数值只改这几行
+     * （{@link #createAttributes()} 直接引用，别在属性表里写回字面量）。
+     *
+     * <p>1.20.1 的护甲公式是 {@code min(20, max(armor/5, armor - damage/(2 + toughness/4)))}：
+     * 5 点护甲对 15 点伤害只有 <b>5%</b> 减伤（等于没穿甲，这才是「护甲要加」的真实理由）；
+     * 15 点护甲 + 12 韧性对剑系 −48%、对 30 点 −36%、对 50 点重击 −20%。
+     * 原版上限是护甲 30 / 韧性 20，都还没顶格。</p>
+     */
+    public static final double ARMOR_POINTS = 15.0D;
+    public static final double ARMOR_TOUGHNESS = 12.0D;
     public static final float ATTACK_POWER = 15.0F;
 
     /** 巨斧横扫：扇面半角（度）、半径（格）、伤害、击退。 */
@@ -169,19 +202,41 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
     }
 
     /**
-     * Boss 的数值。移速故意压得比普通僵尸低（0.21 < 0.23）：一个 2500 血的怪如果还能追着人跑，
+     * 出生状态一律钉死：补满生命池 → 回满血 → 阶段按「满血」重算 → 轮转 / 入场技 / 亡语计数清零。
+     *
+     * <p>刷怪蛋（{@code SPAWN_EGG}）、{@code /summon}（{@code COMMAND}）、刷怪笼与尸潮第 5 波
+     * （{@code EVENT}）因此完全同构 —— 不存在「哪条路径召出来的 Boss 数值不一样」这种事。</p>
+     */
+    @Override
+    public SpawnGroupData finalizeSpawn(ServerLevelAccessor level, DifficultyInstance difficulty,
+                                        MobSpawnType reason, @Nullable SpawnGroupData spawnData,
+                                        @Nullable CompoundTag dataTag) {
+        SpawnGroupData data = super.finalizeSpawn(level, difficulty, reason, spawnData, dataTag);
+        this.setHealth(this.getMaxHealth());
+        this.phase = this.phaseFor(this.getHealth());
+        this.rotationIndex = 0;
+        this.entryAbility = EliteAbility.NONE;
+        this.rageApplied = false;
+        this.deathWailFired = false;
+        this.phaseAnnounceCooldown = 0;
+        return data;
+    }
+
+    /**
+     * Boss 的数值。移速故意压得比普通僵尸低（0.21 < 0.23）：一个 4200 血的怪如果还能追着人跑，
      * 玩家就没有「拉开距离打工」这个解法了。
      *
-     * <p>防御 5 / 攻击 15 是设计给定值 —— 它靠 2500 血和三段技能撑硬度，不靠护甲；
-     * 护甲给太高会让「堆输出」变成唯一解，防御压到 5 才能让拆解（走位 + 打工）成立。</p>
+     * <p>防御 15 / 韧性 12 / 攻击 15 是设计给定值（减伤换算见 {@link #ARMOR_POINTS}）：
+     * 4200 血配 15/12 甲才让三段阶段真正打得完；攻击仍压在 15，避免「两下带走玩家」把走位解删掉。</p>
      */
     public static AttributeSupplier.Builder createAttributes() {
         return eliteAttributes()
+                // 上限已由 ModEntities 的 AT 抬到 1e9，这里直接写总量即可（原版 1024 会静默夹取）。
                 .add(Attributes.MAX_HEALTH, BOSS_MAX_HEALTH)
                 .add(Attributes.MOVEMENT_SPEED, 0.21D)
                 .add(Attributes.ATTACK_DAMAGE, ATTACK_POWER)
                 .add(Attributes.ARMOR, ARMOR_POINTS)
-                .add(Attributes.ARMOR_TOUGHNESS, 8.0D)
+                .add(Attributes.ARMOR_TOUGHNESS, ARMOR_TOUGHNESS)
                 .add(Attributes.KNOCKBACK_RESISTANCE, 0.8D)
                 .add(Attributes.FOLLOW_RANGE, 48.0D);
     }
@@ -240,12 +295,19 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
         return this.phase;
     }
 
-    /** 按血量算阶段：≥1666 → 1，≥833 → 2，否则 3。 */
+    /**
+     * 按血量算阶段：≥ 上限的 2/3 → 1，≥ 1/3 → 2，否则 3。
+     *
+     * <p>比的是<b>运行时上限的比例</b>，不是写死的绝对数：上限一旦被任何东西改动（属性修饰符、
+     * 别的模组、以后改平衡），分段跟着走 —— 满血永远判 Phase 1。绝对数只作为设计文档保留在
+     * {@link #PHASE2_HP} / {@link #PHASE3_HP}，供生成器回读与调试指令打印。</p>
+     */
     private int phaseFor(float health) {
-        if (health > PHASE2_HP) {
+        float max = Math.max(1.0F, this.getMaxHealth());
+        if (health > max * 2.0F / 3.0F) {
             return 1;
         }
-        return health > PHASE3_HP ? 2 : 3;
+        return health > max / 3.0F ? 2 : 3;
     }
 
     private static EliteAbility[] rotationFor(int phase) {
@@ -366,12 +428,14 @@ public class HordeOverlord extends AbstractEliteZombie implements GeoEntity {
 
         float health = this.getHealth();
         int next = this.phaseFor(health);
-        if (next > this.phase) {
-            this.enterPhase(level, next);
+        // 逐级推进 + 等当前这一招收完：一击跨两级（创造模式拿强武器测试就是这样）时会先走完
+        // 中间那一段，否则中间段的入场技与「第 N/3 阶段」标题会被整个吞掉。
+        if (next > this.phase && !this.isCasting()) {
+            this.enterPhase(level, this.phase + 1);
         }
 
-        // 垂死崩解：Phase 3 里跌破 15% 时插队一次，之后不再触发
-        if (!this.deathWailFired && this.phase == 3 && health <= DEATH_WAIL_HP
+        // 垂死崩解：Phase 3 里跌破总生命 15% 时插队一次，之后不再触发
+        if (!this.deathWailFired && this.phase == 3 && health <= this.getMaxHealth() * 0.15F
                 && !this.isCasting()) {
             this.deathWailFired = true;
             this.entryAbility = EliteAbility.DEATH_WAIL;

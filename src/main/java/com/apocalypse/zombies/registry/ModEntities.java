@@ -1,7 +1,13 @@
 package com.apocalypse.zombies.registry;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.ai.attributes.Attribute;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.ai.attributes.RangedAttribute;
 import net.minecraftforge.event.entity.EntityAttributeCreationEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.registries.DeferredRegister;
@@ -161,6 +167,53 @@ public final class ModEntities {
                     .build("giant_arrow"));
 
     private ModEntities() {
+    }
+
+    /**
+     * 抬高原版 {@code MAX_HEALTH} 的上限（1024 → {@link #RAISED_HEALTH_CAP}）。
+     *
+     * <p><b>为什么这一步不能省</b>：{@code AttributeInstance.calculateValue()} 的最后一句是
+     * {@code attribute.sanitizeValue(total)} —— 所有修饰符叠加完<b>还要再夹一次上限</b>。
+     * 所以尸潮之主的 4200 血，只改常量或只挂 {@code ADDITION} 修饰符都<b>静默无效</b>
+     * （实测：Base 1024 + Amount 3176 时 {@code /attribute get max_health} 仍返回 1024.0；
+     * 被夹之后满血还会被判成 Phase 2，这就是 1.1.42 的实测事故）。</p>
+     *
+     * <p>作用域是全局的（与 AttributeFix 同一机制）：只抬「上限」，不主动改任何实体的数值。</p>
+     */
+    public static final double RAISED_HEALTH_CAP = 1.0E9D;
+
+    static {
+        liftHealthCap(RAISED_HEALTH_CAP);
+    }
+
+    /**
+     * 把 {@code Attributes.MAX_HEALTH} 的上限抬到 {@code cap}。
+     *
+     * <p><b>为什么按「值」认字段而不是按名字</b>：开发环境跑 Mojang 映射（字段名 {@code maxValue}），
+     * 出货包经 {@code reobfJar} 重混淆成 SRG 名（{@code f_xxxxx_}）—— 写死任何一个名字都会在另一侧静默失效。
+     * 原版上限 1024.0 是这张属性表里唯一的 double 特征值，所以直接扫实例 double 字段按值匹配。
+     * （不用 access transformer 的原因写在 {@code build.gradle} 里：FG 会去要一个不存在的
+     * {@code _at_<hash>} 变体，把 {@code compileClasspath} 解析搞崩。）</p>
+     */
+    private static void liftHealthCap(double cap) {
+        Attribute maxHealth = Attributes.MAX_HEALTH;
+        for (Field field : RangedAttribute.class.getDeclaredFields()) {
+            if (field.getType() != double.class || Modifier.isStatic(field.getModifiers())) {
+                continue;
+            }
+            try {
+                field.setAccessible(true);
+                if (field.getDouble(maxHealth) == HordeOverlord.VANILLA_HEALTH_CAP) {
+                    field.setDouble(maxHealth, cap);
+                    return;
+                }
+            } catch (ReflectiveOperationException e) {
+                ApocalypseZombies.LOGGER.error("抬高 MAX_HEALTH 上限时反射失败", e);
+            }
+        }
+        ApocalypseZombies.LOGGER.error("没能在 RangedAttribute 里认出 maxValue（按 {} 匹配），"
+                        + "尸潮之主的血量会被原版夹住 —— 检查 RangedAttribute 的字段布局",
+                HordeOverlord.VANILLA_HEALTH_CAP);
     }
 
     public static void register(IEventBus modBus) {

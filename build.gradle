@@ -53,6 +53,10 @@ minecraft {
     // However, it must be at "META-INF/accesstransformer.cfg" in the final mod jar to be loaded by Forge.
     // This default location is a best practice to automatically put the file in the right place in the final jar.
     // See https://docs.minecraftforge.net/en/latest/advanced/accesstransformers/ for more information.
+    // ⚠ 不要启用 accessTransformer：开了之后 ForgeGradle 会去 bundled_repo 找
+    //   "1.20.1-<forge>_mapped_official_1.20.1_at_<hash>" 变体，而本构建链不会生成它
+    //   （在线/离线都报 Could not find ... _at_...，:compileClasspath 直接解析失败）。
+    //   MAX_HEALTH 上限改为运行时反射抬（见 ModEntities.liftHealthCap）。
     // accessTransformer = file('src/main/resources/META-INF/accesstransformer.cfg')
 
     // Default run configurations.
