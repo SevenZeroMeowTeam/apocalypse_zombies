@@ -139,7 +139,8 @@ Java 侧只按 `getAbilityTick()` 推进，不额外同步动画时间。
 
 | 位置 | 内容 |
 |---|---|
-| `MarksmanSkeleton` | `implements EliteMob, GeoEntity`；`ANIM_IDLE/WALK/SHOOT/LOCK` 常量；`registerControllers` 挂 `movement` + `cast` 两条控制器 |
+| `MarksmanSkeleton` | `implements EliteMob, GeoEntity, SightFiring`；`ANIM_IDLE/WALK/SHOOT/LOCK` 常量；`registerControllers` 挂 `movement` + `cast` 两条控制器 |
+| **索敌（看得见就能打）** | `SightFiring.sightFiringRange()` 返回 `max(GIANT_ARROW_MAX_RANGE=32, LOCK_MAX_RANGE=26, BOW_RANGE=24)`，与 `GiantArrowGoal` / 骨矢 `canStart` / `RangedBowAttackGoal` 的入参**同源**（同一批常量，不许写回字面量）。`PreyJudge.usable` 判序：贴脸(3) → **看得见就能打** → 走得到，且必须带 `instanceof SightFiring` 守卫 —— 放宽只对声明了的怪生效，近战怪一位不受影响（`check_marksman.py` 的 c6 钉住三条） |
 | `EliteAbility` | **末尾追加** `BONE_LOCK(42, 34)`（`byId` 走 ordinal，插中间会让所有精英施法状态错位）；`SNIPE` 保留但不再被引用 |
 | 技能 | `MarksmanHooks.ability() → BONE_LOCK`；`onImpact() → fireBoneLock()` |
 | 弹体 | `BoneLockArrow extends GiantArrow`：继承追踪物理（`turnDegrees` 每 tick 修向 + 目标速度前导），命中即 `apocalypse_zombies:bone_lock` 伤害 = `目标最大血量 × AI_MARKSMAN_LOCK_RATIO`，随后 `discard()`（不穿透） |
@@ -157,12 +158,16 @@ Java 侧只按 `getAbilityTick()` 推进，不额外同步动画时间。
 1. `tools/check_marksman.py`：骨骼名 ↔ Java `ANIM_*` 常量双向一致；无 scale 通道；
    UV 无重叠超界；脚底 0 / 颅顶 32；rest 旋转全零；弹体伤害公式 = `maxHealth × ratio`。
 2. Blockbench 回灌：把**发布的** geo/anim JSON 读回 Blockbench，骨数/体块数/关键帧数与原工程一致。
-3. headless 服务端 + RCON（`tools/rcon_marksman_test.py`，4/4 PASS 实测）：
+3. headless 服务端 + RCON（`tools/rcon_marksman_test.py`，**5/5 PASS** 实测）：
    ① 标签级 —— 满防具（保护 IV 下界合金）+ 抗性 V 的铁傀儡（100 血）打 25 点 `bone_lock` 恰好掉 **25.0**；
    ② 对照组 —— 同样 25 点 `minecraft:generic` 只掉 **0.0**（证明防具真的在减伤，① 的满额不是巧合）；
    ③ 技能自放 —— 目标 10 格外起手并射出 `bone_lock_arrow`；
    ④ 命中 —— 全程用 `minecraft:generic` 每 0.1 秒压制无敌帧（该伤害在满防具下掉 0 血，零噪声），
-      骨矢落点仍恰好掉 **25.0**（没做清零就是 24.0）。
+      骨矢落点仍恰好掉 **25.0**（没做清零就是 24.0）；
+   ⑤ 索敌 —— 靶子挪到 **3 格石柱顶**（有视线、`createPath` 终点只到地面 ⇒ 判据算「走不到」），
+      射手仍须开火。**这条是先红后绿写的**：修之前实测 45 秒一箭不放（目标表被「走不到」的猎物
+      空转占死），加了 `SightFiring` 之后 **1.8 秒**射出骨矢。柱高取 3 格是有意的 —— `PreyJudge.canPathTo`
+      的高度容差是 1 格，2 格柱可能被判成「走得到」，判据就不红了。
 4. `clean build --offline` BUILD SUCCESSFUL；`mods/` 部署 1.1.44 后客户端实测动画与粒子。
 
 **验收环境的三个前提（都是实测踩出来的，不满足就会得到「技能放了但不掉血」的假故障）**：
