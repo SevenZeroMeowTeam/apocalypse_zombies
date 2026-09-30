@@ -143,9 +143,11 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
 - **服务端权威**：客户端只发请求（`FirePacket` / `ReloadPacket`），「有没有子弹、动作是否占用、
   子弹打中了什么」全部由服务端裁决。
 - 弹量存在物品 NBT 的 `Ammo` 里；换弹分两路 —— 满弹匣走战术换弹（保留膛内那发），
-  空仓走完整上膛流程，动画与音效也不同。**M1 加兰德有三路**（1.1.47 起按真机机构）：
+  空仓走完整上膛流程，动画与音效也不同。**M1 加兰德有四路**（1.1.47 起按真机机构）：
   空仓走 `reload_empty`、半满走 `reload_tactical`（拉到底保持 → 按左侧卡榫销 → 残夹脱出）、
-  补弹走 `Shift + R` 的 `single_load`（只加一发，不动漏夹）。
+  补弹走 `Shift + R` 的 `single_load`（只加一发，不动漏夹）；**最后一发自成一路**（1.1.48 起）：
+  枪机退到底被挂机爪咬住、空漏夹当场「叮」出井口（`shoot_last`），之后自动接上 `reload_empty`
+  —— 那一段起手枪机就已经在后退位，只把新夹压下去。
 - 姿态走客户端 `GunAimState` + `GunPose`：站立腰射 / 跑步持枪 / 抬镜三态连续混合；`WeaponArms` 按
   玩家皮肤绘制手臂，跟随各枪 `*GeoModel` 给出手部目标。
 - 副手 / 背包 / 开镜状态都有对应封包处理。
@@ -196,6 +198,34 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
   `art/awm/awm.geo.pre-9217.bak.json`、`awm.pre-9217.bak.png`、`awm.pre-9217.bak.bbmodel`。
   **几何真相源改为 `art/awm/awm.bbmodel`（9217 工程）**，`tools/awm_bb_gen.js` 退为历史 —— 理由与取舍见 `art/awm/README.md` 的「换代」一节。
 - 门禁：`check_gun_resources.py`（5 把枪全绿）、`check_awm_anim.py`（契约 / Java 契约 / 保真 / 落点 / 音效 / 纯净版契约 六项全绿）**未改一行**即通过。
+
+**调整 · M1 加兰德末发与「井盖」按真机重做（甲：手部 + 剪辑；乙：动几何）**
+
+真机依据 FM 23-5《M1 步枪操作手册》+ 美陆军 TACOM 2013 换弹教学 + 真机拆件表（详见
+`art/m1garand/README.md` 的「v7（2026-09-30）甲 + 乙」一节）：
+
+- **末发单独成一拍（甲）**：新增 `shoot_last`（1.2 s）—— 导气杆退到底即被挂机爪咬住**不回位**、
+  空漏夹在**这一拍当场**被抛夹弹簧顶出井口（那声「叮」）。原来这两件事都塞在按 R 之后的
+  `reload_empty` 里（真机上它们发生在最后一发击发的瞬间）。`reload_empty` 因此改成**起手即挂机**
+  （不再重复拉一次到底），只把新夹压下去、让枪机自行前冲闭锁。Java 侧 `tryFire` 在最后一发改排
+  `ACTION_SHOOT_LAST`（独立锁窗 24 ticks 与音效表 `SHOOT_LAST_SOUNDS`），自动换弹的判据从
+  「动作已清空」改为 `shotLapsed()`：射击剪辑一播完**同一 tick**交棒 —— 否则闲置姿态会把导气杆
+  收回闭锁位，枪机在两次剪辑之间会闪一下闭锁再开。
+- **删掉漏夹井盖（乙）**：真机机匣顶部没有这件东西（手册："place a full clip … press the clip
+  straight down into the receiver until it catches"，全程没有"打开盖"这一步；拆件表里也查不到）。
+  旧几何里那两条轨把井口从 |x| < 0.190 收窄到 |x| < 0.100，而漏夹宽 ±0.167 ⇒ 旧动画必须抬盖
+  **0.55u（34mm）** 才塞得进夹，且"盖合"时轨的内面正好扎进漏夹里（穿模）。现由
+  `tools/m1_cover_removal_geo.py` 删掉 `cover` 骨（3 方块：两条轨 + 一根横在井口正中的提手）
+  并同步清掉 8 个剪辑里的 `cover` 通道：骨 15 → 14、方块 347 → 344，井口净宽 0.190u
+  （漏夹两侧余量 1.4mm）、压夹通道无遮挡。
+- **双手（第一人称）**：空仓换弹右手**不再去拉导气杆**（枪机已挂住），直接取新夹压下、落位（0.4306）
+  后向右上甩开让开枪机再收回握把；战术换弹左手离开护木、掌根贴机匣左侧、**拇指在 0.112 同步按下
+  卡榫销**并按住到销子回位（TACOM："Place the palm of the left hand over the receiver and depress
+  the clip latch with the left thumb"）。
+- **门禁**：`check_m1_reload.py` 新增末发（挂机不回位 / 空夹当场飞走 / 先挂机再抛夹 / 1.2 s 时长契约）、
+  乙案（无 `cover` 骨、机匣顶面以上井口通道无遮挡、所有剪辑无 `cover` 通道）与甲案（左手按销时刻
+  对齐 `clip_latch`、右手压夹后甩开、末发接线、同一 tick 接上自动换弹）共 16 条断言，全绿；
+  `check_gun_resources.py` 与 `check_awm_anim.py` **未改一行**即通过。
 
 ### 1.1.47 — 2026-09-30
 

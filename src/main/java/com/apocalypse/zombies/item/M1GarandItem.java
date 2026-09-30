@@ -55,9 +55,9 @@ import java.util.function.Consumer;
  * M1 加兰德 — a GeckoLib-boned semi-automatic battle rifle, and the second gun in the weapon layer.
  *
  * <p>Geometry and animation live in {@code assets/apocalypse_zombies/geo/m1_garand.geo.json} and
- * {@code animations/m1_garand.animation.json}: 15 bones, seven clips ({@value #ANIM_IDLE}, {@value #ANIM_DRAW},
- * {@value #ANIM_SHOOT}, {@value #ANIM_BOLT}, {@value #ANIM_RELOAD_TACTICAL}, {@value #ANIM_RELOAD_EMPTY},
- * {@value #ANIM_SINGLE_LOAD}).
+ * {@code animations/m1_garand.animation.json}: 15 bones, eight clips ({@value #ANIM_IDLE}, {@value #ANIM_DRAW},
+ * {@value #ANIM_SHOOT}, {@value #ANIM_SHOOT_LAST}, {@value #ANIM_BOLT}, {@value #ANIM_RELOAD_TACTICAL},
+ * {@value #ANIM_RELOAD_EMPTY}, {@value #ANIM_SINGLE_LOAD}).
  * The model is 1.11 blocks long (17.84 u), 255 cubes and one 512² texture; every pose is per-bone
  * rotation/translation, nothing scales the model, per 美术规范.md §5.</p>
  *
@@ -66,10 +66,13 @@ import java.util.function.Consumer;
  *   <li><b>It cycles itself.</b> The {@code shoot} clip carries the op-rod through its own travel, so unlike
  *       {@code AWMItem} no separate bolt action is scheduled behind the shot — the lock is one clip long, and
  *       the file's mechanical cues play from {@value #ACTION_SHOOT}.</li>
- *   <li><b>The clip <em>is</em> the magazine.</b> Eight rounds in an en-bloc clip. Fired dry, the bolt is held
- *       back, the empty clip pings clear, a new one goes down into the well and the bolt slams home by itself —
- *       that whole performance is {@value #ANIM_RELOAD_EMPTY}. (The ping is the sound the rifle is famous for
- *       and the one cue this file cannot record: see the note on the sound tables.)</li>
+ *   <li><b>The clip <em>is</em> the magazine.</b> Eight rounds in an en-bloc clip, and the eighth is
+ *       {@value #ANIM_SHOOT_LAST}: the op-rod is caught at the rear and the empty clip pings clear of the well
+ *       on the shot itself, exactly as the manual has it — "the empty clip is automatically ejected and the
+ *       bolt remains to the rear". The reload that follows ({@value #ANIM_RELOAD_EMPTY}) therefore starts with
+ *       the bolt already held back: it presses a new clip straight down into the well and lets the bolt run
+ *       home on its own. (The ping is the sound the rifle is famous for and the one cue this file cannot
+ *       record: see the note on the sound tables.)</li>
  *   <li><b>Tactical reload follows the real mechanism.</b> A partly-full clip is held in the well by the clip
  *       latch, so it will not fall out: the op-rod is pulled to the rear and <em>kept</em> there (ARDEC manual:
  *       "Do not relax the rearward pressure on the operating rod handle until after the clip has been
@@ -106,6 +109,8 @@ public class M1GarandItem extends Item implements GeoItem, GunItem {
     public static final String TRIGGER_RELOAD_EMPTY = "reload_empty";
     /** Trigger for the manual's single-round top-up — the Shift+R drill. */
     public static final String TRIGGER_SINGLE_LOAD = "single_load";
+    /** Trigger for the last round of a clip, where the bolt is caught and the empty clip pings clear. */
+    public static final String TRIGGER_SHOOT_LAST = "shoot_last";
 
     /** Clip names as exported from Blockbench — must match m1_garand.animation.json exactly. */
     public static final String ANIM_IDLE = "static_idle";
@@ -116,9 +121,17 @@ public class M1GarandItem extends Item implements GeoItem, GunItem {
     public static final String ANIM_RELOAD_EMPTY = "reload_empty";
     /** ARDEC manual, "To load a single round": op-rod back, one round in by hand, bolt eased shut. */
     public static final String ANIM_SINGLE_LOAD = "single_load";
+    /**
+     * The last round of a clip, which is a different performance from the other seven: the op-rod runs back,
+     * the bolt is <em>caught</em> at the rear and the empty clip pings clear of the well (FM 23-5: "When the
+     * last round is fired, the empty clip is automatically ejected and the bolt remains to the rear"). All
+     * three belong to the shot, not to the reload that follows it.
+     */
+    public static final String ANIM_SHOOT_LAST = "shoot_last";
 
     /** Clip lengths in ticks (20 t/s), taken from m1_garand.animation.json. */
     private static final int SHOOT_TICKS = 12;      // 0.6 s
+    private static final int SHOOT_LAST_TICKS = 24; // 1.2 s — 末发：挂机 + 空夹当场弹飞
     private static final int BOLT_TICKS = 22;       // 1.1 s
     private static final int RELOAD_TACTICAL_TICKS = 52;   // 2.6 s
     private static final int RELOAD_EMPTY_TICKS = 60;      // 3.0 s
@@ -196,6 +209,8 @@ public class M1GarandItem extends Item implements GeoItem, GunItem {
     private static final long NONE = -1L;
 
     private static final String ACTION_SHOOT = "shoot";
+    /** The eighth round: the same shot as {@value #ACTION_SHOOT}, but the op-rod stays caught at the rear. */
+    private static final String ACTION_SHOOT_LAST = "shoot_last";
     private static final String ACTION_BOLT = "bolt";
     private static final String ACTION_RELOAD_TACTICAL = "reload_tactical";
     private static final String ACTION_RELOAD_EMPTY = "reload_empty";
@@ -215,6 +230,16 @@ public class M1GarandItem extends Item implements GeoItem, GunItem {
             9, ModSounds.AWM_RECHAMBER_IN,
             11, ModSounds.AWM_RECHAMBER_END);
 
+    /**
+     * The last round. The op-rod runs back on the shot and is <em>caught</em> there, so there is no
+     * bolt-close cue; the clip pings clear of the well a tick after the case goes, which is the rifle's
+     * signature sound and the one cue this file cannot record (see the note on the sound tables).
+     */
+    private static final Map<Integer, RegistryObject<SoundEvent>> SHOOT_LAST_SOUNDS = Map.of(
+            2, ModSounds.AWM_RECHAMBER_OUT,      // 0.10 s 导气杆起步后退
+            3, ModSounds.AWM_RECHAMBER_EJECT,    // 0.15 s 弹壳抛出
+            5, ModSounds.AWM_RELOAD_EJECT);      // 0.25 s 叮：空漏夹脱离井口弹起
+
     /** Manual 拉栓 — slower and more deliberate than the self-cycling version above. */
     private static final Map<Integer, RegistryObject<SoundEvent>> BOLT_SOUNDS = Map.of(
             4, ModSounds.AWM_RECHAMBER_OUT,
@@ -223,14 +248,11 @@ public class M1GarandItem extends Item implements GeoItem, GunItem {
             19, ModSounds.AWM_RECHAMBER_END);
 
     /**
-     * The empty-clip reload. The cue at t=11 is the one that matters: it is the 叮 of the en-bloc clip
-     * leaving the well (the clip starts flying at 0.54 s in the animation), and it stands in for a
-     * recording this project does not have (the AWM's eject click).
+     * The empty-clip reload, which now starts with the bolt <em>already</em> caught at the rear: the op-rod
+     * move and the 叮 belong to the shot that emptied the clip ({@value #ACTION_SHOOT_LAST}), so this clip is
+     * only a new clip going down into the well and the bolt running home on its own.
      */
     private static final Map<Integer, RegistryObject<SoundEvent>> RELOAD_EMPTY_SOUNDS = Map.of(
-            2, ModSounds.AWM_RELOAD_EMPTY_RAISE,        // 0.10 s 导气杆起手
-            7, ModSounds.AWM_RECHAMBER_OUT,             // 0.35 s 拉到底（枪机退到全行程）
-            11, ModSounds.AWM_RELOAD_EJECT,             // 0.55 s 叮：空夹脱离井口弹起
             26, ModSounds.AWM_RELOAD_EMPTY_MAGIN,       // 1.30 s 新夹压到位（落位 1.2917 s）
             29, ModSounds.AWM_RECHAMBER_IN,             // 1.45 s 枪机自由前冲起步
             35, ModSounds.AWM_RELOAD_EMPTY_BOLTCLOSE,   // 1.75 s 掌根拍到位闭锁
@@ -263,6 +285,7 @@ public class M1GarandItem extends Item implements GeoItem, GunItem {
 
     private static final RawAnimation IDLE = RawAnimation.begin().thenLoop(ANIM_IDLE);
     private static final RawAnimation SHOOT = RawAnimation.begin().thenPlay(ANIM_SHOOT);
+    private static final RawAnimation SHOOT_LAST = RawAnimation.begin().thenPlay(ANIM_SHOOT_LAST);
     private static final RawAnimation BOLT = RawAnimation.begin().thenPlay(ANIM_BOLT);
     private static final RawAnimation RELOAD_TACTICAL = RawAnimation.begin().thenPlay(ANIM_RELOAD_TACTICAL);
     private static final RawAnimation RELOAD_EMPTY = RawAnimation.begin().thenPlay(ANIM_RELOAD_EMPTY);
@@ -285,6 +308,7 @@ public class M1GarandItem extends Item implements GeoItem, GunItem {
         controllers.add(new AnimationController<>(this, CONTROLLER_ACTION, 0,
                         state -> PlayState.STOP)
                 .triggerableAnim(TRIGGER_SHOOT, SHOOT)
+                .triggerableAnim(TRIGGER_SHOOT_LAST, SHOOT_LAST)
                 .triggerableAnim(TRIGGER_BOLT, BOLT)
                 .triggerableAnim(TRIGGER_RELOAD_TACTICAL, RELOAD_TACTICAL)
                 .triggerableAnim(TRIGGER_RELOAD_EMPTY, RELOAD_EMPTY)
@@ -431,11 +455,15 @@ public class M1GarandItem extends Item implements GeoItem, GunItem {
         }
 
         setAmmo(stack, getAmmo(stack) - 1);
-        trigger(player, stack, level, TRIGGER_SHOOT);
+        // The eighth round is its own performance: the op-rod is caught at the rear and the empty clip pings
+        // clear of the well on this shot, not on the reload key. A different clip, so a different action and
+        // a different lock window.
+        boolean last = getAmmo(stack) <= 0;
+        trigger(player, stack, level, last ? TRIGGER_SHOOT_LAST : TRIGGER_SHOOT);
         // Anything the previous shot left pending is this shot's problem now, not the tick loop's.
         clearPending(stack);
-        startAction(stack, ACTION_SHOOT, now);
-        put(stack, TAG_LOCKED_UNTIL, now + SHOOT_TICKS);
+        startAction(stack, last ? ACTION_SHOOT_LAST : ACTION_SHOOT, now);
+        put(stack, TAG_LOCKED_UNTIL, now + (last ? SHOOT_LAST_TICKS : SHOOT_TICKS));
 
         fireBullet(player, level);
     }
@@ -619,8 +647,11 @@ public class M1GarandItem extends Item implements GeoItem, GunItem {
         // 2) The magazine ran dry and the weapon is idle again: a gun with a spare magazine in reach
         //    reloads itself rather than sitting on a dead trigger. Checked after any scheduled action has
         //    had its turn, so a Garand still pings its clip clear and a bolt gun still cycles the case out
-        //    before the reload starts. Held only — a gun left in the pack stays as it was put away.
-        if (selected && getAmmo(stack) <= 0 && getAction(stack).isEmpty() && !isLocked(stack, now)
+        //    before the reload starts. A shot counts as finished the moment its clip has run out — one tick
+        //    before the action itself is cleared — because the idle pose closes the op-rod that the last
+        //    round left caught at the rear, and the rifle would otherwise flick shut and open again between
+        //    the two clips. Held only — a gun left in the pack stays as it was put away.
+        if (selected && getAmmo(stack) <= 0 && !isLocked(stack, now) && shotLapsed(stack, now)
                 && entity instanceof ServerPlayer serverPlayer) {
             beginReload(serverPlayer, stack, serverLevel);
         }
@@ -733,10 +764,25 @@ public class M1GarandItem extends Item implements GeoItem, GunItem {
         return ACTION_RELOAD_TACTICAL.equals(action) || ACTION_RELOAD_EMPTY.equals(action);
     }
 
+    /**
+     * True when the frame is free for the self-loader: nothing is running, or what is running is a shot whose
+     * clip has already played out. A shot is let through so the reload can take over on the same tick the
+     * last-shot clip ends — see the note on rule 2 of {@link #inventoryTick}.
+     */
+    private static boolean shotLapsed(ItemStack stack, long now) {
+        String action = getAction(stack);
+        if (action.isEmpty()) {
+            return true;
+        }
+        boolean shot = ACTION_SHOOT.equals(action) || ACTION_SHOOT_LAST.equals(action);
+        return shot && now >= get(stack, TAG_ACTION_AT) + actionLength(action);
+    }
+
     /** Animation trigger matching an action name. */
     private static String triggerFor(String action) {
         return switch (action) {
             case ACTION_SHOOT -> TRIGGER_SHOOT;
+            case ACTION_SHOOT_LAST -> TRIGGER_SHOOT_LAST;
             case ACTION_BOLT -> TRIGGER_BOLT;
             case ACTION_RELOAD_TACTICAL -> TRIGGER_RELOAD_TACTICAL;
             case ACTION_SINGLE_LOAD -> TRIGGER_SINGLE_LOAD;
@@ -748,6 +794,7 @@ public class M1GarandItem extends Item implements GeoItem, GunItem {
     private static int actionLength(String action) {
         return switch (action) {
             case ACTION_SHOOT -> SHOOT_TICKS;
+            case ACTION_SHOOT_LAST -> SHOOT_LAST_TICKS;
             case ACTION_BOLT -> BOLT_TICKS;
             case ACTION_RELOAD_TACTICAL -> RELOAD_TACTICAL_TICKS;
             case ACTION_RELOAD_EMPTY -> RELOAD_EMPTY_TICKS;
@@ -759,6 +806,7 @@ public class M1GarandItem extends Item implements GeoItem, GunItem {
     private static Map<Integer, RegistryObject<SoundEvent>> soundCuesFor(String action) {
         return switch (action) {
             case ACTION_SHOOT -> SHOOT_SOUNDS;
+            case ACTION_SHOOT_LAST -> SHOOT_LAST_SOUNDS;
             case ACTION_BOLT -> BOLT_SOUNDS;
             case ACTION_RELOAD_TACTICAL -> RELOAD_TACTICAL_SOUNDS;
             case ACTION_RELOAD_EMPTY -> RELOAD_EMPTY_SOUNDS;

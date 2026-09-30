@@ -19,12 +19,21 @@
 单发补弹（手册 "To load a single round"）：拉到底（抛掉膛内活弹）→ 手放一发送进膛 →
 按托弹板 → 手扶着机柄让枪机**可控地**闭锁（不是自由前冲）。
 
+末发（FM 23-5 "When the last round is fired, the empty clip is automatically ejected and the bolt
+remains to the rear"）是**单独一拍击发**，不是换弹的一部分：
+  ① 导气杆退到底即被挂机爪咬住、整段不回位（shoot_last）
+  ② 空漏夹同时被抛夹弹簧顶出井口（那声「叮」）
+  ③ 之后按 R 的空仓换弹（reload_empty）起手就**已经在后退位**，只把新夹压下去、让枪机自行前冲。
+     2026-09-30 之前②被塞在 reload_empty 里（按 R 之后才叮、才弹飞），真机上这两件事都发生在
+     最后一发击发的瞬间。
+
 行程：枪机面必须退过漏夹末弹底缘才有下一发的事 —— 最小量 = .30-06 全弹长 84.8mm ≈ 1.36u。
 （2026-09 修：原来这里写死 1.10u 并注释成"模型几何上限"，实测机匣尾面 z=0.448、
  枪机组尾面 z=-1.760，全行程 1.36u 落点 -0.400，余量 0.85u —— 1.10u 只是当时动画取的值。）
 """
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -32,6 +41,13 @@ ASSETS = os.path.normpath(os.path.join(
     HERE, "..", "src", "main", "resources", "assets", "apocalypse_zombies"))
 ANIM = os.path.join(ASSETS, "animations", "m1_garand.animation.json")
 GEO = os.path.join(ASSETS, "geo", "m1_garand.geo.json")
+JAVA = os.path.normpath(os.path.join(
+    HERE, "..", "src", "main", "java", "com", "apocalypse", "zombies"))
+
+
+def src(rel):
+    with open(os.path.join(JAVA, rel), "r", encoding="utf-8") as fh:
+        return fh.read()
 
 CARTRIDGE = 1.36          # .30-06 全弹长 84.8mm ≈ 1.36u：枪机行程的下限
 BOLT_REAR = 1.36          # 枪机后退位（= 全行程）
@@ -118,6 +134,30 @@ def clip_visible_from(anim):
     return 0.0
 
 
+TOP_Y = 2.556                    # 机匣顶面（两侧壁基面）：它以上应当是敞开的
+WELL_Z = (-3.884, -2.500)        # 井的内档（前后横梁之间）
+
+
+def corridor(bones_by_name, span):
+    """机匣顶面以上的井口通道：返回 (两侧壁净宽半值, 通道里的遮挡件)。"""
+    half, blocked = None, []
+    for bone, b in bones_by_name.items():
+        for c in b.get("cubes", []):
+            x0, y0, z0 = c["origin"]
+            x1, y1, z1 = x0 + c["size"][0], y0 + c["size"][1], z0 + c["size"][2]
+            if y1 <= TOP_Y + 1e-3:
+                continue
+            if z1 <= WELL_Z[0] + 1e-3 or z0 >= WELL_Z[1] - 1e-3:
+                continue
+            if x1 > -span and x0 < span:
+                blocked.append((bone, round(x0, 3), round(y0, 3), round(z0, 3),
+                                round(x1, 3), round(y1, 3), round(z1, 3)))
+                continue
+            edge = x0 if x0 >= 0.0 else -x1
+            half = edge if half is None else min(half, edge)
+    return half, blocked
+
+
 def check(name, cond, detail=""):
     print(("  [OK]  " if cond else "  [FAIL]") + f" {name}" + (f" —— {detail}" if detail else ""))
     return cond
@@ -151,13 +191,23 @@ def main():
             continue
         rear_start, rear_end, _ = rear
 
-        # ① 起手必须先拉到底（不能 t=0 就在后退位，否则枪机瞬移）
+        # ① 起手枪机状态。
+        #    reload_empty：末发（shoot_last）已经把它拉到后退位并挂住，起手**就应该**在后退位 ——
+        #      重复拉一次才是错的（甲案修：原来这里要求 z(0)=0）。
+        #    reload_tactical：井里还有半满夹、枪机没挂住，起手必须还在闭锁位，靠手拉到底。
         z0 = bolt_z_at(a, 0.0)
-        ok &= check(f"{name}: 起手枪机在闭锁位（不是瞬移）", abs(z0) < TOL,
-                    f"z(0)={z0:.3f}")
-        # ② 拉到底发生在换弹动作的前段
-        ok &= check(f"{name}: 0.35s 内完成拉到后退位", rear_start <= 0.35,
-                    f"到位 t={rear_start}")
+        if name == "reload_empty":
+            ok &= check(f"{name}: 起手枪机已挂机在后退位（末发那一发拉到底并挂住，不重复拉）",
+                        abs(z0 - BOLT_REAR) < TOL, f"z(0)={z0:.3f}")
+            ok &= check(f"{name}: 从 0 帧起一直挂住到新夹落位（没有第二次拉栓）",
+                        rear_start <= TOL and rear_end > 0.5,
+                        f"挂住 {rear_start} → {rear_end}")
+        else:
+            ok &= check(f"{name}: 起手枪机在闭锁位（不是瞬移）", abs(z0) < TOL,
+                        f"z(0)={z0:.3f}")
+            # ② 拉到底发生在换弹动作的前段
+            ok &= check(f"{name}: 0.35s 内完成拉到后退位", rear_start <= 0.35,
+                        f"到位 t={rear_start}")
         # ③ 枪机后退期间漏夹才出现/压入
         cv = clip_visible_from(a)
         ok &= check(f"{name}: 漏夹出现时枪机已在后退位", cv >= rear_start - TOL,
@@ -229,6 +279,97 @@ def main():
     peak = bolt_peak(sh)
     ok &= check("shoot: 枪机循环走全行程（能越过漏夹末弹底缘）",
                 peak >= CARTRIDGE - TOL, f"峰值 {peak}")
+
+    print("== shoot_last（末发：挂机 + 空夹当场弹出）==")
+    last = anims.get("shoot_last")
+    ok &= check("shoot_last: 段存在（末发单独一拍）", last is not None)
+    if last:
+        pts = channel(last, "bolt", "position")
+        ok &= check("shoot_last: 导气杆退到底（走全行程）", bolt_peak(last) >= CARTRIDGE - TOL,
+                    f"峰值 {bolt_peak(last):.3f}")
+        ok &= check("shoot_last: 到底后不回位、整段挂在后退位（挂机爪咬住）",
+                    abs(pts[-1][1][2] - BOLT_REAR) < TOL, f"末值 z={pts[-1][1][2]:.3f}")
+        cp = channel(last, "clip_in", "position")
+        ys = [v[1] for _, v in cp]
+        ok &= check("shoot_last: 空漏夹在这一拍里弹离井口（y 只升不降、始终不横滑）",
+                    len(cp) >= 3 and ys[-1] > 1.0 and min(ys) >= -1e-6
+                    and all(abs(v[2]) < 1e-6 and abs(v[0]) < 1e-6 for _, v in cp),
+                    f"y 轨迹 {[round(y, 2) for y in ys]}")
+        vis = [v[0] for _, v in channel(last, "clip_in", "scale")]
+        ok &= check("shoot_last: 弹飞后夹不再可见（收在本段内）",
+                    bool(vis) and vis[0] >= 0.5 and vis[-1] < 0.5,
+                    f"scale {[round(x, 2) for x in vis]}")
+        fly = min(t for t, v in cp if abs(v[1]) > 1e-6)
+        catch = min(t for t, v in pts if abs(v[2] - BOLT_REAR) < TOL)
+        ok &= check("shoot_last: 先挂机再抛夹（抬升晚于枪机到底）", fly >= catch - TOL,
+                    f"抬升 t={fly} / 到底 t={catch}")
+        ok &= check("shoot_last: 时长 1.2s（= Java SHOOT_LAST_TICKS 24 的契约）",
+                    abs(last["animation_length"] - 1.2) < 1e-6,
+                    f"len={last['animation_length']}")
+
+    print("== 空夹弹飞只发生一次（在末发那一拍，不在换弹里）==")
+    re_scale = channel(anims["reload_empty"], "clip_in", "scale")
+    ok &= check("reload_empty: 起手井里已无夹（不再飞第二次）",
+                bool(re_scale) and re_scale[0][1][0] < 0.5,
+                f"scale {[round(v[0], 2) for _, v in re_scale]}")
+    re_cp = channel(anims["reload_empty"], "clip_in", "position")
+    re_y = [v[1] for _, v in re_cp]
+    seat_i = next((i for i, y in enumerate(re_y) if abs(y) < 1e-6), None)
+    ok &= check("reload_empty: 漏夹只走「从井口上方压下」（不横滑、落位后不再上抛）",
+                seat_i is not None and max(re_y[:seat_i + 1]) <= 2.6 + TOL
+                and max(re_y[seat_i:]) <= 0.1 + TOL
+                and all(abs(v[0]) < 1e-6 and abs(v[2]) < 1e-6 for _, v in re_cp),
+                f"y 轨迹 {[round(y, 2) for y in re_y]}")
+
+    print("== 乙案：机匣顶部无「漏夹井盖」（真机拆件表里没有这件东西）==")
+    ok &= check("几何里没有 cover 骨（井盖已按真机删除）", "cover" not in gb)
+    clipb = gb.get("clip_in")
+    half_clip = 0.0
+    if clipb:
+        half_clip = max(abs(min(c["origin"][0] for c in clipb["cubes"])),
+                        abs(max(c["origin"][0] + c["size"][0] for c in clipb["cubes"])))
+    half_mouth, blocked_mouth = corridor(gb, half_clip + 0.01)
+    ok &= check("机匣顶面以上的井口通道无遮挡（漏夹可以直着压下去）", not blocked_mouth,
+                str(blocked_mouth[:3]))
+    ok &= check("井口净宽 ≥ 漏夹半宽 + 0.01u（装得进、不用抬任何盖）",
+                half_mouth is not None and half_mouth >= half_clip + 0.01,
+                f"净宽 {half_mouth} / 漏夹 ±{half_clip:.3f}")
+    with_cover = [n for n, a in anims.items() if "cover" in a.get("bones", {})]
+    ok &= check("所有剪辑里都没有 cover 通道（几何都删了，动作不留残件）", not with_cover,
+                str(with_cover))
+    # 空夹弹飞/末发/压夹三件事都不能靠"抬盖让路"实现
+    lifted = [n for n in anims
+              if any(v[1] > 1e-6 for _, v in channel(anims[n], "cover", "position"))]
+    ok &= check("没有任何剪辑还在抬盖（旧动画靠抬 0.55u 才塞得进夹）", not lifted, str(lifted))
+
+    print("== 甲案：第一人称手部 + Java 接线 ==")
+    gm = src(os.path.join("client", "model", "M1GarandGeoModel.java"))
+    gi = src(os.path.join("item", "M1GarandItem.java"))
+    ok &= check("双手：新增卡榫销目标 LATCH 与甩手点 CLEAR",
+                "float[] LATCH" in gm and "float[] CLEAR" in gm)
+    lt = gm[gm.index("leftHand("):]
+    lt = lt[:lt.index("    }")]
+    ramps = [(float(a), float(b)) for a, b in
+             re.findall(r"ramp\(progress, ([\d.]+)F, ([\d.]+)F\)", lt)]
+    lat = channel(anims["reload_tactical"], "clip_latch", "position")
+    press = min(t for t, v in lat if abs(v[0]) > 0.01) / anims["reload_tactical"]["animation_length"]
+    release = max(t for t, v in lat if abs(v[0]) > 0.01) / anims["reload_tactical"]["animation_length"]
+    tgt = ramps[1] if len(ramps) > 1 else (None, None)
+    ok &= check("左手：拇指下压的起点对齐剪辑里卡榫被按下的那一刻（±0.05≈4 帧）",
+                tgt[0] is not None and abs(tgt[0] - press) <= 0.05,
+                f"卡榫按下 {press:.3f} / 左手下压起点 {tgt[0]}")
+    ok &= check("左手：手掌离开机匣不早于卡榫回位（真机换弹全程按住）",
+                bool(ramps) and ramps[-1][0] >= release - TOL,
+                f"卡榫回位 {release:.3f} / 手掌离开 {ramps[-1][0] if ramps else '-'}")
+    ok &= check("右手：两种换弹都有「压夹后向右上甩开」的 CLEAR 段",
+                gm.count("HandMotion.lerp(p, p, CLEAR, clear)") == 2,
+                f"CLEAR 使用 {gm.count('HandMotion.lerp(p, p, CLEAR, clear)')} 处")
+    ok &= check("Java：末发走独立动作/触发器/时长（shoot_last 接线齐）",
+                all(s in gi for s in ("TRIGGER_SHOOT_LAST", "ACTION_SHOOT_LAST",
+                                      "SHOOT_LAST_TICKS = 24", "SHOOT_LAST_SOUNDS",
+                                      "last ? ACTION_SHOOT_LAST : ACTION_SHOOT")))
+    ok &= check("Java：自动换弹在末发剪辑收尾的同一 tick 接上（不掉回闭锁再开一次）",
+                "shotLapsed(stack, now)" in gi and "shotLapsed(ItemStack stack, long now)" in gi)
 
     print("== 全局：不得使用整体缩放（规范：动画必须骨骼驱动）==")
     bad = []

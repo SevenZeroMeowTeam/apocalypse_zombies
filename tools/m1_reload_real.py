@@ -21,6 +21,20 @@
      底缘，半自动自循环在几何上不成立。几何侧由 tools/m1_garand_geo_real.py 同步 trim 尾部方块。
   ⑤ 新增 single_load 段（单发补弹，手册 "To load a single round"）：拉到底 -> 抛掉膛内活弹 ->
      手放一发送进膛 -> 按托弹板 -> 让枪机可控地闭锁（不是自由前冲，手册要求手扶着机柄）。
+  ⑥ 新增 shoot_last 段（末发，FM 23-5 "When the last round is fired, the empty clip is automatically
+     ejected and the bolt remains to the rear"）：整段沿用 shoot 的后坐/机体/抛壳曲线，只改两处 ——
+     导气杆退到底即被挂机爪咬住、整段停在后退位；空漏夹在**末发当场**被抛夹弹簧顶出井口。
+     2026-09-30 之前的做法是把「叮」+ 空夹弹飞都塞在按 R 之后（reload_empty 里），
+     真机上这两件事都发生在最后一发击发的瞬间，不在换弹时。
+  ⑦ reload_empty：起手枪机**已经在后退位**（挂机爪扣住），不再重复拉一次到底（真机此时井里也
+     已经没有夹了）—— 新漏夹只走「从井口上方压下」一段；1.2917 落位 -> 手撤离 1.4583 -> 自由前冲
+ 1.75 闭锁（②的节拍保留），枪机通道从 1.2917 之前恒为全行程。
+ ⑧ 删除所有剪辑里的 cover 通道：真机机匣顶部没有"漏夹井盖"这件东西（真机拆件表 + TACOM 手册：
+ 漏夹是**直接压下去**、靠左侧卡榫扣住的，没有"打开盖"这一步）。几何已由
+ tools/m1_cover_removal_geo.py 把 cover 骨（3 方块）删掉；动作为什么必须跟着删：
+ 那两条轨把井口从 |x| < 0.190 收窄到 |x| < 0.100，而漏夹宽 ±0.167 ⇒ 旧动画只能靠"抬盖
+ 0.55u"把夹塞进去，且"盖合"时轨的内面正好扎进漏夹里。这一步在本脚本里做（而不是在导出脚本
+ 里），是为了让 dump 就算被旧数据覆盖一遍也自愈成干净状态。
 
 用法：
   python tools/m1_reload_real.py --dry-run   # 只打印计划，不写盘
@@ -45,10 +59,8 @@ PRESS_X = 0.06
 
 # ④ 之后 reload_empty 的枪机通道重写（②：释放推后 2 帧，返程等比）
 BOLT_EMPTY = [
-    (0.0, [0, 0, 0], CATA),
-    (0.0833, [0, 0, 0.12], CATA),
-    (0.2917, [0, 0, NEW_TRAVEL], CATA),
-    (1.2917, [0, 0, NEW_TRAVEL], CATA),          # 拉到底后一直挂住，直到漏夹落位
+    (0.0, [0, 0, NEW_TRAVEL], CATA),             # ⑦ 起手即挂机（末发由 shoot_last 拉到底并挂住）
+    (1.2917, [0, 0, NEW_TRAVEL], CATA),          # 一直挂住，直到新漏夹落位
     (1.4583, [0, 0, 0.88 * K], CATA),            # ← 手撤离后的第一帧才有位移（原 1.375）
     (1.5417, [0, 0, 0.50 * K], CATA),
     (1.5833, [0, 0, 0.20 * K], CATA),
@@ -210,6 +222,47 @@ EMPTY_BODY_ROT = [
 ]
 
 
+# ⑥ 末发 shoot_last（1.2 s = 24 t）：导气杆退到底即被挂机爪咬住，整段不回位；空漏夹当场顶出井口
+SHOOT_LAST_LEN = 1.2
+SHOOT_LAST_BOLT = [
+    (0.0, [0, 0, 0], CATA),
+    (0.0417, [0, 0, 1.137], CATA),
+    (0.0833, [0, 0, NEW_TRAVEL], CATA),
+    (SHOOT_LAST_LEN, [0, 0, NEW_TRAVEL], CATA),  # 挂机：停在后退位（shoot 的 0.125 回位键去掉）
+]
+# 空夹弹飞：沿用 reload_empty 原来那条曲线（0.55 -> 2.2 -> 3.6 u），整段搬到"末发"这一拍
+SHOOT_LAST_CLIP_POS = [
+    (0.0, [0, 0, 0], CATA),
+    (0.1667, [0, 0, 0], CATA),
+    (0.2917, [0, 0.55, 0], CATA),
+    (0.4583, [0, 2.2, 0], CATA),
+    (0.625, [0, 3.6, 0], CATA),
+    (SHOOT_LAST_LEN, [0, 3.6, 0], CATA),
+]
+# 夹在井里全程可见（底下还有一发），飞离画面那一帧收掉（1 帧的 pop-out，同 shoot 的 pop-in 口径）
+SHOOT_LAST_CLIP_SCALE = [
+    (0.0, [1, 1, 1], LIN),
+    (0.5833, [1, 1, 1], LIN),
+    (0.625, [0, 0, 0], LIN),
+]
+
+# ⑦ reload_empty 的漏夹：井里已经没有夹（末发那拍飞掉了），只走"新夹从井口上方压下"
+EMPTY_CLIP_POS = [
+    (0.0, [0, 2.6, 0], CATA),
+    (1.0, [0, 2.6, 0], CATA),
+    (1.1667, [0, 1.1, 0], CATA),
+    (1.2917, [0, 0, 0], CATA),                   # 压到位
+    (1.3333, [0, 0.06, 0], CATA),
+    (1.4167, [0, 0, 0], CATA),
+    (3.0, [0, 0, 0], CATA),
+]
+# 新夹 1.0 s 才出现在井口上方（此前全程不可见；首键非 0 帧 -> 导出时写成 pre+post，1.0 之前恒为 0）
+EMPTY_CLIP_SCALE = [
+    (0.9583, [0, 0, 0], LIN),
+    (1.0, [1, 1, 1], LIN),
+]
+
+
 def keys(rows, first=None):
     """(t, v, i) 列表 -> dump 的键格式；first 给定的通道补一个 0 帧静止键。"""
     out = []
@@ -300,6 +353,32 @@ def apply(doc):
                  "position": keys(SINGLE_MOVE_POS, first=[0, 0, 0])},
     }
     log.append("⑤ single_load: 新增 %.1f s 段（拉到底/抛活弹/送弹/可控闭锁）" % SINGLE_LEN)
+
+    # ⑥ 新增 shoot_last：整段**从 shoot 复制**（后坐/机体/弹壳曲线同源），只换两处 ——
+    #    枪机退到底即挂机不复位、空漏夹当场弹出。已存在时按同一位次整段重建，保证与 shoot 始终同源。
+    src = json.loads(json.dumps(A["shoot"]))
+    src["name"] = "shoot_last"
+    src["length"] = SHOOT_LAST_LEN
+    src["loop"] = "once"
+    src["bones"]["bolt"] = {"position": [dict(k) for k in keys(SHOOT_LAST_BOLT)]}
+    src["bones"]["clip_in"] = {"position": [dict(k) for k in keys(SHOOT_LAST_CLIP_POS)],
+                               "scale": [dict(k) for k in keys(SHOOT_LAST_CLIP_SCALE)]}
+    at = [i for i, a in enumerate(doc["anims"]) if a["name"] == "shoot_last"]
+    if at:
+        doc["anims"][at[0]] = src
+    else:
+        doc["anims"].append(src)
+    log.append("⑥ shoot_last: %.1f s 段（末发挂机 + 空夹当场弹出；机体/弹壳沿用 shoot）" % SHOOT_LAST_LEN)
+
+    # ⑦ reload_empty 的漏夹通道（枪机"起手即挂机"已在 ② 的 BOLT_EMPTY 表里）
+    bone(A["reload_empty"], "clip_in")["position"] = [dict(k) for k in keys(EMPTY_CLIP_POS)]
+    bone(A["reload_empty"], "clip_in")["scale"] = [dict(k) for k in keys(EMPTY_CLIP_SCALE)]
+    log.append("⑦ reload_empty: 漏夹只走「从井口上方压下」，空夹不再在这里飞第二次")
+
+    # ⑧ 机匣顶部无盖（几何里已删 cover 骨）⇒ 每个剪辑里的 cover 通道一起删掉。
+    dropped = [a["name"] for a in doc["anims"] if a["bones"].pop("cover", None) is not None]
+    log.append("⑧ cover: 从 %d 段里删掉漏夹井盖通道%s"
+               % (len(dropped), ("（" + "、".join(dropped) + "）") if dropped else ""))
     return log
 
 

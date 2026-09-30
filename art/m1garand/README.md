@@ -208,23 +208,26 @@ v2 的几何是**估的**，实测后误差很大。v3 全部坐标来自 `ref_m
 - 16u = 1 block；枪口 = **−Z**，上 = **+Y**，原点 = **机匣中心**。
 - 圆形件一律由图元生成（枪管及其附件 102 个方块是分段圆管 + 环，无手工拼圆）。
 - 动画只用骨骼 **rotation / position**；隐藏件用**本骨** `scale 0`（漏夹 / 弹壳 / 新弹），从不整体缩放。
-- 骨名：`root / move / body / barrel / bolt / cover / clip_in / magazine / casing / trigger / stock /
-  additional_magazine / constraint / camera`（后三个是 TaCZ 约定的挂载空组，导出时保持空）。
+- 骨名：`root / move / body / clip_latch / barrel / bolt / clip_in / magazine / casing / trigger /
+  stock / additional_magazine / constraint / camera`（后三个是 TaCZ 约定的挂载空组，导出时保持空）。
+  `clip_latch` 是 2026-09 按真机补的漏夹卡榫销；**`cover`（漏夹井盖）已于 2026-09-30 删除** ——
+  真机机匣顶部没有这件东西，见下文「v7 甲+乙」。
 
 **X 手性（重要，容易看错）**：Blockbench **工程空间**与导出的 `geo.json` **X 相反** ——
 工程里 `bolt` pivot `+0.26`，geo 里是 `−0.26`；`casing` 同理 `+0.30 → −0.30`（Y/Z 不变，是纯 X 镜像）。
 所以导出后枪栓与抛壳窗和 AWM 同在 **−X** 侧，两把枪手性一致，导气杆手柄落在**射手右侧**——
 正是真加兰德的样子。`美术规范.md` 换算表里「+X = 射手右侧」与发布数据不符，与 AWM 的待办 8 是同一条。
 
-## 动画（7 段，全部原创）
+## 动画（8 段，全部原创）
 
 | 名称 | 时长 | 循环 | 说明 |
 |---|---|---|---|
 | `static_idle` | 2.0 s | loop | 持枪待机 |
 | `draw` | 1.0 s | once | 掏枪（尚未接线） |
-| `shoot` | 0.6 s | once | 后坐 + **枪机自循环**：真加兰德半自动，导气杆随每发自己前后走一遍（**全行程 1.36u**），不需要额外拉栓动作 |
+| `shoot` | 0.6 s | once | 后坐 + **枪机自循环**：真加兰德半自动，导气杆随每发自己前后走一遍（**全行程 1.36u**）再自行回位 |
+| `shoot_last` | 1.2 s | once | **末发**（v7 新增）：同一套后坐/机体/弹壳曲线，但导气杆退到底即被**挂机爪咬住、整段不回位**，空漏夹在**这一拍当场**被抛夹弹簧顶出井口（那声「叮」）—— 真机 FM 23-5 的 "the empty clip is automatically ejected and the bolt remains to the rear" |
 | `bolt` | 1.1 s | once | 手动拉导气杆（纯平移，**全行程 1.36u**） |
-| `reload_empty` | 3.0 s | once | 空仓：**先把枪机拉到底并挂住**（不拉到底，井口被枪机挡死，漏夹压不进去）→ 漏夹盖抬起 → 空漏夹向上弹飞（真机标志性的 **ping**）→ 新漏夹自上而下压入弹夹井（**纯平移，不翻转**）→ 盖合 → **落位后留 4 帧抽手**（松压 + 手撤离）→ 枪机被漏夹**自动释放**前冲 → 掌根拍拉机柄后端到位闭锁（1.75 s） |
+| `reload_empty` | 3.0 s | once | 空仓：**起手枪机就已经挂在后退位**（末发那一发拉到底并挂住了，v7 起不再重复拉）→ 新漏夹自上而下压入弹夹井（**纯平移，不翻转**）→ **落位后留 4 帧抽手**（松压 + 手撤离）→ 枪机被漏夹**自动释放**前冲 → 掌根拍拉机柄后端到位闭锁（1.75 s）。井里出过的那个空夹在**末发**那一拍已经飞走了，这里不再飞第二次 |
 | `reload_tactical` | 2.6 s | once | 未空仓：**先拉到底并保持按住**（松手残夹会掉，手册原文见 v6）→ 膛内**活弹被抛出** → 左手**按下卡榫销**（`clip_latch`，0.2917 s）→ 残夹脱出 → 新漏夹自上而下压入（**纯平移**）→ **松卡榫**（0.7917 s）→ 留 5 帧抽手 → 枪机自动前冲 → 拍到位闭锁 |
 | `single_load` | 1.5 s | once | 单发补弹（Shift+R）：拉到底、抛掉膛内活弹 → 手放一发送进膛 → **扶着机柄可控闭锁**（不是自由前冲）；不动漏夹 |
 
@@ -257,8 +260,33 @@ v2 的几何是**估的**，实测后误差很大。v3 全部坐标来自 `ref_m
 新夹压入 → 松卡榫 → 抽手 → 前冲）；半满漏夹**不能**直接补满这件事仍然成立，但玩家有了手册里的
 **单发补弹**（Shift+R，`single_load`）：不动漏夹，只在膛里加一发。两条路都保住了。
 
+### v7（2026-09-30）甲 + 乙：按真机重做末发与"盖"
+
+真机依据（FM 23-5《M1 Garand 步枪操作手册》+ 美陆军 TACOM 2013 换弹教学 + 真机拆件表）：
+
+| # | 真机 | v6 之前 | v7 处置 |
+|---|---|---|---|
+| ① | 末发击发：空漏夹**自动**弹出、枪机**留在后方**；装填时把它放回即可 | 「叮」+ 空夹弹飞都塞在按 R 之后 | **甲**：新增 `shoot_last`（独立一拍），`reload_empty` 起手即挂机 |
+| ② | 装填：「place a full clip … press the clip straight down into the receiver until it catches」，**没有"打开盖"这一步** | 井口有一块"漏夹井盖"，必须先抬 **0.55u（34mm）** 才塞得进夹 | **乙**：删掉这件几何（真机拆件表里没有） |
+| ③ | 战术换弹：左掌盖机匣、**左拇指按卡榫销**（销是唯一解锁机构） | 销子自己动，两只手都没碰它 | **甲**：左手第一人称编排对齐 0.112，右手压夹后向右上甩开 |
+
+**甲（手部 + 剪辑，不动几何）**：`tools/m1_reload_real.py` 新增 ⑥⑦；`M1GarandItem` 加
+`ACTION_SHOOT_LAST / TRIGGER_SHOOT_LAST / SHOOT_LAST_TICKS / SHOOT_LAST_SOUNDS` 与 `shotLapsed()`；
+`M1GarandGeoModel` 加 `LATCH`（(0.26, 1.90, −2.30)，贴在机匣左侧的销位）与 `CLEAR`
+（(−0.78, 3.10, −2.30)，向右上甩开的位置）。
+
+**乙（动几何，独立一拍）**：`tools/m1_cover_removal_geo.py` 删掉 `cover` 骨（3 方块：两条收窄井口的
+轨 + 一根横在井口正中的提手）并同步 7 个剪辑里的 `cover` 通道（导出的 ⑧ 步自愈扫除）。删前实测：
+那两条轨把井口从 |x| < 0.190 收窄到 |x| < 0.100，而漏夹宽 ±0.167 —— 既压不进去，"盖合"时轨的内面
+还正好扎进漏夹里（穿模）。删后井口净宽 0.190u（漏夹余量 1.4mm），通道无遮挡，抬盖这一步随之取消。
+骨 15 → 14、方块 347 → 344，其余骨的方块与 uv 一字未动（工具自带这条不变量）。
+删前的几何留档 `art/m1garand/m1_garand.geo.pre-cover.bak.json`（与 `art/awm/*.pre-9217.bak.json` 同款）。
+
+**没改的**：空夹弹飞仍然是**纯竖直**（`tools/reload_press_vertical.py` 的口径，x/z 恒为 0）；
+末发与空仓换弹的行程仍是 1.36u = 85mm。
+
 **时长契约**：Java 的 `*_TICKS` 必须等于 clip 长度 × 20 —— `tools/check_gun_resources.py` 逐条核，
-当前 `shoot 12 / bolt 22 / reload_tactical 52 / reload_empty 60 / single_load 30` 全部相等。
+当前 `shoot 12 / shoot_last 24 / bolt 22 / reload_tactical 52 / reload_empty 60 / single_load 30` 全部相等。
 改动画时长必须同一个提交里改 Java。
 
 ## 自检
@@ -281,8 +309,12 @@ python tools/bbmcp_call.py call risky_eval '{"code":"(function(){var fs=require(
 ```bash
 python tools/check_gun_resources.py     # 路径存在 / 骨名对齐 / ANIM_ 常量 / 512² / damage_type / lang / 时长契约
 python tools/check_m1_reload.py         # M1 换弹/拉栓机构自检：真机顺序不变量（先拉到底→漏夹到位→自动前冲→拍击）
-                                        #   + 全行程 1.36u 与几何余量 + 卡榫机构 + single_load
+                                        #   + 全行程 1.36u 与几何余量 + 卡榫机构 + single_load + 末发 shoot_last
+                                        #   + v7 甲案：左手按销的时刻对齐 clip_latch、右手压夹后向右上甩开、
+                                        #     末发接线（TRIGGER/ACTION/时长/音效表）与"同一 tick 接上自动换弹"
+                                        #   + v7 乙案：几何无 cover 骨、机匣顶面以上井口通道无遮挡、所有剪辑无 cover 通道
                                         #   + 落位后有抽手空档（≥2 帧）+ scale 只出现 0/1（禁止整体缩放）
+python tools/m1_cover_removal_geo.py --check   # 乙案几何工具（删 cover 骨）：可复跑，自带敞口/净宽不变量
 ```
 
 ## Java 侧（已接入）
@@ -305,6 +337,20 @@ NBT 字段与 AWM 同名同义：`Ammo / Pending / PendingAt / Action / ActionAt
 所以 `tryFire` 只记一个 `ACTION_SHOOT`（拿它的机械音效与 0.6 s 锁），**不**再排拉栓动作。
 打空仓时只出空击声，不排任何动作。
 
+**v7 末发（`shoot_last`）**：`tryFire` 在扣下**最后一发**时改排 `ACTION_SHOOT_LAST`（1.2 s 锁、
+自己的触发器与音效表 `SHOOT_LAST_SOUNDS`，叮落在这 0.25 s）。原来「叮 + 空夹弹飞」塞在
+`reload_empty` 里（按 R 之后），现在归到击发那一拍。**接线要害**：闲置姿态会把导气杆收回闭锁位，
+而末发把它留在后退位 —— 若等动作清掉再自动换弹，枪机会在两次剪辑之间**闪一下闭锁再开**。
+所以 `inventoryTick` 的自动换弹判据从「动作已清空」改为 `shotLapsed()`：**射击剪辑一播完就交棒**，
+`reload_empty` 在同一 tick 起步，整段挂机不闪。
+
+**v7 双手（第一人称）**：目标点表 `M1GarandGeoModel`（`GRIP / CLIP / BOLT / SUPPORT / LATCH / CLEAR`），
+时刻按 clip 长度归一化。空仓换弹：右手**不再去拉导气杆**（枪机已挂住），直接取新夹压下、落位（0.4306）
+后**向右上甩开**再收回握把（FM 23-5 "Swing the right hand up and to the right to clear the bolt"）；
+战术换弹：左手离开护木、掌根贴机匣左侧、**拇指在 0.112 同步按下卡榫销**并按住到销子回位
+（TACOM 2013 "Place the palm of the left hand over the receiver and depress the clip latch with the
+left thumb"），右手压夹后同样甩开。门禁把这两条时刻对齐关系都断言了。
+
 ## 声音（借用，见仓库根 `NOTICE.md`）
 
 这把枪**没有**自己的录音，全部触发 `registry/ModSounds` 里那批 TaCZ AWM 文件（CC BY-NC-ND 4.0）：
@@ -323,7 +369,8 @@ NBT 字段与 AWM 同名同义：`Ammo / Pending / PendingAt / Action / ActionAt
 
 - **左键** = 开火，0.6 s 一发（12 ticks），按住按此节奏连发；打空只出空击声。
 - **右键（按住）** = 机瞄：0.2 s 抬枪，视场角收到 **50°**；机瞄不画镜筒、**保留原版准星**。
-- **R** = 换弹：膛内有弹走 `reload_tactical`（2.6 s，含卡榫与抛活弹），打空走 `reload_empty`（3.0 s，含 ping 与自动闭锁）。
+- **第七发（末发）之后**：枪机挂在后退位、空漏夹当场「叮」出去，1.2 s 后自动进 `reload_empty`（不用自己按 R）。
+- **R** = 换弹：膛内有弹走 `reload_tactical`（2.6 s，含卡榫与抛活弹），打空走 `reload_empty`（3.0 s，新夹压下后枪机自行闭锁）。
 - **Shift + R** = **单发补弹**（`single_load`，1.5 s）：不换漏夹，只在膛里加一发（余弹 +1，上限 8）。
 - 静止时 `static_idle` 循环。
 
@@ -347,7 +394,6 @@ NBT 字段与 AWM 同名同义：`Ammo / Pending / PendingAt / Action / ActionAt
    | `WeaponMount.SIGHT_Y` | `2.80` |
    | `WeaponMount.EJECT`（`casing` pivot，弹壳中心） | `(−0.30, 2.62, −1.63)` |
    | `WeaponMount.BOLT_PIVOT` | `(−0.26, 2.49, −2.60)` |
-   | `WeaponMount.COVER_PIVOT` | `(0, 2.56, −0.82)` |
    | `WeaponMount.CLIP_PIVOT` | `(0, 2.20, −3.31)` |
    | `WeaponMount.MAGAZINE_PIVOT` | `(0, 1.40, −2.72)` |
    | `WeaponMount.TRIGGER_PIVOT` | `(0, 1.47, −0.70)` |
@@ -374,7 +420,7 @@ NBT 字段与 AWM 同名同义：`Ammo / Pending / PendingAt / Action / ActionAt
    （画面右缘 = +1.78、下缘 = −1.00）；当前值让右手与换弹动作刚好在画面边缘露出来。
    别处不要再加缩放（`美术规范.md` §5：动骨骼，不动整模）。
 3. 加兰德音色（见「声音」）。
-4. `draw` / `put_away` / `inspect` 未做（AWM 有十段，M1 目前**七段**：v6 加了 `single_load`）；
+4. `draw` / `put_away` / `inspect` 未做（AWM 有十段，M1 目前**八段**：v6 加 `single_load`、v7 加 `shoot_last`）；
    `static_idle` 是静止的，持枪摆动同样缺一套程序化微动（同 AWM 待办 7）。
 5. `美术规范.md` 手性那行待修订（同 AWM 待办 8）。
 

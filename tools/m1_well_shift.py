@@ -162,10 +162,15 @@ def main() -> int:
     # 注意 pivot 语义：clip_in / casing 的 pivot 是"自身中心"，必须随几何一起走
     # （旋转/翻转都以它为中心）；cover 的 pivot 是"机匣后端上缘"这个固定基准，
     # 盖板动作是纯平移，pivot 留在 Z(799) 才能在重新生成时与生成器一致。
+    # 2026-09-30：cover（漏夹井盖）已由 tools/m1_cover_removal_geo.py 从几何里删掉（真机机匣顶部没有
+    # 这件东西，漏夹是直着压下去、靠左侧卡榫扣住的）。本脚本对"没有盖"的几何照样能跑：盖相关的
+    # 平移/不变量/报告全部跳过。
+    has_cover = "cover" in bones
     if not already:
-        for bone, dz, label, move_pivot in (("cover", WELL_DZ, "漏夹盖", False),
-                                            ("clip_in", WELL_DZ, "漏夹", True),
-                                            ("casing", CASING_DZ, "弹壳", True)):
+        moved3 = ([("cover", WELL_DZ, "漏夹盖", False)] if has_cover else []) + [
+            ("clip_in", WELL_DZ, "漏夹", True),
+            ("casing", CASING_DZ, "弹壳", True)]
+        for bone, dz, label, move_pivot in moved3:
             b = bones[bone]
             for cube in b.get("cubes", []):
                 cube["origin"][2] += dz
@@ -174,9 +179,12 @@ def main() -> int:
             notes.append(f"{label}({bone}): 几何 Δz {dz:+.3f}u，pivot {b['pivot'][2]:.3f}"
                          f"{'（随几何）' if move_pivot else '（固定基准，不变）'}")
     # 自愈：盖板 pivot 必须锁在"机匣后端上缘" Z(799)（固定基准，动画是纯平移）
-    cover_pivot_z0 = bones["cover"]["pivot"][2]
-    bones["cover"]["pivot"][2] = Z(799)
-    pivot_fixed = not near(cover_pivot_z0, Z(799))
+    if has_cover:
+        cover_pivot_z0 = bones["cover"]["pivot"][2]
+        bones["cover"]["pivot"][2] = Z(799)
+        pivot_fixed = not near(cover_pivot_z0, Z(799))
+    else:
+        pivot_fixed = False
 
     # 自愈：枪机通道不被井组带走
     for name, cube in revert.items():
@@ -213,13 +221,14 @@ def main() -> int:
 
     # --- 5. 不变量校验（针对应用后的内存状态）------------------------------------
     clip = bone_bbox(bones, "clip_in")
-    cover = bone_bbox(bones, "cover")
+    cover = bone_bbox(bones, "cover") if has_cover else None
     casing = bone_bbox(bones, "casing")
     port = (Z(700), Z(795))
     check(clip[2] >= WELL_NEW_F - 0.08 and clip[5] <= WELL_NEW_B + 0.08,
           f"漏夹越出漏夹井：clip z {clip[2]:.3f}…{clip[5]:.3f} 不在井 {WELL_NEW_F:.3f}…{WELL_NEW_B:.3f} 内")
-    check(near(cover[2], WELL_NEW_F, 0.05) and near(cover[5], WELL_NEW_B, 0.05),
-          f"漏夹盖没压在井口：cover z {cover[2]:.3f}…{cover[5]:.3f} ≠ 井 {WELL_NEW_F:.3f}…{WELL_NEW_B:.3f}")
+    if cover is not None:
+        check(near(cover[2], WELL_NEW_F, 0.05) and near(cover[5], WELL_NEW_B, 0.05),
+              f"漏夹盖没压在井口：cover z {cover[2]:.3f}…{cover[5]:.3f} ≠ 井 {WELL_NEW_F:.3f}…{WELL_NEW_B:.3f}")
     check(casing[2] >= port[0] - 0.05 and casing[5] <= port[1] + 0.05,
           f"弹壳不在抛壳窗内：casing z {casing[2]:.3f}…{casing[5]:.3f} 不在窗 {port[0]:.3f}…{port[1]:.3f}")
     check(any(near(bb[5], WELL_NEW_B, 0.02) for bb in
@@ -233,9 +242,10 @@ def main() -> int:
     pv = bones["clip_in"]["pivot"][2]
     check(WELL_NEW_F - 0.5 < pv < WELL_NEW_B + 0.5,
           f"漏夹 pivot {pv:.3f} 不在井内（动画偏移全部相对它，必须随几何一起移动）")
-    check(near(bones["cover"]["pivot"][2], Z(799), 1e-6),
-          f"漏夹盖 pivot {bones['cover']['pivot'][2]:.3f} 不在机匣后端上缘 {Z(799):.3f}"
-          f"（盖板动作是纯平移，pivot 是固定基准，须与生成器一致）")
+    if has_cover:
+        check(near(bones["cover"]["pivot"][2], Z(799), 1e-6),
+              f"漏夹盖 pivot {bones['cover']['pivot'][2]:.3f} 不在机匣后端上缘 {Z(799):.3f}"
+              f"（盖板动作是纯平移，pivot 是固定基准，须与生成器一致）")
     for clip_name in ("reload_empty", "reload_tactical"):
         ch = anim["animations"][clip_name]["bones"].get("clip_in", {})
         for t, key in (ch.get("rotation") or {}).items():
@@ -255,8 +265,10 @@ def main() -> int:
         print("   ·", line)
     print("\n=== 应用后不变量 ===")
     print(f"  漏夹井 z {WELL_NEW_F:.3f}…{WELL_NEW_B:.3f}")
-    print(f"  漏夹   z {clip[2]:.3f}…{clip[5]:.3f}   漏夹盖 z {cover[2]:.3f}…{cover[5]:.3f}"
-          f"   （85mm 漏夹 / 100mm 井）")
+    print(f"  漏夹   z {clip[2]:.3f}…{clip[5]:.3f}"
+          + (f"   漏夹盖 z {cover[2]:.3f}…{cover[5]:.3f}" if cover is not None
+             else "   漏夹盖：已删除（真机机匣顶部无盖，见 tools/m1_cover_removal_geo.py）")
+          + "   （85mm 漏夹 / 100mm 井）")
     print(f"  弹壳   z {casing[2]:.3f}…{casing[5]:.3f}   抛壳窗 {port[0]:.3f}…{port[1]:.3f}")
     for line in notes:
         print("  ·", line)
