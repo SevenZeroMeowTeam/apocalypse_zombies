@@ -291,9 +291,10 @@ mods.toml + MANIFEST）/ 增 0 / 删 0。
 - **git / CI**：main `71493fd`（5 个提交：`fix(boss)` / `feat(boss)` / `test(boss)` / `chore(release)` /
   `docs(readme)`）。CI run `36680092676` 成功，发版 job 产出 Release **`v1.1.46`**（latest），附件
   `apocalypse_zombies-1.1.46-clean.jar` **1,407,968 字节**。
-  ⚠️ **别拿 md5 当发布件的长期指纹**：每次推 main 都会重建并以 `--clobber` 覆盖同一附件，jar 里的构建时间戳
-  让它逐轮不等 —— 首轮 run `36680092676` → `efc76eb0…`，台账提交那轮 run `36680331578` → `8efa1bce…`
-  （**字节数两轮都是 1,407,968**）。认 **tag `v1.1.46`** + 下面那条内容核验，别认 md5。
+  ⚠️ **别拿 md5 当发布件的长期指纹**：每次推 main 都会重建并以 `--clobber` 覆盖同一附件。实测三轮的 md5：
+  首轮 run `36680092676` → `efc76eb0…`，其后两轮（`36680331578` / `36680593359`）→ **都是 `8efa1bce…`**
+  —— 也就是说同一份源码下 jar 是**可复现**的，首轮的差异来自那一次 push 与之后的仓库状态不同（三轮字节数都是
+  **1,407,968**）。结论不变：**认 tag `v1.1.46`** + 下面那条内容核验，别把 md5 写进任何长期文档。
 - **发布件回读核验**（把附件拉下来逐条验）：`mods.toml` = `1.1.46`；Boss 动画 **12 段**（含 4 个新剪辑）；
   `HordeOverlord.class` 含 4 个剪辑名字面量与 `starved`；`EliteAbilityDriver.class` 含 `onStarved` /
   `starvationTicks`；`geo` / `anim` / `png` 与本地 `art/boss/` **md5 三向相等**
