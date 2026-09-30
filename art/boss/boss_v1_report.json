@@ -1776,19 +1776,24 @@
       "detail": ""
     },
     {
-      "name": "Java 常量 BOSS_MAX_HEALTH == 2500.0",
+      "name": "Java 常量 BOSS_MAX_HEALTH == 4200.0",
       "pass": true,
-      "detail": "java=2500.0"
+      "detail": "java=4200.0"
     },
     {
-      "name": "Java 常量 PHASE2_HP == 1666.0",
+      "name": "Java 常量 PHASE2_HP 派生自 BOSS_MAX_HEALTH 且 == 2800.0",
       "pass": true,
-      "detail": "java=1666.0"
+      "detail": "java=BOSS_MAX_HEALTH * 2.0F / 3.0F → 2800.0"
     },
     {
-      "name": "Java 常量 PHASE3_HP == 833.0",
+      "name": "Java 常量 PHASE3_HP 派生自 BOSS_MAX_HEALTH 且 == 1400.0",
       "pass": true,
-      "detail": "java=833.0"
+      "detail": "java=BOSS_MAX_HEALTH / 3.0F → 1400.0"
+    },
+    {
+      "name": "Java 侧抬高了 MAX_HEALTH 上限（ModEntities 反射抬 maxValue；只写大常量或挂修饰符都无效）",
+      "pass": true,
+      "detail": ""
     },
     {
       "name": "Java 剪辑名 \"idle\" 存在",

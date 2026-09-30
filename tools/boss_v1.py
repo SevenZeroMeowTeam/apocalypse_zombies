@@ -11,7 +11,7 @@ art/boss/*（台账副本） + src/main/resources/assets/... （游戏读取）�
   动画全部骨骼驱动（rotation/position），**没有任何 scale 通道** —— 整体缩放式假动画一律禁止。
   贴图 512×512（Minecraft 只接受 2 的幂正方形），逐面 UV 图集，密度见 DENSITY_TRIES。
 
-Boss 结构（2500 HP / 三阶段）：
+Boss 结构（4200 HP / 三阶段）：
   Phase 1 (>66%)  : attack_melee（巨斧横扫） / attack_ranged（骨刺齐射）
   Phase 2 (≤66%)  : + summon（召唤尸群） / skill_quake（踏地冲击波）
   Phase 3 (≤33%)  : + skill_rage（血怒变身，进场） / 技能强化；skill_death（亡语崩解）
@@ -41,9 +41,12 @@ FACE_TPU = 12                  # 脸 = 4px/u，五官在这个体量上才读得
 DENSITY_TRIES = (3, 4, 5, 6)    # 分母从 3 起步（=2px/u），装不下才逐档降密度
 
 # ---- Boss 硬数字（Java 侧必须一字不差地同步） ----
-BOSS_MAX_HEALTH = 2500.0
-PHASE2_HP = 1666.0             # 2500 × 2/3
-PHASE3_HP = 833.0              # 2500 × 1/3
+BOSS_MAX_HEALTH = 4200.0
+# 分段阈值在 Java 侧是「派生表达式」（改上限即跟着走），这里也只存比例 —— 两边都不许各写各的字面量。
+PHASE2_RATIO = 2.0 / 3.0       # 4200 → 2800
+PHASE3_RATIO = 1.0 / 3.0       # 4200 → 1400
+PHASE2_HP = BOSS_MAX_HEALTH * PHASE2_RATIO
+PHASE3_HP = BOSS_MAX_HEALTH * PHASE3_RATIO
 BOSS_WAVE = 5                  # 尸潮第 5 波（原 4 波 → 5 波）
 HORDE_WAVES = 5
 
@@ -987,11 +990,39 @@ def main():
         m = re.search(rf"{name}\s*=\s*(-?[0-9.]+)F", text)
         return float(m.group(1)) if m else None
 
-    for cname, want in (("BOSS_MAX_HEALTH", BOSS_MAX_HEALTH), ("PHASE2_HP", PHASE2_HP),
-                        ("PHASE3_HP", PHASE3_HP)):
-        got = jconst(cname, jzt)
-        check(f"Java 常量 {cname} == {want}", got is not None and abs(got - want) < 1e-6,
-              f"java={got}")
+    def jexpr(name, text):
+        """取 Java 常量声明的右值表达式：分段阈值在 Java 侧是派生式，只认字面量会误报。"""
+        m = re.search(rf"{name}\s*=\s*([^;]+);", text)
+        return m.group(1).strip() if m else ""
+
+    def jeval(expr, text):
+        """只放行数字 / BOSS_MAX_HEALTH / 四则运算的算术式求值。"""
+        if not re.fullmatch(r"[0-9A-Za-z_.\s+\-*/()]+", expr or ""):
+            return None
+        base = jconst("BOSS_MAX_HEALTH", text)
+        if base is None:
+            return None
+        safe = expr.replace("BOSS_MAX_HEALTH", repr(base)).replace("F", "").replace("D", "")
+        try:
+            return float(eval(safe, {"__builtins__": {}}, {}))
+        except Exception:
+            return None
+
+    got_max = jconst("BOSS_MAX_HEALTH", jzt)
+    check(f"Java 常量 BOSS_MAX_HEALTH == {BOSS_MAX_HEALTH}",
+          got_max is not None and abs(got_max - BOSS_MAX_HEALTH) < 1e-6, f"java={got_max}")
+    for cname, want in (("PHASE2_HP", PHASE2_HP), ("PHASE3_HP", PHASE3_HP)):
+        expr = jexpr(cname, jzt)
+        got = jeval(expr, jzt)
+        check(f"Java 常量 {cname} 派生自 BOSS_MAX_HEALTH 且 == {want}",
+              "BOSS_MAX_HEALTH" in expr and got is not None and abs(got - want) < 1e-6,
+              f"java={expr or '读不到'} → {got}")
+    # 原版 MAX_HEALTH 夹到 1024（且 calculateValue() 结尾还会再夹一次）：总量超上限就必须抬 maxValue
+    if BOSS_MAX_HEALTH > 1024.0:
+        jme = ROOT / "src/main/java/com/apocalypse/zombies/registry/ModEntities.java"
+        jmet = jme.read_text(encoding="utf-8") if jme.exists() else ""
+        check("Java 侧抬高了 MAX_HEALTH 上限（ModEntities 反射抬 maxValue；只写大常量或挂修饰符都无效）",
+              "liftHealthCap" in jmet)
     for clip in [c.name for c in clips]:
         check(f'Java 剪辑名 "{clip}" 存在', f'"{clip}"' in jzt, "HordeOverlord 里的常量")
     for clip, enum_name, strike in ABILITY_MAP:

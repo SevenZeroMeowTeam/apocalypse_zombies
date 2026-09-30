@@ -8,7 +8,13 @@ Geo 路径写错 -> 模型不渲染（游戏里只看到空气/裸实体，日�
 最后一波没把 Boss 算进 LIVING -> 打死它之前这一波永远不结束（或者反过来，打了不算数）。
 
 十一类断言：
-  1. 阶段阈值自洽：PHASE2/PHASE3 与 BOSS_MAX_HEALTH 的 2/3、1/3 一致
+  1. 阶段阈值自洽：PHASE2/PHASE3/亡语线**派生自** BOSS_MAX_HEALTH（2/3、1/3、15%），
+     且 `phaseFor()` 比的是运行时上限的比例而不是写死的绝对数
+  1a. 生命上限：总生命 > 原版 1024 时必须在 `ModEntities` 里反射抬 `RangedAttribute.maxValue`
+     （且**不能**启用 AT —— FG 会要一个本链不生成的 `_at_<hash>` 变体）。
+     只写大常量或挂修饰符都是静默无效的 —— 满血会被判成 Phase 2（1.1.42 实测缺陷）
+  1a2. 出生状态钉死：`finalizeSpawn` 回满血 + 按满血重算阶段 + 计数清零；阶段推进逐级，不跨级
+  1b. 设计数值：防御 15 / 韧性 12 / 攻击 15 / 召唤 5，且属性表真的引用常量（不超原版上限 30/20）
   2. `EliteAbility` 六条新枚举在**末尾**（插中间 = ordinal 错位），且时长/命中点与动画一致
   3. `HordeOverlord` implements GeoEntity，8 个剪辑常量齐全，控制器挂在 movement/cast 上
   4. 发布动画**零 scale 通道**，且每个被驱动的骨骼在 geo 里都存在
@@ -67,29 +73,106 @@ def main():
     config_src = read(os.path.join(JAVA, 'Config.java'))
     geo = json.loads(read(GEO))
     anim = json.loads(read(ANIM))
+    build_src = read(os.path.join(ROOT, 'build.gradle'))
 
     # ---------------------------------------------------------------- 1. 阶段阈值
     def const(name, src=boss_src):
         m = re.search(r'\b%s\s*=\s*(-?[0-9.]+)F' % name, src)
         return float(m.group(1)) if m else None
 
+    def expr_of(name, src=boss_src):
+        """常量声明的右值表达式（原样，不剥后缀）—— 用来证明它是「派生」而不是各写各的字面量。"""
+        m = re.search(r'\b%s\s*=\s*([^;]+);' % name, src)
+        return m.group(1).strip() if m else ''
+
+    def eval_expr(expr, max_hp):
+        """把 Java 算术式当 Python 表达式求值：只放行数字 / BOSS_MAX_HEALTH / 四则运算。"""
+        if not re.fullmatch(r'[0-9A-Za-z_.\s+\-*/()]+', expr or ''):
+            return None
+        safe = expr.replace('BOSS_MAX_HEALTH', repr(max_hp)).replace('F', '').replace('D', '')
+        try:
+            return float(eval(safe, {'__builtins__': {}}, {}))
+        except Exception:
+            return None
+
     max_hp = const('BOSS_MAX_HEALTH')
-    p2, p3 = const('PHASE2_HP'), const('PHASE3_HP')
-    if max_hp != 2500.0:
-        failures.append('BOSS_MAX_HEALTH = %s，需求是 2500' % max_hp)
-    for name, got, want in (('PHASE2_HP', p2, 2500.0 * 2 / 3), ('PHASE3_HP', p3, 2500.0 / 3)):
-        if got is None or abs(got - round(want, 1)) > 1.0:
-            failures.append('%s = %s，应约等于 2500 的 2/3 与 1/3（%.1f）' % (name, got, want))
+    if max_hp is None or max_hp <= 0:
+        failures.append('读不到 BOSS_MAX_HEALTH（需求：正数总生命）')
+        max_hp = 0.0
+    # 阈值必须由上限推导：各写各的字面量 = 改上限时静默分叉（1.1.42 的 1024 事故就是这一类）
+    for name, ratio, why in (('PHASE2_HP', 2.0 / 3.0, '上限的 2/3'),
+                             ('PHASE3_HP', 1.0 / 3.0, '上限的 1/3'),
+                             ('DEATH_WAIL_HP', 0.15, '上限的 15%')):
+        expr = expr_of(name)
+        if 'BOSS_MAX_HEALTH' not in expr:
+            failures.append('%s 没有派生自 BOSS_MAX_HEALTH（现在是「%s」）：改上限会静默分叉'
+                            % (name, expr or '读不到'))
+            continue
+        got = eval_expr(expr, max_hp)
+        if got is None or abs(got - max_hp * ratio) > 1.0:
+            failures.append('%s = %s，应等于 %s（%.1f）' % (name, expr, why, max_hp * ratio))
     if not re.search(r'PHASE_COUNT\s*=\s*3\b', boss_src):
         failures.append('HordeOverlord.PHASE_COUNT 不是 3（需求：三阶段）')
-    notes.append('阶段：%.0f / %.0f / %.0f（三段）' % (max_hp, p2, p3))
+    # 阶段判定必须比「运行时上限的比例」：比写死的绝对数时，上限一变就满血判成高阶段
+    phase_body = re.search(r'private int phaseFor\(float health\) \{(.*?)\n    \}', boss_src, re.S)
+    if phase_body is None:
+        failures.append('找不到 phaseFor()（阶段判定没了）')
+    else:
+        if 'getMaxHealth()' not in phase_body.group(1):
+            failures.append('phaseFor() 没读运行时上限（满血也会被绝对阈值判成高阶段）')
+        if re.search(r'\bPHASE[23]_HP\b', phase_body.group(1)):
+            failures.append('phaseFor() 还在比 PHASE2_HP/PHASE3_HP 绝对数')
+    notes.append('阶段：%.0f / %.0f / %.0f（三段，由上限比例推导）'
+                 % (max_hp, max_hp * 2 / 3, max_hp / 3))
 
-    # ------------------------------------------------- 1b. 设计数值（防御 / 攻击 / 召唤）
+    # ------------------------------- 1a. 生命上限不可越过原版 1024（1.1.42 事故的根因）
+    # 原版 Attributes.MAX_HEALTH = RangedAttribute(..., 1.0, 1024.0)，且 calculateValue() 的最后一句是
+    # attribute.sanitizeValue(total) —— 修饰符叠加完还要再夹一次上限。抬上限必须三件齐：
+    # AT 文件（public-f maxValue 去 final）+ build.gradle 接线 + 运行时赋值。缺一件，血量写多大都无效。
+    vanilla_cap = const('VANILLA_HEALTH_CAP')
+    if vanilla_cap is None:
+        failures.append('找不到 VANILLA_HEALTH_CAP（原版 MAX_HEALTH 的上限 = 1024.0）')
+        vanilla_cap = 1024.0
+    elif abs(vanilla_cap - 1024.0) > 0.01:
+        failures.append('VANILLA_HEALTH_CAP = %s，原版上限是 1024.0' % vanilla_cap)
+    if max_hp > vanilla_cap:
+        if 'liftHealthCap' not in entities_src or 'getDeclaredFields' not in entities_src:
+            failures.append('总生命 %.0f 超过原版上限 %.0f：ModEntities 里没有抬 maxValue 的反射代码'
+                            '（上限不抬，血量写多大都无效）' % (max_hp, vanilla_cap))
+        # AT 在本构建链上会把 compileClasspath 解析搞崩（FG 要一个不存在的 _at_<hash> 变体）
+        if re.search(r'^\s*accessTransformer\s*=', build_src, re.M):
+            failures.append('build.gradle 启用了 accessTransformer：ForgeGradle 会去要一个本链不生成的 '
+                            '_at_<hash> 变体，:compileClasspath 直接解析失败（上限改用反射抬）')
+        notes.append('生命上限：ModEntities 反射抬 maxValue（原版 %.0f → RAISED_HEALTH_CAP），未启用 AT'
+                     % vanilla_cap)
+    else:
+        notes.append('生命池：%.0f ≤ 原版上限 %.0f，无需抬上限' % (max_hp, vanilla_cap))
+
+    # ---------------------------- 1a2. 出生状态必须钉死（刷怪蛋/指令/尸潮各路径同构）
+    fs = re.search(r'public SpawnGroupData finalizeSpawn\(.*?\n    \}', boss_src, re.S)
+    if fs is None:
+        failures.append('没有覆写 finalizeSpawn：刷怪蛋/指令/尸潮各条路径的出生状态不受控')
+    else:
+        for token, why in (('this.setHealth(this.getMaxHealth())', '出生没有回满血'),
+                           ('this.phase = this.phaseFor(this.getHealth())',
+                            '出生没有把阶段按满血重算（满血停在旧阶段就是这里漏的）'),
+                           ('this.rotationIndex = 0', '轮转下标没清零'),
+                           ('this.rageApplied = false', '血怒标记没清零'),
+                           ('this.deathWailFired = false', '亡语标记没清零')):
+            if token not in fs.group(0):
+                failures.append('finalizeSpawn 里%s' % why)
+    if 'this.enterPhase(level, this.phase + 1)' not in boss_src:
+        failures.append('阶段推进没有逐级（一击跨两级会吞掉中间段的入场技与标题）')
+    if 'health <= this.getMaxHealth() * 0.15F' not in boss_src:
+        failures.append('亡语触发线没用上限的 15%（写死绝对数会随上限改动错位）')
+
+    # ------------------------------------------------- 1b. 设计数值（防御 / 韧性 / 攻击 / 召唤）
     def num(name):
         m = re.search(r'\b%s\s*=\s*(-?[0-9.]+)[FD]?\s*;' % name, boss_src)
         return float(m.group(1)) if m else None
 
-    for name, want, why in (('ARMOR_POINTS', 5.0, '防御 5'),
+    for name, want, why in (('ARMOR_POINTS', 15.0, '防御 15'),
+                            ('ARMOR_TOUGHNESS', 12.0, '韧性 12'),
                             ('ATTACK_POWER', 15.0, '攻击 15'),
                             ('SUMMON_COUNT', 5.0, '召唤 5（一次几只）')):
         got = num(name)
@@ -99,14 +182,21 @@ def main():
             failures.append('%s = %s，需求是 %s' % (name, got, why))
     # 属性表必须真引用常量：各写各的字面量 = 以后改常量成了摆设（数值悄悄分叉）
     for token, why in (('Attributes.ARMOR, ARMOR_POINTS', '防御没引用常量'),
+                       ('Attributes.ARMOR_TOUGHNESS, ARMOR_TOUGHNESS', '韧性没引用常量'),
                        ('Attributes.ATTACK_DAMAGE, ATTACK_POWER', '攻击没引用常量')):
         if token not in boss_src:
             failures.append('createAttributes 里「%s」' % why)
+    # 原版上限：护甲 30 / 韧性 20 —— 超了会被静默夹取，与本轮 1024 事故同一类
+    if (num('ARMOR_POINTS') or 0.0) > 30.0:
+        failures.append('防御 %s 超过原版上限 30（会被静默夹取）' % num('ARMOR_POINTS'))
+    if (num('ARMOR_TOUGHNESS') or 0.0) > 20.0:
+        failures.append('韧性 %s 超过原版上限 20（会被静默夹取）' % num('ARMOR_TOUGHNESS'))
     if re.search(r'SUMMON_COUNT\s*=\s*5\b', boss_src) and \
             'castRaiseHorde(level, SUMMON_COUNT)' not in boss_src:
         failures.append('召唤技能没用 SUMMON_COUNT（改了常量却不生效）')
-    notes.append('防御 %s / 攻击 %s / 召唤 %s 只/次'
-                 % (num('ARMOR_POINTS'), num('ATTACK_POWER'), num('SUMMON_COUNT')))
+    notes.append('防御 %s / 韧性 %s / 攻击 %s / 召唤 %s 只/次'
+                 % (num('ARMOR_POINTS'), num('ARMOR_TOUGHNESS'),
+                    num('ATTACK_POWER'), num('SUMMON_COUNT')))
 
     # ---------------------------------------------------------------- 2. 枚举追加在末尾
     body = re.search(r'public\s+enum\s+EliteAbility\s*\{(.*?)\n\}', ability_src, re.S)
