@@ -1,13 +1,13 @@
 {
   "geo_sha256": "ee8fe7aa33465057bdedd6a590c3a844d647bf63e1e9e8ae6309869e88c9a5a4",
-  "anim_sha256": "05758a645b3f5a39d1adfebb114bd58b900a673ed80a0a9a536ee011f70cc09e",
+  "anim_sha256": "41d52a12572dce174c2addaa20a6dac7c325976d9ae39fb641c2abdba9b364d8",
   "geo_copies": {
     "F:\\mcmod\\art\\boss\\horde_overlord.geo.json": "ee8fe7aa33465057bdedd6a590c3a844d647bf63e1e9e8ae6309869e88c9a5a4",
     "F:\\mcmod\\src\\main\\resources\\assets\\apocalypse_zombies\\geo\\horde_overlord.geo.json": "ee8fe7aa33465057bdedd6a590c3a844d647bf63e1e9e8ae6309869e88c9a5a4"
   },
   "anim_copies": {
-    "F:\\mcmod\\art\\boss\\horde_overlord.animation.json": "05758a645b3f5a39d1adfebb114bd58b900a673ed80a0a9a536ee011f70cc09e",
-    "F:\\mcmod\\src\\main\\resources\\assets\\apocalypse_zombies\\animations\\horde_overlord.animation.json": "05758a645b3f5a39d1adfebb114bd58b900a673ed80a0a9a536ee011f70cc09e"
+    "F:\\mcmod\\art\\boss\\horde_overlord.animation.json": "41d52a12572dce174c2addaa20a6dac7c325976d9ae39fb641c2abdba9b364d8",
+    "F:\\mcmod\\src\\main\\resources\\assets\\apocalypse_zombies\\animations\\horde_overlord.animation.json": "41d52a12572dce174c2addaa20a6dac7c325976d9ae39fb641c2abdba9b364d8"
   },
   "bones": 45,
   "cubes": 129,
@@ -68,7 +68,7 @@
     {
       "name": "动画通道符合 GeckoLib 形状（时间 → [x,y,z]）",
       "pass": true,
-      "detail": "8 段"
+      "detail": "12 段"
     },
     {
       "name": "idle.chest.rotation.x 有 ≥2 关键帧",
@@ -1691,6 +1691,1046 @@
       "detail": "0.0 -> 0.0"
     },
     {
+      "name": "skill_cage.arm_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.24, 0.86, 1.1, 1.46, 2.06, 2.2]"
+    },
+    {
+      "name": "skill_cage.arm_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.arm_l.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.3, 0.86, 1.1, 1.52, 2.2]"
+    },
+    {
+      "name": "skill_cage.arm_l.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.arm_r.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.24, 0.86, 1.1, 1.46, 2.06, 2.2]"
+    },
+    {
+      "name": "skill_cage.arm_r.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.arm_r.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.3, 0.86, 1.1, 1.52, 2.2]"
+    },
+    {
+      "name": "skill_cage.arm_r.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.forearm_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.36, 0.86, 1.1, 1.56, 2.2]"
+    },
+    {
+      "name": "skill_cage.forearm_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.forearm_r.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.36, 0.86, 1.1, 1.56, 2.2]"
+    },
+    {
+      "name": "skill_cage.forearm_r.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.hand_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.5, 1.1, 1.62, 2.2]"
+    },
+    {
+      "name": "skill_cage.hand_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.hip.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.32, 0.86, 1.1, 1.6, 2.2]"
+    },
+    {
+      "name": "skill_cage.hip.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.spine.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.32, 0.86, 1.1, 1.64, 2.2]"
+    },
+    {
+      "name": "skill_cage.spine.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.chest.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.44, 0.86, 1.1, 1.68, 2.2]"
+    },
+    {
+      "name": "skill_cage.chest.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.head.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.3, 0.86, 1.1, 1.7, 2.2]"
+    },
+    {
+      "name": "skill_cage.head.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.head.rotation.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.6, 1.1, 1.74, 2.2]"
+    },
+    {
+      "name": "skill_cage.head.rotation.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.jaw.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 0.9, 1.1, 1.78, 2.2]"
+    },
+    {
+      "name": "skill_cage.jaw.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.cage_band1.rotation.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.3, 0.86, 1.1, 1.7, 2.14, 2.2]"
+    },
+    {
+      "name": "skill_cage.cage_band1.rotation.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.cage_band2.rotation.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.3, 0.86, 1.1, 1.7, 2.14, 2.2]"
+    },
+    {
+      "name": "skill_cage.cage_band2.rotation.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.cage_soul.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.1, 1.76, 2.2]"
+    },
+    {
+      "name": "skill_cage.cage_soul.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.axe.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 0.9, 1.1, 1.8, 2.2]"
+    },
+    {
+      "name": "skill_cage.axe.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.pauldron_r.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.5, 1.1, 1.8, 2.2]"
+    },
+    {
+      "name": "skill_cage.pauldron_r.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.leg_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.34, 0.86, 1.1, 1.66, 2.2]"
+    },
+    {
+      "name": "skill_cage.leg_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.leg_r.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.34, 0.86, 1.1, 1.66, 2.2]"
+    },
+    {
+      "name": "skill_cage.leg_r.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.shin_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.34, 0.86, 1.1, 1.72, 2.2]"
+    },
+    {
+      "name": "skill_cage.shin_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.shin_r.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.34, 0.86, 1.1, 1.72, 2.2]"
+    },
+    {
+      "name": "skill_cage.shin_r.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.cape.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.3, 0.86, 1.1, 1.78, 2.2]"
+    },
+    {
+      "name": "skill_cage.cape.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.cape2.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.36, 0.9, 1.14, 1.84, 2.2]"
+    },
+    {
+      "name": "skill_cage.cape2.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.cape3.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.42, 0.94, 1.18, 1.9, 2.2]"
+    },
+    {
+      "name": "skill_cage.cape3.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.move.position.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 0.86, 1.1, 1.7, 2.2]"
+    },
+    {
+      "name": "skill_cage.move.position.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_cage.move.position.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.44, 0.9, 1.1, 1.78, 2.2]"
+    },
+    {
+      "name": "skill_cage.move.position.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.arm_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.3, 1.06, 1.3, 1.96, 2.5, 2.6]"
+    },
+    {
+      "name": "skill_drain.arm_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.arm_l.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.36, 1.06, 1.3, 2.02, 2.6]"
+    },
+    {
+      "name": "skill_drain.arm_l.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.arm_r.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.3, 1.06, 1.3, 1.96, 2.5, 2.6]"
+    },
+    {
+      "name": "skill_drain.arm_r.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.arm_r.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.36, 1.06, 1.3, 2.02, 2.6]"
+    },
+    {
+      "name": "skill_drain.arm_r.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.forearm_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.44, 1.06, 1.3, 2.06, 2.6]"
+    },
+    {
+      "name": "skill_drain.forearm_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.forearm_r.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.44, 1.06, 1.3, 2.06, 2.6]"
+    },
+    {
+      "name": "skill_drain.forearm_r.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.hand_l.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.6, 1.06, 1.3, 2.1, 2.6]"
+    },
+    {
+      "name": "skill_drain.hand_l.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.spine.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.36, 1.06, 1.3, 2.14, 2.6]"
+    },
+    {
+      "name": "skill_drain.spine.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.spine.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.217, 0.433, 0.65, 0.867, 1.083, 1.3, 1.517, 1.733, 1.95, 2.167, 2.383, 2.6]"
+    },
+    {
+      "name": "skill_drain.spine.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> -0.0"
+    },
+    {
+      "name": "skill_drain.chest.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.5, 1.06, 1.3, 2.18, 2.6]"
+    },
+    {
+      "name": "skill_drain.chest.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.head.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.34, 1.06, 1.3, 2.22, 2.6]"
+    },
+    {
+      "name": "skill_drain.head.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.jaw.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.06, 1.3, 2.26, 2.6]"
+    },
+    {
+      "name": "skill_drain.jaw.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.crown.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.6, 1.3, 2.22, 2.6]"
+    },
+    {
+      "name": "skill_drain.crown.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.horn_l.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.6, 1.3, 2.22, 2.6]"
+    },
+    {
+      "name": "skill_drain.horn_l.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.horn_r.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.6, 1.3, 2.22, 2.6]"
+    },
+    {
+      "name": "skill_drain.horn_r.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.cage_band1.rotation.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.3, 1.06, 1.3, 2.1, 2.54, 2.6]"
+    },
+    {
+      "name": "skill_drain.cage_band1.rotation.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.cage_band2.rotation.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.3, 1.06, 1.3, 2.1, 2.54, 2.6]"
+    },
+    {
+      "name": "skill_drain.cage_band2.rotation.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.cage_soul.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.06, 1.3, 2.3, 2.6]"
+    },
+    {
+      "name": "skill_drain.cage_soul.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.cage_soul.position.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.46, 1.06, 1.3, 2.34, 2.6]"
+    },
+    {
+      "name": "skill_drain.cage_soul.position.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.cape.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.34, 1.06, 1.3, 2.26, 2.6]"
+    },
+    {
+      "name": "skill_drain.cape.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.cape2.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.1, 1.34, 2.32, 2.6]"
+    },
+    {
+      "name": "skill_drain.cape2.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.cape3.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.46, 1.14, 1.38, 2.38, 2.6]"
+    },
+    {
+      "name": "skill_drain.cape3.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.cape_wl.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.44, 1.06, 1.3, 2.34, 2.6]"
+    },
+    {
+      "name": "skill_drain.cape_wl.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.cape_wr.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.44, 1.06, 1.3, 2.34, 2.6]"
+    },
+    {
+      "name": "skill_drain.cape_wr.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.leg_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.44, 1.06, 1.3, 2.3, 2.6]"
+    },
+    {
+      "name": "skill_drain.leg_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.leg_r.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.44, 1.06, 1.3, 2.3, 2.6]"
+    },
+    {
+      "name": "skill_drain.leg_r.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_drain.move.position.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.06, 1.3, 2.26, 2.6]"
+    },
+    {
+      "name": "skill_drain.move.position.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.spine.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.24, 0.82, 1.0, 1.46, 1.84, 1.9]"
+    },
+    {
+      "name": "skill_mist.spine.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.chest.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.34, 0.82, 1.0, 1.52, 1.9]"
+    },
+    {
+      "name": "skill_mist.chest.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.hip.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.3, 0.82, 1.0, 1.56, 1.9]"
+    },
+    {
+      "name": "skill_mist.hip.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.head.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.28, 0.82, 1.0, 1.6, 1.9]"
+    },
+    {
+      "name": "skill_mist.head.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.jaw.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.3, 0.86, 1.0, 1.64, 1.9]"
+    },
+    {
+      "name": "skill_mist.jaw.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.arm_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.3, 0.82, 1.0, 1.58, 1.9]"
+    },
+    {
+      "name": "skill_mist.arm_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.arm_l.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 0.82, 1.0, 1.62, 1.9]"
+    },
+    {
+      "name": "skill_mist.arm_l.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.arm_r.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.3, 0.82, 1.0, 1.58, 1.9]"
+    },
+    {
+      "name": "skill_mist.arm_r.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.arm_r.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 0.82, 1.0, 1.62, 1.9]"
+    },
+    {
+      "name": "skill_mist.arm_r.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.forearm_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.44, 0.82, 1.0, 1.66, 1.9]"
+    },
+    {
+      "name": "skill_mist.forearm_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.forearm_r.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.44, 0.82, 1.0, 1.66, 1.9]"
+    },
+    {
+      "name": "skill_mist.forearm_r.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.cage_band1.rotation.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 0.86, 1.0, 1.7, 1.9]"
+    },
+    {
+      "name": "skill_mist.cage_band1.rotation.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.cage_band2.rotation.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 0.86, 1.0, 1.7, 1.9]"
+    },
+    {
+      "name": "skill_mist.cage_band2.rotation.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.cage_soul.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.0, 1.7, 1.9]"
+    },
+    {
+      "name": "skill_mist.cage_soul.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.leg_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 0.82, 1.0, 1.74, 1.9]"
+    },
+    {
+      "name": "skill_mist.leg_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.leg_r.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 0.82, 1.0, 1.74, 1.9]"
+    },
+    {
+      "name": "skill_mist.leg_r.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.shin_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 0.82, 1.0, 1.78, 1.9]"
+    },
+    {
+      "name": "skill_mist.shin_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.shin_r.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 0.82, 1.0, 1.78, 1.9]"
+    },
+    {
+      "name": "skill_mist.shin_r.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.cape.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.34, 0.82, 1.0, 1.74, 1.9]"
+    },
+    {
+      "name": "skill_mist.cape.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.cape2.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 0.86, 1.04, 1.8, 1.9]"
+    },
+    {
+      "name": "skill_mist.cape2.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.cape3.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.46, 0.9, 1.08, 1.86, 1.9]"
+    },
+    {
+      "name": "skill_mist.cape3.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_mist.move.position.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 0.82, 1.0, 1.72, 1.9]"
+    },
+    {
+      "name": "skill_mist.move.position.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.head.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.24, 1.0, 1.15, 1.72, 2.22, 2.3]"
+    },
+    {
+      "name": "skill_screech.head.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.jaw.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.28, 1.0, 1.15, 1.8, 2.26, 2.3]"
+    },
+    {
+      "name": "skill_screech.jaw.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.spine.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.26, 1.0, 1.15, 1.84, 2.26, 2.3]"
+    },
+    {
+      "name": "skill_screech.spine.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.spine.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.144, 0.287, 0.431, 0.575, 0.719, 0.862, 1.006, 1.15, 1.294, 1.438, 1.581, 1.725, 1.869, 2.012, 2.156, 2.3]"
+    },
+    {
+      "name": "skill_screech.spine.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> -0.0"
+    },
+    {
+      "name": "skill_screech.chest.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.36, 1.0, 1.15, 1.88, 2.28, 2.3]"
+    },
+    {
+      "name": "skill_screech.chest.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.crown.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.15, 1.9, 2.3]"
+    },
+    {
+      "name": "skill_screech.crown.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.horn_l.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.15, 1.94, 2.3]"
+    },
+    {
+      "name": "skill_screech.horn_l.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.horn_r.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.15, 1.94, 2.3]"
+    },
+    {
+      "name": "skill_screech.horn_r.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.arm_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.28, 1.0, 1.15, 1.9, 2.3]"
+    },
+    {
+      "name": "skill_screech.arm_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.arm_l.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.34, 1.0, 1.15, 1.96, 2.3]"
+    },
+    {
+      "name": "skill_screech.arm_l.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.arm_r.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.28, 1.0, 1.15, 1.9, 2.3]"
+    },
+    {
+      "name": "skill_screech.arm_r.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.arm_r.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.34, 1.0, 1.15, 1.96, 2.3]"
+    },
+    {
+      "name": "skill_screech.arm_r.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.forearm_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.0, 1.15, 2.0, 2.3]"
+    },
+    {
+      "name": "skill_screech.forearm_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.forearm_r.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.0, 1.15, 2.0, 2.3]"
+    },
+    {
+      "name": "skill_screech.forearm_r.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.cage_band1.rotation.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.34, 1.0, 1.15, 1.94, 2.24, 2.3]"
+    },
+    {
+      "name": "skill_screech.cage_band1.rotation.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.cage_band2.rotation.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.34, 1.0, 1.15, 1.94, 2.24, 2.3]"
+    },
+    {
+      "name": "skill_screech.cage_band2.rotation.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.cage_soul.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.1, 1.2, 2.04, 2.3]"
+    },
+    {
+      "name": "skill_screech.cage_soul.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.cage_soul.position.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.1, 1.2, 2.08, 2.3]"
+    },
+    {
+      "name": "skill_screech.cage_soul.position.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.leg_l.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.0, 1.15, 1.98, 2.3]"
+    },
+    {
+      "name": "skill_screech.leg_l.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.leg_l.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.6, 1.15, 2.02, 2.3]"
+    },
+    {
+      "name": "skill_screech.leg_l.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.leg_r.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.0, 1.15, 1.98, 2.3]"
+    },
+    {
+      "name": "skill_screech.leg_r.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.leg_r.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.6, 1.15, 2.02, 2.3]"
+    },
+    {
+      "name": "skill_screech.leg_r.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.cape.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.34, 1.0, 1.15, 2.02, 2.3]"
+    },
+    {
+      "name": "skill_screech.cape.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.cape2.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.04, 1.19, 2.08, 2.3]"
+    },
+    {
+      "name": "skill_screech.cape2.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.cape3.rotation.x 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.46, 1.08, 1.23, 2.14, 2.3]"
+    },
+    {
+      "name": "skill_screech.cape3.rotation.x 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.cape_wl.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.44, 1.15, 2.06, 2.3]"
+    },
+    {
+      "name": "skill_screech.cape_wl.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.cape_wr.rotation.z 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.44, 1.15, 2.06, 2.3]"
+    },
+    {
+      "name": "skill_screech.cape_wr.rotation.z 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
+      "name": "skill_screech.move.position.y 有 ≥2 关键帧",
+      "pass": true,
+      "detail": "[0.0, 0.4, 1.0, 1.15, 2.0, 2.3]"
+    },
+    {
+      "name": "skill_screech.move.position.y 收招归零",
+      "pass": true,
+      "detail": "0.0 -> 0.0"
+    },
+    {
       "name": "idle 位移 y 达到语义幅度 1.0u",
       "pass": true,
       "detail": "1.00u"
@@ -1739,6 +2779,31 @@
       "name": "skill_death 位移 y 达到语义幅度 6.0u",
       "pass": true,
       "detail": "6.00u"
+    },
+    {
+      "name": "skill_cage 位移 y 达到语义幅度 3.6u",
+      "pass": true,
+      "detail": "3.60u"
+    },
+    {
+      "name": "skill_cage 位移 z 达到语义幅度 2.4u",
+      "pass": true,
+      "detail": "2.40u"
+    },
+    {
+      "name": "skill_drain 位移 y 达到语义幅度 1.6u",
+      "pass": true,
+      "detail": "1.60u"
+    },
+    {
+      "name": "skill_mist 位移 y 达到语义幅度 2.0u",
+      "pass": true,
+      "detail": "2.00u"
+    },
+    {
+      "name": "skill_screech 位移 y 达到语义幅度 2.8u",
+      "pass": true,
+      "detail": "2.80u"
     },
     {
       "name": "UV 无越界/无重叠",
@@ -1836,6 +2901,26 @@
       "detail": "HordeOverlord 里的常量"
     },
     {
+      "name": "Java 剪辑名 \"skill_cage\" 存在",
+      "pass": true,
+      "detail": "HordeOverlord 里的常量"
+    },
+    {
+      "name": "Java 剪辑名 \"skill_drain\" 存在",
+      "pass": true,
+      "detail": "HordeOverlord 里的常量"
+    },
+    {
+      "name": "Java 剪辑名 \"skill_mist\" 存在",
+      "pass": true,
+      "detail": "HordeOverlord 里的常量"
+    },
+    {
+      "name": "Java 剪辑名 \"skill_screech\" 存在",
+      "pass": true,
+      "detail": "HordeOverlord 里的常量"
+    },
+    {
       "name": "attack_melee 时长 1.1s == BOSS_SWEEP 的 22 tick",
       "pass": true,
       "detail": "22 vs 22"
@@ -1894,6 +2979,46 @@
       "name": "skill_death 命中点 0.9s == DEATH_WAIL 的冲击 18 tick",
       "pass": true,
       "detail": "18 vs 18"
+    },
+    {
+      "name": "skill_cage 时长 2.2s == CAGE_SLAM 的 44 tick",
+      "pass": true,
+      "detail": "44 vs 44"
+    },
+    {
+      "name": "skill_cage 命中点 1.1s == CAGE_SLAM 的冲击 22 tick",
+      "pass": true,
+      "detail": "22 vs 22"
+    },
+    {
+      "name": "skill_drain 时长 2.6s == SOUL_DRAIN 的 52 tick",
+      "pass": true,
+      "detail": "52 vs 52"
+    },
+    {
+      "name": "skill_drain 命中点 1.3s == SOUL_DRAIN 的冲击 26 tick",
+      "pass": true,
+      "detail": "26 vs 26"
+    },
+    {
+      "name": "skill_mist 时长 1.9s == PLAGUE_MIST 的 38 tick",
+      "pass": true,
+      "detail": "38 vs 38"
+    },
+    {
+      "name": "skill_mist 命中点 1.0s == PLAGUE_MIST 的冲击 20 tick",
+      "pass": true,
+      "detail": "20 vs 20"
+    },
+    {
+      "name": "skill_screech 时长 2.3s == HORDE_SCREECH 的 46 tick",
+      "pass": true,
+      "detail": "46 vs 46"
+    },
+    {
+      "name": "skill_screech 命中点 1.15s == HORDE_SCREECH 的冲击 23 tick",
+      "pass": true,
+      "detail": "23 vs 23"
     }
   ],
   "atlas_texels": 22323,
@@ -2083,6 +3208,118 @@
         "move",
         "shin_l",
         "shin_r",
+        "spine"
+      ]
+    },
+    "skill_cage": {
+      "length": 2.2,
+      "loop": false,
+      "bones": [
+        "arm_l",
+        "arm_r",
+        "axe",
+        "cage_band1",
+        "cage_band2",
+        "cage_soul",
+        "cape",
+        "cape2",
+        "cape3",
+        "chest",
+        "forearm_l",
+        "forearm_r",
+        "hand_l",
+        "head",
+        "hip",
+        "jaw",
+        "leg_l",
+        "leg_r",
+        "move",
+        "pauldron_r",
+        "shin_l",
+        "shin_r",
+        "spine"
+      ]
+    },
+    "skill_drain": {
+      "length": 2.6,
+      "loop": false,
+      "bones": [
+        "arm_l",
+        "arm_r",
+        "cage_band1",
+        "cage_band2",
+        "cage_soul",
+        "cape",
+        "cape2",
+        "cape3",
+        "cape_wl",
+        "cape_wr",
+        "chest",
+        "crown",
+        "forearm_l",
+        "forearm_r",
+        "hand_l",
+        "head",
+        "horn_l",
+        "horn_r",
+        "jaw",
+        "leg_l",
+        "leg_r",
+        "move",
+        "spine"
+      ]
+    },
+    "skill_mist": {
+      "length": 1.9,
+      "loop": false,
+      "bones": [
+        "arm_l",
+        "arm_r",
+        "cage_band1",
+        "cage_band2",
+        "cage_soul",
+        "cape",
+        "cape2",
+        "cape3",
+        "chest",
+        "forearm_l",
+        "forearm_r",
+        "head",
+        "hip",
+        "jaw",
+        "leg_l",
+        "leg_r",
+        "move",
+        "shin_l",
+        "shin_r",
+        "spine"
+      ]
+    },
+    "skill_screech": {
+      "length": 2.3,
+      "loop": false,
+      "bones": [
+        "arm_l",
+        "arm_r",
+        "cage_band1",
+        "cage_band2",
+        "cage_soul",
+        "cape",
+        "cape2",
+        "cape3",
+        "cape_wl",
+        "cape_wr",
+        "chest",
+        "crown",
+        "forearm_l",
+        "forearm_r",
+        "head",
+        "horn_l",
+        "horn_r",
+        "jaw",
+        "leg_l",
+        "leg_r",
+        "move",
         "spine"
       ]
     }

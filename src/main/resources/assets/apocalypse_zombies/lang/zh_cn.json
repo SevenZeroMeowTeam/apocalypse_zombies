@@ -48,6 +48,7 @@
   "command.apocalypse_zombies.evolution.get": "当前进化等级：%s",
   "command.apocalypse_zombies.evolution.set": "已将进化等级设置为 %s",
   "command.apocalypse_zombies.evolution.upgrade": "已将 %s 只僵尸提升到等级 %s",
+  "command.apocalypse_zombies.boss.none": "附近 256 格内没有尸潮之主",
 
   "item.apocalypse_zombies.awm": "精密国际 AWM",
   "item.apocalypse_zombies.m1_garand": "M1 加兰德",

@@ -48,6 +48,7 @@
   "command.apocalypse_zombies.evolution.get": "Current evolution level: %s",
   "command.apocalypse_zombies.evolution.set": "Evolution level set to %s",
   "command.apocalypse_zombies.evolution.upgrade": "Upgraded %s zombies to tier %s",
+  "command.apocalypse_zombies.boss.none": "No Horde Overlord within 256 blocks",
 
   "item.apocalypse_zombies.awm": "AWM",
   "item.apocalypse_zombies.m1_garand": "M1 Garand",

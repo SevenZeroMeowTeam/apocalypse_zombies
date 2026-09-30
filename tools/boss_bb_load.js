@@ -8,7 +8,7 @@
  *     return (0,eval)(globalThis.__gen_fs__.readFileSync('F:/mcmod/tools/boss_bb_load.js','utf8'));})()
  *
  * 前置：先用 create_project 建一个 geckolib_model 格式的空工程（本脚本会往里灌）。
- * 注意：会清掉工程里的全部动画，再用 JSON 里的那 8 段重建。
+ * 注意：会清掉工程里的全部动画，再用 JSON 里的那 12 段重建。
  */
 (function () {
   var fs = globalThis.__gen_fs__ || require('fs');
