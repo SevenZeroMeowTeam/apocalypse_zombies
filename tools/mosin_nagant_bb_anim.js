@@ -216,17 +216,20 @@
     seq.forEach(function (s) { K(a, 'follower', 'position', s.t, [0, s.y, 0], LIN); });
   }
   function insertRound(a, i, t0, slot) {
-    // 待压入的弹：机匣装填桥上方 → 压下 → 沉入弹仓
+    // 待压入的弹：机匣装填桥上方 → 压下 → 沉入弹仓（纯竖直：位移只走 Y，z 恒 0）
     var bone = 'round_in';
     K(a, bone, 'scale', 0.0, S0, LIN);
     K(a, bone, 'scale', t0 - 0.04, S0, LIN);
     K(a, bone, 'scale', t0 + 0.02, S1, LIN);
     K(a, bone, 'scale', t0 + 0.40, S1, LIN);
     K(a, bone, 'scale', t0 + 0.46, S0, LIN);
-    K(a, bone, 'position', t0 - 0.02, [0, 0.75, -0.30], LIN);
+    // 压弹是"压下"，不是"横滑"：z（前后）分量恒为 0，只留 y 曲线与时间点。
+    // 旧值 z 由 -0.30 走到 +2.45（2.75u），观感是那一发沿枪身朝射手方向平移 ——
+    // 2026-09-30 用户截图指出该件应只走竖直（绿色轴），见 tools/reload_press_vertical.py。
+    K(a, bone, 'position', t0 - 0.02, [0, 0.75, 0.00], LIN);
     K(a, bone, 'position', t0 + 0.16, [0, 0.10, 0.00], LIN);
-    K(a, bone, 'position', t0 + 0.34, [0, -0.55, 1.05], LIN);
-    K(a, bone, 'position', t0 + 0.44, [0, -1.15, 2.45], LIN);
+    K(a, bone, 'position', t0 + 0.34, [0, -0.55, 0.00], LIN);
+    K(a, bone, 'position', t0 + 0.44, [0, -1.15, 0.00], LIN);
     // 落到位的那一发：出现（弹仓里，外面看不见，但拆解/开托底时是对的）
     var mn = 'mag_r' + slot;
     Kconst(a, mn, 'scale', S0);

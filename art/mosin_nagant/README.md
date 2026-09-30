@@ -105,6 +105,21 @@ root（geo 自带）
 `reload_loop` 0.6833 s/轮、`bolt` 1.2667 s、`draw` 0.7833 s——本片集的节奏（压弹 0.60 s/轮、`bolt` 1.10 s、
 `draw` 0.90 s）按莫辛的直拉机柄手感略作调整。
 
+### 修正（2026-09-30）：压弹件只走竖直
+
+**症状**：用户截图指出 —— 换弹时压在装填桥上的那一发（`round_in`）**一边下沉、一边沿枪身朝射手方向横滑**
+（原话「是绿色箭头向上不是蓝色箭头平移」）。
+
+**成因**：`insertRound()` 的位移带了前后分量 —— `z` 由 −0.30 走到 **+2.45**（横滑 2.75u），而竖直只走 1.9u。
+
+**修法**：把该骨 `position` 通道**每一帧的 z 分量归零**（y 曲线与关键帧时刻原样保留）；
+`art/` 与 `src/main/resources/` 两份一起改（各 24 帧），生成器 `tools/mosin_nagant_bb_anim.js` 的
+`insertRound()` 同步改成 z 恒 0。可复跑补丁：`python tools/reload_press_vertical.py`（`--check` 只校验、不写盘）。
+
+**验收**：`git diff` 每份恰好 24 行、只差 z 一个数；`tools/check_mosin_anim.py` 全过；
+**从产物核验**（不看源码）：装入客户端那份 jar 内 `round_in` 的 (x, z) 取值集合 = `{(0, 0.0)}`，
+且新旧包逐条目比对**只有** `mosin_nagant.animation.json`（46,106 → 46,082 B）与 manifest 时间戳不同。
+
 ## 自检
 
 ```bash
