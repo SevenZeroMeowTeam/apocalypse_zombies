@@ -76,6 +76,12 @@ LEGACY_ABILITIES = ["NONE", "SCREAM", "SLAM", "SPIT", "SNIPE", "DEATH_CHIME", "C
                     "BOSS_SWEEP", "BONE_VOLLEY", "RAISE_HORDE", "GROUND_QUAKE",
                     "BLOOD_RAGE", "DEATH_WAIL"]
 
+# BONE_LOCK 之后允许出现的追加项：由**别的线**往这个共享枚举里追加，走的是同一个 ordinal 空间。
+# 这里不是「随便加的白名单」——出现未登记的名字就该红一次，让人确认「这确实是末尾追加、不是插队」，
+# 确认后登记进来；绝不要去动上面的冻结前缀，也别去改 BONE_LOCK 的序号锚点。
+# 1.1.46 尸潮之主的 4 条扩充技能（Phase 2 / 3）。
+KNOWN_APPENDED_AFTER_BONE_LOCK = {"CAGE_SLAM", "SOUL_DRAIN", "PLAGUE_MIST", "HORDE_SCREECH"}
+
 # 五个必须挂上 bone_lock 的伤害标签（bypasses_armor 里还有既有的 awm_bullet，必须保留）：
 # 护甲 / 无敌帧 / 抗性 / 保护附魔 / 盾牌。1.20.1 的无敌帧标签是 bypasses_invulnerability，
 # **没有** bypasses_cooldown（1.20.5+ 才有）：写错不报错，整个标签文件被静默丢弃。
@@ -119,10 +125,16 @@ def missing(path):
 
 # ---------------------------------------------------------------------------- (a) 技能枚举
 def check_ability_enum():
-    """(a) BONE_LOCK 必须是**最后一条**枚举常量，且既有 22 条一个不少、相对顺序不变。
+    """(a) BONE_LOCK 的**序号冻结**：既有 22 条不许动，BONE_LOCK 必须紧跟其后（序号 = 23），
+    且它之后只许出现**登记过的追加项**。
 
     byId(ordinal) 联网同步：插在中间会让别的精英的技能错位；误删一条既有技能同样静默出事
     （施法状态整体前移一位）。
+
+    <p>写法与 `check_bride_combat.py` 的 `enum_append_only` 一致：断言的是「紧跟冻结前缀的那一条
+    就是 BONE_LOCK」，而**不是**「BONE_LOCK 必须是最后一条」。理由：EliteAbility 是共享枚举，
+    别的线会继续往它后面追加（1.1.46 尸潮之主就追加了 4 条）——「必须最后一条」这种写法每追加一次
+    就得回来改一次断言，改错一次这条铁律就再也挡不住插队。</p>
     """
     if not os.path.isfile(ABILITY_JAVA):
         return missing(ABILITY_JAVA)
@@ -137,16 +149,24 @@ def check_ability_enum():
         record("a2", "既有技能原位保留", False,
                "既有技能被改动/删除/重排：%s" % consts[:len(LEGACY_ABILITIES) + 1])
 
-    last_ok = bool(consts) and consts[-1] == "BONE_LOCK" and len(consts) == len(LEGACY_ABILITIES) + 1
+    # 序号冻结：BONE_LOCK 必须正好落在冻结前缀之后（第 len(LEGACY_ABILITIES)+1 条）。
+    idx = consts.index("BONE_LOCK") if "BONE_LOCK" in consts else -1
     tail = re.search(r"BONE_LOCK\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)", text)
-    if last_ok and tail and (tail.group(1), tail.group(2)) == ("42", "34"):
-        record("a", "BONE_LOCK 位于枚举末尾", True, "枚举共 %d 条，最后一条 BONE_LOCK(42, 34)"
-               % len(consts))
+    args_ok = bool(tail) and (tail.group(1), tail.group(2)) == ("42", "34")
+    idx_ok = idx == len(LEGACY_ABILITIES)
+    later = consts[idx + 1:] if idx >= 0 else []
+    unknown = [c for c in later if c not in KNOWN_APPENDED_AFTER_BONE_LOCK]
+    if idx_ok and args_ok and not unknown:
+        record("a", "BONE_LOCK 序号冻结（其后只许登记过的追加）", True,
+               "BONE_LOCK 仍是第 %d 条；其后追加 %s（共 %d 条）"
+               % (idx + 1, ", ".join(later) or "无", len(consts)))
     else:
-        record("a", "BONE_LOCK 位于枚举末尾", False,
-               "期望 BONE_LOCK(42, 34) 是最后一条常量（当前末尾 %s，共 %d 条，匹配 %s）"
-               % (consts[-1] if consts else "?", len(consts), bool(tail)))
-    return last_ok
+        record("a", "BONE_LOCK 序号冻结（其后只许登记过的追加）", False,
+               "BONE_LOCK 序号 %d（期望 %d）/ 参数匹配 %s / 未登记追加 %s ⇒ 插队或改动既有技能"
+               "会让 byId 的 ordinal 错位；若确是别的线合法追加，登记进 "
+               "KNOWN_APPENDED_AFTER_BONE_LOCK，别去动冻结前缀"
+               % (idx, len(LEGACY_ABILITIES), bool(args_ok), unknown or "无"))
+    return idx_ok and args_ok and not unknown
 
 
 # ---------------------------------------------------------------------------- (b) 伤害公式

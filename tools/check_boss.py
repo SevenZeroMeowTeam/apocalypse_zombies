@@ -15,8 +15,9 @@ Geo 路径写错 -> 模型不渲染（游戏里只看到空气/裸实体，日�
      只写大常量或挂修饰符都是静默无效的 —— 满血会被判成 Phase 2（1.1.42 实测缺陷）
   1a2. 出生状态钉死：`finalizeSpawn` 回满血 + 按满血重算阶段 + 计数清零；阶段推进逐级，不跨级
   1b. 设计数值：防御 15 / 韧性 12 / 攻击 15 / 召唤 5，且属性表真的引用常量（不超原版上限 30/20）
-  2. `EliteAbility` 六条新枚举在**末尾**（插中间 = ordinal 错位），且时长/命中点与动画一致
-  3. `HordeOverlord` implements GeoEntity，8 个剪辑常量齐全，控制器挂在 movement/cast 上
+  2. `EliteAbility` 的 10 条技能枚举（1.1.46 起）必须**追加在 `VEIL_CHOP` 之后**（插中间 = ordinal 错位），
+     且时长/命中点与动画一致
+  3. `HordeOverlord` implements GeoEntity，12 个剪辑常量齐全，控制器挂在 movement/cast 上
   4. 发布动画**零 scale 通道**，且每个被驱动的骨骼在 geo 里都存在
   5. geo 的逐面 UV 键必须是**全名**（north/south/…）：单字母键会被 GeckoLib 静默丢弃
   6. 贴图 512×512，与 geo 声明的 texture_width/height 一致
@@ -51,6 +52,12 @@ CLIPS = [
     ('skill_quake', 'GROUND_QUAKE'),
     ('skill_rage', 'BLOOD_RAGE'),
     ('skill_death', 'DEATH_WAIL'),
+    # 1.1.46 追加：Phase 2 起两招 + Phase 3 两招。加进来才会被下面两条断言覆盖
+    # （剪辑名常量存在 / 时长与命中点同源 / 枚举追加在 VEIL_CHOP 之后）。
+    ('skill_cage', 'CAGE_SLAM'),
+    ('skill_mist', 'PLAGUE_MIST'),
+    ('skill_drain', 'SOUL_DRAIN'),
+    ('skill_screech', 'HORDE_SCREECH'),
 ]
 
 
