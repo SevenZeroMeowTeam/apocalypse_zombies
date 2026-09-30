@@ -321,3 +321,61 @@ tasks.register('borrowedPack', Zip) {
         into 'assets/apocalypse_zombies/animations'
     }
 }
+
+// ---------------------------------------------------------------------------
+// 网易 Java 版：依赖必须作为**独立 jar 并列安装**，不要用 jar-in-jar
+//
+// 背景与实证（2026-09-30，网易中国版 Java 版客户端 = MC 1.20.1 + Forge 47.3.0，
+// ModLauncher 是魔改的 MinecraftChina 版）：它的 mods/ 由平台分发，没有 GeckoLib，
+// 玩家也装不了第三方库，所以 mods.toml 里那条 mandatory 的 geckolib 依赖必须先解决。
+// 两条路的真机结果：
+//
+//   ✗ 把 GeckoLib 打进 META-INF/jarjar/（jar-in-jar）→ 客户端**静默退出**：
+//       日志停在 oshi/JNA 初始化，无异常栈、无 hs_err_pid、无 Windows 崩溃事件；
+//       把包移走即恢复正常（对照实验，见 docs/wiki/10-网易Java版适配.md）
+//   ✓ mods/ 里并列放一个顶层 geckolib-forge-1.20.1-x.y.z.jar → 正常加载并游玩
+//
+// 而且顶层 jar 存在时，Forge 的 JarSelector 会优先用它，连包里的内嵌副本都不碰：
+//   JarSelector: Attempted to select a dependency jar for JarJar which was passed in as source:
+//                geckolib. Using Mod File: ...\mods\geckolib-forge-1.20.1-4.8.4.jar
+//
+// 因此网易版出货 = 默认 jar + 下面这个任务导出的 GeckoLib jar；
+// 平台侧对应 work.mcscfg 里的「前置组件」（PreComponentIds / IsPreCom）。
+// ---------------------------------------------------------------------------
+configurations {
+    // 解析**生产版** GeckoLib（不是 fg.deobf 出来的编译版）：要装进 mods/ 的是线上那一份
+    neteaseBundledLibs
+}
+
+dependencies {
+    neteaseBundledLibs("software.bernie.geckolib:geckolib-forge-1.20.1:${geckolib_version}")
+}
+
+// 导出到 build/netease/（刻意不与 reobfJar 共写 build/libs，否则 Gradle 会因输出目录重叠报错），
+// 供网易客户端 mods/（或平台「前置组件」）使用。
+// 注意保留 GeckoLib 的原文件名：顶层 jar 的识别与 JarSelector 的选源都靠它。
+tasks.register('neteaseLibs', Copy) {
+    group = 'build'
+    description = '网易 Java 版：导出需与模组并列安装的依赖 jar（GeckoLib）到 build/netease/'
+    from(configurations.neteaseBundledLibs) {
+        rename { "geckolib-forge-1.20.1-${geckolib_version}.jar" }
+    }
+    into layout.buildDirectory.dir('netease')
+}
+
+// 网易版产物命名：apocalypse_zombies-<ver>-netease.jar（与开发包一眼可分）。
+//
+// 用 Copy 而**不是** Zip：内容与默认交付包逐字节相同 —— 只是同一份 reobf 输出改个名字。
+// 重新打包会改 manifest 里的 Implementation-Timestamp，反而让「md5 相等」这种最简单的
+// 核对手段失效。要差异化构建就在 from 里加过滤。
+//
+// 落 build/netease/ 与依赖包同位（刻意不写 build/libs：Copy 会把整个目录声明成输出，
+// 与 jar 任务的输出目录重叠会被 Gradle 拒绝 —— neteaseLibs 的注释里记过这条）。
+tasks.register('neteaseJar', Copy) {
+    group = 'build'
+    description = '网易 Java 版：把 reobf 后的交付包改名为 <name>-netease.jar，与依赖包同置 build/netease/'
+    dependsOn tasks.named('jar'), tasks.named('reobfJar')
+    from(tasks.named('jar').flatMap { it.archiveFile })
+    into layout.buildDirectory.dir('netease')
+    rename { "apocalypse_zombies-${project.version}-netease.jar" }
+}

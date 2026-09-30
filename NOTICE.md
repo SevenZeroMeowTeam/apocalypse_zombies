@@ -12,9 +12,14 @@
 |---|---|---|---|
 | `apocalypse_zombies-<ver>.jar` | **有**（22 个音效 + 转录动画） | `GPL-3.0-or-later / CC BY-NC-ND 4.0` | 开发 / 自用。**不得商业使用，不得公开分发** |
 | `apocalypse_zombies-<ver>-clean.jar` | **无** | `GPL-3.0-or-later` | 分发用。动画为完全原创的手工版 |
+| `geckolib-forge-1.20.1-4.8.4.jar`（`build/netease/`） | 无 | **MIT**（GeckoLib 自身） | 网易中国版 Java 版用：与模组 jar **并列**装进 `mods/`。顶层自带 `LICENSE`，随包分发即满足署名义务 |
 | `apocalypse_zombies-borrowed-assets.zip` | **有** | 同开发包 | 本地资源包。装进 `resourcepacks/` 后把借来的音效与动画覆盖回来 |
 
-构建：`./gradlew clean build cleanJar borrowedPack` —— 三个产物都在 `build/libs/`。
+构建：`./gradlew clean build cleanJar borrowedPack neteaseLibs` —— 产物在 `build/libs/`，依赖 jar 在 `build/netease/`。
+
+> 网易版用的是**默认 jar（开发包）**，因此同样含 TaCZ 借用内容，同样**不得商用、不得公开分发**。
+> 要上架网易平台须改用 clean 基线，见 `docs/wiki/10-网易Java版适配.md` 的未决事项。
+> ⚠ 依赖**不要**用 jar-in-jar 内嵌（网易客户端会静默退出），见同文档第三节。
 
 ## 借用来源（署名）
 
@@ -49,11 +54,15 @@
 
 | 依赖 | 版本 | 许可 | 随本模组分发？ |
 |---|---|---|---|
-| GeckoLib 4 | `geckolib-forge-1.20.1-4.8.4`（作者 Gecko, Eliot, AzureDoom, DerToaster, Tslat, Witixin） | **MIT** | **否** |
+| GeckoLib 4 | `geckolib-forge-1.20.1-4.8.4`（作者 Gecko, Eliot, AzureDoom, DerToaster, Tslat, Witixin） | **MIT** | 默认包 **否**；网易版 **是**（作为独立 jar 并列分发） |
 
-GeckoLib 是 `mandatory=true` 的硬依赖，由玩家自行安装，我们**不捆绑**它（`jarJar` 为 SKIPPED；
-已核对：纯净包内 GeckoLib 条目数为 0）。因此无需附带其许可全文，只需列明依赖与版本 —— 但要够精确，
-版本不一致（开发编译 4.4.x / 运行装 4.8.x）会在 API 层面炸。
+GeckoLib 是 `mandatory=true` 的硬依赖。**默认包由玩家自行安装，我们不捆绑**（已核对：默认包与纯净包内
+GeckoLib 条目数为 0）。 —— 但要够精确，版本不一致（开发编译 4.4.x / 运行装 4.8.x）会在 API 层面炸。
+
+**例外：网易版**。网易中国版 Java 版的 `mods/` 由平台分发，既没有 GeckoLib、玩家也无法自行安装，
+所以网易版的出货是把 GeckoLib 4.8.4 作为**独立 jar 与模组并列**装进 `mods/`（平台侧对应「前置组件」）。
+MIT 允许再分发，条件是附许可与版权声明：该 jar 顶层自带 `LICENSE`，随手分发即满足，此处一并列明。
+做法与取证（含为何**不能**用 jar-in-jar 内嵌）见 `docs/wiki/10-网易Java版适配.md`。
 
 ## 构建环境（别人要能复现）
 

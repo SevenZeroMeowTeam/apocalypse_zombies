@@ -22,6 +22,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 ```bash
 ./gradlew build                                  # 开发包（含借用的音效与转录动画）
 ./gradlew clean build cleanJar borrowedPack      # 三件产物一起出
+./gradlew jar neteaseLibs                        # 网易 Java 版：模组 + 依赖 jar（并列安装）
 ```
 
 产物都落在 `build/libs/`：
@@ -30,7 +31,12 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 |---|---|---|
 | `apocalypse_zombies-<ver>.jar` | **有** | 开发 / 自用。**不得商用、不得公开分发** |
 | `apocalypse_zombies-<ver>-clean.jar` | 无 | 分发用。动画为完全原创的手工版 |
+| `geckolib-forge-1.20.1-4.8.4.jar`（落在 `build/netease/`） | 无 | 网易中国版 Java 版用：**依赖必须与模组并列安装**，见[网易适配](docs/wiki/10-网易Java版适配.md) |
 | `apocalypse_zombies-borrowed-assets.zip` | 有 | 本地资源包，装进 `resourcepacks/` 把借来的音效与动画覆盖回去 |
+
+> **网易版 = 默认 jar + GeckoLib 独立 jar 两个包并存**（网易客户端的 `mods/` 由平台分发，没有 GeckoLib，玩家也装不了）。
+> ⚠ **不要把 GeckoLib 用 jar-in-jar 内嵌进模组**：实测会让网易客户端**静默退出**（无异常栈、无 `hs_err`、无崩溃事件），
+> 取证与定位过程见 [`docs/wiki/10-网易Java版适配.md`](docs/wiki/10-网易Java版适配.md)。
 
 ### 部署到本地实例
 
@@ -292,6 +298,25 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
   `armor` = **15.0**、`armor_toughness` = **12.0**（修前同样是这两个命令量出 1024.0，才定位到上限夹取）。
 - 1.1.42（同日）：修掉 `horde_overlord.animation.json` 的 per-axis 关键帧形状 —— 它在 GeckoLib 资源重载里抛
   `JsonParseException`，让客户端清空 `resourcePacks` 并导致全屏文字变方框。
+
+### 网易 Java 版（中国版）适配 — 2026-09-30
+
+**中国版 Java 版 1.20 = MC 1.20.1 + Forge 47.3.0**，语言与 API 都不用换；但它的 `mods/` 由平台分发、
+**没有 GeckoLib，玩家也装不了**，于是 `mods.toml` 里那条 `mandatory` 的 geckolib 依赖会让加载直接失败
+（ModSorter 报 `Actual version: '[MISSING]'`）。
+
+**结论：依赖必须作为独立 jar 与模组并列安装，不能内嵌。** 两条路都真机跑过 ——
+内嵌 `META-INF/jarjar/`（jar-in-jar）会让网易客户端**静默退出**（无异常栈 / 无 `hs_err_pid` / 无 Windows
+崩溃事件），换成顶层 `geckolib-forge-1.20.1-4.8.4.jar` 则正常加载并进入游戏（连 ModLauncher 的
+`JarSelector` 都会优先用顶层那个，不碰包里的内嵌副本）。
+
+```bash
+./gradlew jar neteaseLibs     # → build/libs/apocalypse_zombies-<ver>.jar（模组）
+                              # → build/netease/geckolib-forge-1.20.1-<glver>.jar（依赖）
+python tools/deploy_netease.py   # 构建 + 15 项包内自检（含“本模组 jar 不含 jar-in-jar”）+ 并列安装两包
+```
+
+平台事实、定位过程（含一次误判的复盘）、未决事项见 [`docs/wiki/10-网易Java版适配.md`](docs/wiki/10-网易Java版适配.md)。
 
 ### 1.1.41 — 2026-09-28
 
