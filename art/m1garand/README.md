@@ -66,7 +66,7 @@
 | 密度 | `12`（规范值 11~13） |
 | 色板 | `MAT.steel/park/parkd/blue/blued/wood/woodd/dark/blk/brs/cpr`，值同 `美术规范.md` 三·1 |
 
-## v6 修正（2026-10-01）：按真机换弹重做四项（A/B/C/D）
+## v6 修正（2026-09-30）：按真机换弹重做四项（A/B/C/D）
 
 用户要求「参考现实 M1 加兰德换弹进行优化或者修改」，四件事一起做：
 
@@ -117,6 +117,10 @@ z 仍留着旧值（0.3 / 1.1 / 1.7…），只补导出产物的话谁重跑一
 **核验**：`python tools/check_m1_reload.py` 新增几何余量 / 卡榫机构 / `single_load` 三组断言
 （含"漏夹落位后有抽手空档 ≥2 帧"），全部通过；`check_gun_resources.py` / `check_mosin_anim.py` /
 `reload_press_vertical.py --check` 同样全绿。
+
+**出货**：`1.1.47`（tag `v1.1.47`）—— `gradle.properties` 的 `mod_version` 1.1.46 → 1.1.47；
+开发实例装机 `apocalypse_zombies-1.1.47.jar`，网易客户端装机 `-netease.jar`（并列 `geckolib-forge-1.20.1-4.8.4.jar`）。
+发布件回读核验：包内 7 段剪辑 + 15 骨（含 `clip_latch`）+ `single_load` 1.5 s + 枪机全行程 1.36u。
 
 ## v5 对齐（2026-09-30）：生成器与 `art` 补成纯竖直
 
