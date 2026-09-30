@@ -290,7 +290,10 @@ mods.toml + MANIFEST）/ 增 0 / 删 0。
   确认没有 `forgeclient` 后才停掉它继续。
 - **git / CI**：main `71493fd`（5 个提交：`fix(boss)` / `feat(boss)` / `test(boss)` / `chore(release)` /
   `docs(readme)`）。CI run `36680092676` 成功，发版 job 产出 Release **`v1.1.46`**（latest），附件
-  `apocalypse_zombies-1.1.46-clean.jar` **1,407,968 字节**（md5 `efc76eb02597d37c7afbee57df7d2f20`）。
+  `apocalypse_zombies-1.1.46-clean.jar` **1,407,968 字节**。
+  ⚠️ **别拿 md5 当发布件的长期指纹**：每次推 main 都会重建并以 `--clobber` 覆盖同一附件，jar 里的构建时间戳
+  让它逐轮不等 —— 首轮 run `36680092676` → `efc76eb0…`，台账提交那轮 run `36680331578` → `8efa1bce…`
+  （**字节数两轮都是 1,407,968**）。认 **tag `v1.1.46`** + 下面那条内容核验，别认 md5。
 - **发布件回读核验**（把附件拉下来逐条验）：`mods.toml` = `1.1.46`；Boss 动画 **12 段**（含 4 个新剪辑）；
   `HordeOverlord.class` 含 4 个剪辑名字面量与 `starved`；`EliteAbilityDriver.class` 含 `onStarved` /
   `starvationTicks`；`geo` / `anim` / `png` 与本地 `art/boss/` **md5 三向相等**
