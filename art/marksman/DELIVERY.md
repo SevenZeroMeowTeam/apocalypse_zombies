@@ -3,8 +3,11 @@
 **日期**：2026-09-30　**当前版本**：`1.1.45`（**已部署** 13:21:38，md5 `79b845e4bab9b29d53168cfd0e6c2512`，2,065,090 B）
 **1.1.45 = 本线的收尾改动**：远程怪可 opt-in「看得见就能打」，射手不再对柱顶/塔上的目标一箭不放（见 §六）
 **上一版**：`1.1.44`（`39b7db93d4d054bb5e2d06276634c165`）已随本次部署移入 `mods_backup/`
-**发布件**：GitHub Release [`v1.1.44`](https://github.com/SevenZeroMeowTeam/apocalypse_zombies/releases/tag/v1.1.44)
-→ 资产 `apocalypse_zombies-1.1.44-clean.jar`（1,400,156 B；tag 指向 `e9089fc`，CI run 36670289371 绿）
+**发布件**：GitHub Release [`v1.1.45`](https://github.com/SevenZeroMeowTeam/apocalypse_zombies/releases/tag/v1.1.45)
+→ 资产 `apocalypse_zombies-1.1.45-clean.jar`（**1,400,862 B**；tag 指向 `3457ae2`，CI run `36673197744` 绿；
+  该次 sha256 `34e2a0ef…9b83`，与 GitHub API 声明的 `digest` 一致 —— 但后续任何提交都会 `--clobber`
+  重刷该附件，**md5/sha256 只对当次查询有效**，认版本请认 tag）
+**历史发布件**：`v1.1.44`（`apocalypse_zombies-1.1.44-clean.jar`，1,400,156 B；tag `e9089fc`，CI run `36670289371`）
 **历史版本**：`1.1.43`（`80be27db080ffeff62cfe57a865200e2`）在 `mods_backup/`，同目录还有 `1.1.42`
 
 **需求（转述自对话，非逐字引文）**：把既有精英怪「骸骨射手」`MarksmanSkeleton` 从原版
