@@ -20,6 +20,7 @@ import com.apocalypse.zombies.entity.MarksmanSkeleton;
 import com.apocalypse.zombies.entity.ScreamerZombie;
 import com.apocalypse.zombies.entity.SoldierZombie;
 import com.apocalypse.zombies.entity.GiantArrow;
+import com.apocalypse.zombies.entity.HordeOverlord;
 
 /**
  * 特殊敌对生物的实体注册。
@@ -88,6 +89,23 @@ public final class ModEntities {
                     .sized(0.6F, 2.0F)
                     .clientTrackingRange(12)
                     .build("soldier_zombie"));
+
+    /**
+     * 尸潮之主：三阶段 Boss，2500 点生命。
+     *
+     * <p>命中箱 1.6 × 3.1 格是照着模型量的（geo 顶点最高 48.6u = 3.04 格），
+     * 不是随手给的 —— GeckoLib 不缩放模型，命中箱对不上就会出现「斧头砍得到、
+     * 但碰撞箱碰不到」这种读不出来的失衡。</p>
+     *
+     * <p>追踪距离 16（256 格）：Boss 的骨刺射程 40 格、血条要一直挂着，
+     * 用精英们默认的 10~12 会让玩家绕到 160 格外就看不见它了。</p>
+     */
+    public static final RegistryObject<EntityType<HordeOverlord>> OVERLORD =
+            ENTITY_TYPES.register("horde_overlord", () -> EntityType.Builder
+                    .<HordeOverlord>of(HordeOverlord::new, MobCategory.MONSTER)
+                    .sized(1.6F, 3.1F)
+                    .clientTrackingRange(16)
+                    .build("horde_overlord"));
 
     public static final RegistryObject<EntityType<AcidProjectile>> ACID_PROJECTILE =
             ENTITY_TYPES.register("acid_projectile", () -> EntityType.Builder
@@ -159,5 +177,6 @@ public final class ModEntities {
         event.put(BRIDE.get(), BrideZombie.createAttributes().build());
         event.put(CHARMED.get(), CharmedZombie.createAttributes().build());
         event.put(SOLDIER.get(), SoldierZombie.createAttributes().build());
+        event.put(OVERLORD.get(), HordeOverlord.createAttributes().build());
     }
 }

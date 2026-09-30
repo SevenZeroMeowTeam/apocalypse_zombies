@@ -1,6 +1,7 @@
 package com.apocalypse.zombies.horde;
 
 import com.apocalypse.zombies.Config;
+import com.apocalypse.zombies.entity.HordeOverlord;
 import com.apocalypse.zombies.moon.MoonEventManager;
 import com.apocalypse.zombies.registry.ModEntities;
 import com.apocalypse.zombies.zombie.ZombieEvolution;
@@ -46,9 +47,11 @@ public final class HordeManager {
 
     private static boolean active = false;
     private static int nextWaveIndex = 0;
-    private static int totalWaves = 4;
+    private static int totalWaves = 5;
     private static long nextWaveTick = 0L;
     private static boolean finalWaveLaunched = false;
+    /** 这一场尸潮有没有放过 Boss。每个 {@link #start} 重置一次。 */
+    private static boolean bossSpawned = false;
     private static int currentWaveSize = 0;
     private static ServerBossEvent bossBar;
 
@@ -69,6 +72,7 @@ public final class HordeManager {
         nextWaveIndex = 0;
         totalWaves = Math.max(1, waves);
         finalWaveLaunched = false;
+        bossSpawned = false;
         currentWaveSize = 0;
         LIVING.clear();
         // A short breather so players hear the announcement before the first mob appears.
@@ -182,6 +186,21 @@ public final class HordeManager {
         int spawned = spawnWave(level, players, random, count, nextWaveIndex);
         spawned += spawnEliteEscort(level, players, random, eliteTarget);
 
+        // 最后一波：尸潮之主领场。它算进这一波的总人数 —— 清不掉它，这一波就永远不结算，
+        // 这是「打过 Boss 才算守住」的机制落点。每场尸潮只放一只。
+        if (!bossSpawned && nextWaveIndex + 1 >= totalWaves && Config.HORDE_BOSS_ON_FINAL_WAVE.get()) {
+            int led = spawnOverlord(level, players, random);
+            if (led > 0) {
+                bossSpawned = true;
+                currentWaveSize += led;
+                spawned += led;
+                for (ServerPlayer player : players) {
+                    player.sendSystemMessage(Component.translatable(
+                            "horde.apocalypse_zombies.boss.spawn.message"));
+                }
+            }
+        }
+
         int waveNumber = nextWaveIndex + 1;
         for (ServerPlayer player : players) {
             player.connection.send(new ClientboundSetTitleTextPacket(
@@ -291,6 +310,34 @@ public final class HordeManager {
             }
         }
         return spawned;
+    }
+
+    /**
+     * 召来尸潮之主 —— 整场尸潮的高潮。
+     *
+     * <p>它走和精英护卫一样的落点逻辑（{@link #findSpawn}），但只放在<b>一个</b>玩家身边：
+     * 2500 血的 Boss 是拿来正面打的，不是撒胡椒面。落点随机挑一个玩家，
+     * 会让它在夜空里的方向感变得不可预测 —— 玩家得听声音找它，而不是看血条追它。</p>
+     */
+    private static int spawnOverlord(ServerLevel level, List<ServerPlayer> players, RandomSource random) {
+        ServerPlayer anchor = players.get(random.nextInt(players.size()));
+        BlockPos pos = findSpawn(level, anchor, random);
+        if (pos == null) {
+            return 0;
+        }
+        HordeOverlord boss = ModEntities.OVERLORD.get().create(level);
+        if (boss == null) {
+            return 0;
+        }
+        boss.moveTo(pos.getX() + 0.5D, pos.getY(), pos.getZ() + 0.5D, random.nextFloat() * 360.0F, 0.0F);
+        boss.finalizeSpawn(level, level.getCurrentDifficultyAt(pos), MobSpawnType.EVENT, null, null);
+        boss.setPersistenceRequired();
+        boss.setTarget(anchor);
+        if (level.addFreshEntity(boss)) {
+            LIVING.add(boss.getUUID());
+            return 1;
+        }
+        return 0;
     }
 
     /** 六只等概率出场。不按波次分配种类，免得玩家摸清规律之后专挑某几种来针对。 */

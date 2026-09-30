@@ -33,6 +33,12 @@
   "horde.apocalypse_zombies.wave.subtitle": "敌人数量：%s",
   "horde.apocalypse_zombies.wave.message": "第 %s/%s 波 —— %s 只僵尸围了上来",
 
+  "horde.apocalypse_zombies.boss.bar": "尸潮之主 · 第 %s 阶段 · %s 生命",
+  "horde.apocalypse_zombies.boss.phase.title": "第 %s/%s 阶段",
+  "horde.apocalypse_zombies.boss.phase.subtitle": "尸潮之主变了，小心它的手段。",
+  "horde.apocalypse_zombies.boss.spawn.title": "尸潮之主",
+  "horde.apocalypse_zombies.boss.spawn.message": "尸潮之主踏着尸群来了 —— 打掉它，这场围城才算完。",
+
   "command.apocalypse_zombies.status": "月亮：%s | 天数：%s | 进化等级：%s（%s）| 尸潮：%s",
   "command.apocalypse_zombies.status.horde": "进行中",
   "command.apocalypse_zombies.status.calm": "平静",
@@ -56,6 +62,7 @@
   "entity.apocalypse_zombies.bride_zombie": "美女僵尸",
   "entity.apocalypse_zombies.charmed_zombie": "魅惑召奬",
   "entity.apocalypse_zombies.soldier_zombie": "残兵",
+  "entity.apocalypse_zombies.horde_overlord": "尸潮之主",
   "entity.apocalypse_zombies.acid_projectile": "酸液弹",
 
   "effect.apocalypse_zombies.death_mark": "死亡标记",
@@ -67,6 +74,7 @@
   "item.apocalypse_zombies.marksman_skeleton_spawn_egg": "骸骨射手刷怪蛋",
   "item.apocalypse_zombies.bride_zombie_spawn_egg": "美女僵尸刷怪蛋",
   "item.apocalypse_zombies.soldier_zombie_spawn_egg": "残兵刷怪蛋",
+  "item.apocalypse_zombies.horde_overlord_spawn_egg": "尸潮之主刷怪蛋",
 
   "death.attack.awm_bullet": "%1$s 被一枪打穿了",
   "death.attack.awm_bullet.player": "%1$s 被 %2$s 一枪带走",

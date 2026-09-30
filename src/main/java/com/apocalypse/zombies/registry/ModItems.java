@@ -73,6 +73,11 @@ public final class ModItems {
             ITEMS.register("soldier_zombie_spawn_egg", () -> new ForgeSpawnEggItem(
                     ModEntities.SOLDIER, 0x46523A, 0xE0B23C, new Item.Properties()));
 
+    /** 尸潮之主：白骨 + 凝血红，一眼能从僵尸堆里认出来。 */
+    public static final RegistryObject<Item> OVERLORD_SPAWN_EGG =
+            ITEMS.register("horde_overlord_spawn_egg", () -> new ForgeSpawnEggItem(
+                    ModEntities.OVERLORD, 0xD8D2C0, 0x7A1220, new Item.Properties()));
+
     private ModItems() {
     }
 
@@ -97,6 +102,7 @@ public final class ModItems {
             event.accept(MARKSMAN_SPAWN_EGG);
             event.accept(BRIDE_SPAWN_EGG);
             event.accept(SOLDIER_SPAWN_EGG);
+            event.accept(OVERLORD_SPAWN_EGG);
         }
     }
 }

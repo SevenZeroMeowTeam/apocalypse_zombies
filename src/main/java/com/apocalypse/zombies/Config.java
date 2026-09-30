@@ -42,6 +42,8 @@ public final class Config {
     /** Chance of a horde on any other lunar event night. */
     public static final ForgeConfigSpec.DoubleValue HORDE_ON_OTHER_MOON_CHANCE;
     public static final ForgeConfigSpec.IntValue HORDE_WAVES;
+    /** 最后一波是否由尸潮之主（三阶段 Boss）领场。 */
+    public static final ForgeConfigSpec.BooleanValue HORDE_BOSS_ON_FINAL_WAVE;
     public static final ForgeConfigSpec.IntValue WAVE_MIN_DELAY_TICKS;
     public static final ForgeConfigSpec.IntValue WAVE_MAX_DELAY_TICKS;
     public static final ForgeConfigSpec.IntValue HORDE_MIN_RADIUS;
@@ -188,7 +190,8 @@ public final class Config {
                 .defineInRange("spawn_with_tier_chance", 0.55D, 0.0D, 1.0D);
         b.pop();
 
-        b.comment("Four-wave siege events that break out at night.")
+        b.comment("Five-wave siege events that break out at night.",
+                        "The last wave is led by the Horde Overlord (a three-phase, 2500 HP boss)")
                 .push("hordes");
         HORDES_ENABLED = b.define("hordes_enabled", true);
         HORDE_ON_EVERY_BLOOD_MOON = b.comment("Guarantee a horde whenever a blood moon rises.")
@@ -196,7 +199,7 @@ public final class Config {
         HORDE_ON_OTHER_MOON_CHANCE = b.comment("Chance of a horde on yellow / blue moon nights.")
                 .defineInRange("horde_on_other_moon_chance", 0.35D, 0.0D, 1.0D);
         HORDE_WAVES = b.comment("How many waves a single horde consists of.")
-                .defineInRange("horde_waves", 4, 1, 12);
+                .defineInRange("horde_waves", 5, 1, 12);
         WAVE_MIN_DELAY_TICKS = b.comment("Shortest gap between waves, in ticks (20 = 1s).")
                 .defineInRange("wave_min_delay_ticks", 600, 20, 72000);
         WAVE_MAX_DELAY_TICKS = b.comment("Longest gap between waves, in ticks.")
@@ -209,6 +212,10 @@ public final class Config {
                 .defineInRange("horde_scale_per_level", 0.15D, 0.0D, 10.0D);
         HORDE_BOSS_BAR = b.comment("Show a boss bar tracking the current wave and remaining mobs.")
                 .define("horde_boss_bar", true);
+        HORDE_BOSS_ON_FINAL_WAVE = b.comment("Let the Horde Overlord lead the last wave.",
+                        "It counts towards that wave's head count, so the siege only ends once it is dead.",
+                        "Turn off to keep the sieges boss-free (the spawn egg and the command still work).")
+                .define("horde_boss_on_final_wave", true);
         b.pop();
 
         b.comment("Hand-tuned special hostiles. They stay outside the evolution ladder.")

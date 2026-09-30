@@ -33,6 +33,12 @@
   "horde.apocalypse_zombies.wave.subtitle": "%s hostiles",
   "horde.apocalypse_zombies.wave.message": "Wave %s/%s — %s zombies close in",
 
+  "horde.apocalypse_zombies.boss.bar": "Horde Overlord — phase %s · %s HP",
+  "horde.apocalypse_zombies.boss.phase.title": "PHASE %s/%s",
+  "horde.apocalypse_zombies.boss.phase.subtitle": "The Overlord has changed. Watch its hands.",
+  "horde.apocalypse_zombies.boss.spawn.title": "THE HORDE OVERLORD",
+  "horde.apocalypse_zombies.boss.spawn.message": "The Horde Overlord walks with the horde — kill it and the siege is over.",
+
   "command.apocalypse_zombies.status": "Moon: %s | Day: %s | Evolution: %s (%s) | Horde: %s",
   "command.apocalypse_zombies.status.horde": "active",
   "command.apocalypse_zombies.status.calm": "calm",
@@ -56,6 +62,7 @@
   "entity.apocalypse_zombies.bride_zombie": "Zombie Bride",
   "entity.apocalypse_zombies.charmed_zombie": "Charmed Zombie",
   "entity.apocalypse_zombies.soldier_zombie": "Remnant Soldier",
+  "entity.apocalypse_zombies.horde_overlord": "Horde Overlord",
   "entity.apocalypse_zombies.acid_projectile": "Acid Glob",
 
   "effect.apocalypse_zombies.death_mark": "Death Mark",
@@ -67,6 +74,7 @@
   "item.apocalypse_zombies.marksman_skeleton_spawn_egg": "Marksman Skeleton Spawn Egg",
   "item.apocalypse_zombies.bride_zombie_spawn_egg": "Zombie Bride Spawn Egg",
   "item.apocalypse_zombies.soldier_zombie_spawn_egg": "Remnant Soldier Spawn Egg",
+  "item.apocalypse_zombies.horde_overlord_spawn_egg": "Horde Overlord Spawn Egg",
 
   "death.attack.awm_bullet": "%1$s was shot clean through",
   "death.attack.awm_bullet.player": "%1$s was picked off by %2$s",

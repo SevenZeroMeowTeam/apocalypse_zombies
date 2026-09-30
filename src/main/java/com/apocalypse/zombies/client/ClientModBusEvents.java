@@ -6,6 +6,7 @@ import com.apocalypse.zombies.client.model.CrusherModel;
 import com.apocalypse.zombies.client.model.MarksmanModel;
 import com.apocalypse.zombies.client.model.ScreamerModel;
 import com.apocalypse.zombies.client.renderer.BrideGeoRenderer;
+import com.apocalypse.zombies.client.renderer.OverlordGeoRenderer;
 import com.apocalypse.zombies.client.renderer.SoldierGeoRenderer;
 import com.apocalypse.zombies.client.renderer.CharmedZombieRenderer;
 import com.apocalypse.zombies.client.renderer.CorroderRenderer;
@@ -67,6 +68,8 @@ public final class ClientModBusEvents {
         event.registerEntityRenderer(ModEntities.MARKSMAN.get(), MarksmanRenderer::new);
         event.registerEntityRenderer(ModEntities.BRIDE.get(), BrideGeoRenderer::new);
         event.registerEntityRenderer(ModEntities.SOLDIER.get(), SoldierGeoRenderer::new);
+        // 尸潮之主：三阶段 Boss。同样是 GeckoLib 骨骼模型，模型自己 3 格高，不做缩放。
+        event.registerEntityRenderer(ModEntities.OVERLORD.get(), OverlordGeoRenderer::new);
         event.registerEntityRenderer(ModEntities.CHARMED.get(), CharmedZombieRenderer::new);
         // 酸液直接借原版投掷物的渲染：一个飞出去的小球，材质疑似物品贴图
         event.registerEntityRenderer(ModEntities.ACID_PROJECTILE.get(),
