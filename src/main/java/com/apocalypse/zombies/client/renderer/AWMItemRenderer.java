@@ -27,6 +27,9 @@ public class AWMItemRenderer extends GeoItemRenderer<AWMItem> {
     /** The bone the clips animate; hand targets transformed by its chain land wherever the gun is. */
     private static final String MOVE_BONE = "move";
 
+    /** The bolt — its live pose is what the right hand is put on while the clip works the handle. */
+    private static final String BOLT_BONE = "bolt";
+
     public AWMItemRenderer() {
         super(new AWMGeoModel());
     }
@@ -38,7 +41,8 @@ public class AWMItemRenderer extends GeoItemRenderer<AWMItem> {
 
         if (displayContext.firstPerson()) {
             CoreGeoBone move = getGeoModel().getAnimationProcessor().getBone(MOVE_BONE);
-            AWMGeoModel.capture(itemRenderTranslations, move, GunAimState.getAimProgress());
+            CoreGeoBone bolt = getGeoModel().getAnimationProcessor().getBone(BOLT_BONE);
+            AWMGeoModel.capture(itemRenderTranslations, move, bolt, GunAimState.getAimProgress());
         }
     }
 }

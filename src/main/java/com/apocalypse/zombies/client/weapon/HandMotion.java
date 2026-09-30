@@ -1,5 +1,7 @@
 package com.apocalypse.zombies.client.weapon;
 
+import net.minecraft.client.Minecraft;
+
 /**
  * Small interpolation helpers for the first-person hands.
  *
@@ -39,5 +41,18 @@ public final class HandMotion {
         out[1] += dy;
         out[2] += dz;
         return out;
+    }
+
+    /**
+     * Moves {@code current} towards {@code target}, closing about two thirds of the gap per {@code tau} seconds.
+     *
+     * <p>Frame time comes from the client, so a hand travels the same distance in the same time whatever the
+     * frame rate. It is used for a state that has to sit at exactly 1 for a while — the hand's grip on a bolt
+     * handle — where {@link #ramp} would need a second timing to say "still holding", and the two would drift
+     * apart the moment the art changed. Only the ends are eased; the middle is the bone's own answer.</p>
+     */
+    public static float ease(float current, float target, float tau) {
+        float dt = Minecraft.getInstance().getDeltaFrameTime() * 0.05F;   // in seconds: 1 tick = 50 ms
+        return current + (target - current) * Math.min(1.0F, dt / tau);
     }
 }

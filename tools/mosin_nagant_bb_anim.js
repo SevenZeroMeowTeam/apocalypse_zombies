@@ -169,10 +169,11 @@
   // ================================================================ 6. bolt（1.10s once）提→拉→抛→推→压
   (function () {
     var a = clip('bolt', 1.1, 'once');
-    // 提柄：绕膛线轴 +80°（手柄在 +X，正向旋转抬柄）
+    // 提柄：绕膛线轴 −80°。栓柄在 −X 侧，屏幕右 = +X，绕 +Z 正转是顺时针、会把 −X 侧的柄往下压
+    // （压进机匣=穿模）；真机提柄是上抬的，所以要负角。详见 tools/bolt_lift_sign.py 顶部推导。
     K(a, 'bolt', 'rotation', 0.00, [0, 0, 0], LIN);
-    K(a, 'bolt', 'rotation', 0.19, [0, 0, 80], LIN);
-    K(a, 'bolt', 'rotation', 0.68, [0, 0, 80], LIN);
+    K(a, 'bolt', 'rotation', 0.19, [0, 0, -80], LIN);
+    K(a, 'bolt', 'rotation', 0.68, [0, 0, -80], LIN);
     K(a, 'bolt', 'rotation', 0.86, [0, 0, 0], LIN);
     // 后拉 1.55u（真机行程 ~90mm），推回
     K(a, 'bolt', 'position', 0.00, [0, 0, 0], LIN);
@@ -243,8 +244,8 @@
     var a = clip('reload_empty', 4.4, 'once');
     // 提栓、后拉到位并保持
     K(a, 'bolt', 'rotation', 0.00, [0, 0, 0], LIN);
-    K(a, 'bolt', 'rotation', 0.20, [0, 0, 80], LIN);
-    K(a, 'bolt', 'rotation', 3.95, [0, 0, 80], LIN);
+    K(a, 'bolt', 'rotation', 0.20, [0, 0, -80], LIN);
+    K(a, 'bolt', 'rotation', 3.95, [0, 0, -80], LIN);
     K(a, 'bolt', 'rotation', 4.36, [0, 0, 0], LIN);
     K(a, 'bolt', 'position', 0.00, [0, 0, 0], LIN);
     K(a, 'bolt', 'position', 0.20, [0, 0, 0], LIN);
@@ -285,8 +286,8 @@
     // 已有 2 发：上层两发可见（mag_r1/r2），底层为空（mag_r3/r4/r5 隐藏）
     ['mag_r1', 'mag_r2'].forEach(function (n) { Kconst(a, n, 'scale', S1); });
     K(a, 'bolt', 'rotation', 0.00, [0, 0, 0], LIN);
-    K(a, 'bolt', 'rotation', 0.18, [0, 0, 80], LIN);
-    K(a, 'bolt', 'rotation', 3.15, [0, 0, 80], LIN);
+    K(a, 'bolt', 'rotation', 0.18, [0, 0, -80], LIN);
+    K(a, 'bolt', 'rotation', 3.15, [0, 0, -80], LIN);
     K(a, 'bolt', 'rotation', 3.48, [0, 0, 0], LIN);
     K(a, 'bolt', 'position', 0.00, [0, 0, 0], LIN);
     K(a, 'bolt', 'position', 0.18, [0, 0, 0], LIN);
@@ -330,8 +331,8 @@
     K(a, 'move', 'rotation', 2.35, [0, 0, 0], CAT);
     // 顺手把栓半开一下，看看机匣里面
     K(a, 'bolt', 'rotation', 0.00, [0, 0, 0], LIN);
-    K(a, 'bolt', 'rotation', 1.35, [0, 0, 42], LIN);
-    K(a, 'bolt', 'rotation', 1.68, [0, 0, 42], LIN);
+    K(a, 'bolt', 'rotation', 1.35, [0, 0, -42], LIN);
+    K(a, 'bolt', 'rotation', 1.68, [0, 0, -42], LIN);
     K(a, 'bolt', 'rotation', 2.00, [0, 0, 0], LIN);
     K(a, 'bolt', 'position', 0.00, [0, 0, 0], LIN);
     K(a, 'bolt', 'position', 1.40, [0, 0, 0.30], LIN);

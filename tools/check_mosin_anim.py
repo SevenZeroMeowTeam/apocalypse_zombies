@@ -229,7 +229,22 @@ def main() -> int:
                     return t
             return None
 
-        t_open = reach_time(rot, 2, 79.0)               # 提柄到位（绕 +Z 80 度）
+        def reach_below(chan, axis, threshold):
+            """第一次达到阈值（<=）的时刻。
+
+            提柄角是**负**的：柄在模型 −X 侧，绕 +Z 正向旋转会把它往下压（压进枪托 = 拉栓穿模），
+            真机提柄是上抬 ⇒ 取负。推导见 tools/bolt_lift_sign.py。
+            """
+            for t, val in entries(chan):
+                v = vec_of(val)
+                if v and v[axis] <= threshold + 1e-6:
+                    return t
+            return None
+
+        peak_z = min((vec_of(v)[2] for _, v in entries(rot) if vec_of(v)), default=0.0)   # 取最负的那一帧
+        check(peak_z <= -79.0,
+              f"bolt: 提柄角峰值 {peak_z}° 应为负且 ≤ −79°（负角才是上抬；正角是把柄压进枪托，v1.1.49 前的老 bug）")
+        t_open = reach_below(rot, 2, -79.0)             # 提柄到位（绕 +Z −80 度 = 手柄上抬）
         t_pull = reach_time(pos, 2, 1.5)                # 后拉到到位
         t_home = max(key_times(pos)) if key_times(pos) else None
         t_cas = [t for t, val in entries(cas) if (vec_of(val) or [0, 0, 0])[0] > 0.5]
@@ -237,7 +252,7 @@ def main() -> int:
               f"bolt: 提柄到位 {t_open} 应不晚于后拉到位 {t_pull}")
         check(t_pull is not None and t_home is not None and t_home > t_pull,
               f"bolt: 后拉到位 {t_pull} 之后必须有推回（末键 {t_home}）")
-        if t_cas:
+        if t_cas and None not in (t_open, t_pull, t_home):
             check(t_pull is not None and t_cas[0] >= t_pull - 1e-6,
                   f"bolt: 抛壳({t_cas[0]}) 应在后拉到位({t_pull})之后")
             check(t_cas[-1] <= bclip.get("animation_length", 1.1) + 1e-6,

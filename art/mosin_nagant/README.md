@@ -180,3 +180,19 @@ gametest 得自备结构 NBT）。无玩家的服务端**不会把死讯写进�
 - `Animation.select()` 在这个版本对脚本建的骨会抛 `Cannot read properties of undefined (reading 'fix_rotation')`，
   时间轴预览因此不生效；**动画数据本身没问题**（导出文件已逐帧核对），要看效果请手动在 Blockbench 里点开片段。
 - 逐面 UV 必须在 `Project.box_uv = false` 之后再建方块；`face.texture` 要写贴图 **UUID**（写 0 会退回彩虹占位图）。
+
+## v1.1.49（2026-09-30）拉栓提柄方向 + 手随活骨柄心
+
+**栓柄是往上抬的**：柄在模型 **−X 侧**（handle 三块 x −0.68…−0.30，柄头方块中心
+`(-0.62, 1.93, -2.05)`、枢轴 = 膛线轴 `(0, 1.75, -2.108)`），模型朝 −Z、相机在 +Z 侧朝 −Z 看 ⇒
+屏幕右 = +X。绕 +Z**正**转把 −X 侧的点往下压（`y' = x·sinθ < 0`）—— 柄扎进枪托就是穿模的来源。
+真机是上抬 ⇒ `bolt.rotation.z` 取**负**：`bolt`/`reload_empty`/`reload_tactical` −80°、`inspect` −42°。
+
+- 后拉（`position.z`，+z = 向后）**不变**：`bolt`/`reload_empty` 1.55、`reload_tactical` 1.35，
+  键时刻也未动（只翻提柄的符号）。
+- **手**：右手不再靠 `BOLT_TRAVEL` 常量推，而是读活栓链路（`GunFrame.partChain` + `boltGrip`），
+  目标恒为**柄头原点**在本帧的位置；`handleHold` 由 `boltActivity`（活栓离位程度）驱动，
+  换弹在 0.88 / 0.86 交棒给「握柄」分支。见 `tools/check_bolt_grip.py` 的逐帧门禁。
+- 工具与留档：`tools/bolt_lift_sign.py`（`--check` 门禁）、`mosin_nagant.animation.pre-lift.bak.json`
+  （改动前，门禁拿它做对照）、`tools/check_bolt_grip.py`（几何：上抬方向 / 柄心 / 穿模，含矩阵自检）。
+- 实测：柄心抬升 −0.759 px → **+0.462 px**；柄头对枪托的最大互嵌 **16.42 mm → 0.00 mm**。

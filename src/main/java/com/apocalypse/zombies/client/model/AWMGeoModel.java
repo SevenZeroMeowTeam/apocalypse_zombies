@@ -39,8 +39,40 @@ public class AWMGeoModel extends GeoModel<AWMItem> {
     /** The firing grip, on the pistol grip below the receiver. */
     private static final float[] GRIP = {-0.26F, -0.30F, 0.95F};
 
-    /** The bolt handle, on the right of the receiver. */
-    private static final float[] BOLT = {-1.35F, 1.85F, 1.45F};
+    /**
+     * The knob on the end of the bolt handle — the ball the hand actually closes on. Centre of the ring of
+     * eight cubes at x −1.36, y 1.80, z 0.84 (read off the geo's {@code bolt} bone), which is what the right
+     * hand is driven to while the bolt is being worked: wherever the clip has moved this point, the hand is.
+     *
+     * <p>The previous constant here sat 0.6 px further back along the bore than the knob and 0.33 px short of
+     * the clip's travel, so the fist trailed the handle by about that much all the way through the pull.</p>
+     */
+    private static final float[] BOLT_KNOB = {-1.36F, 1.80F, 0.84F};
+
+    /**
+     * The bolt's own maxima over the clips — 60° of turn, 1.932 px of travel — used only to read how far off its
+     * home position the bolt is this frame ({@link GunFrame#boltActivity}). Both are the {@code bolt} clip's
+     * values, and {@code check_bolt_grip} asserts they still are.
+     */
+    private static final float BOLT_TURN_MAX = 60.0F;
+    private static final float BOLT_PULL_MAX = 1.932F;
+
+    /**
+     * When the empty reload lets the right hand go back to the bolt, as a fraction of that clip: the clip starts
+     * running the handle down at 0.6592, and the hand sets off a tenth of a second earlier so it is closed on
+     * the handle before the handle moves. Before it the support hand is working the magazine and the right hand
+     * stays on the firing grip.
+     */
+    private static final float BOLT_PICKUP = 0.64F;
+
+    /**
+     * How much of the hand's grip is on the handle, 0…1 — see the same field on the Mosin model for why this is
+     * state rather than a fade in each clip.
+     */
+    private static float handleHold;
+
+    /** Seconds for the fist to reach (or leave) the handle. */
+    private static final float HOLD_TAU = 0.06F;
 
     /** The support hand's home: the fore-end, just behind the bipod. */
     private static final float[] SUPPORT = {0.55F, 0.68F, -8.40F};
@@ -48,11 +80,12 @@ public class AWMGeoModel extends GeoModel<AWMItem> {
     /** The magazine well, under the receiver — where the support hand goes to swap a magazine. */
     private static final float[] MAGWELL = {0.30F, -1.50F, -2.40F};
 
-    /** How far the bolt handle travels rearward, in model pixels. */
-    private static final float BOLT_TRAVEL = 1.60F;
-
     /** How far a magazine drops out of the well, in model pixels. */
     private static final float MAG_DROP = 1.60F;
+
+    /** Scratch: the live knob while the hand is on the handle, and the bolt's chain. See the Mosin model. */
+    private static final float[] KNOB = new float[3];
+    private static final Matrix4f SCRATCH_BOLT = new Matrix4f();
 
     @Override
     public ResourceLocation getModelResource(AWMItem animatable) {
@@ -72,31 +105,64 @@ public class AWMGeoModel extends GeoModel<AWMItem> {
     // ------------------------------------------------------------------ hands
 
     /** Records this frame's pose from inside the renderer. See the Garand model's twin for the reasoning. */
-    public static void capture(Matrix4f itemRenderTranslations, CoreGeoBone moveBone, float aim) {
+    public static void capture(Matrix4f itemRenderTranslations, CoreGeoBone moveBone, CoreGeoBone boltBone,
+                               float aim) {
         if (itemRenderTranslations == null || moveBone == null) {
             frame.invalidate();
             return;
         }
         frame.capture(itemRenderTranslations, GunFrame.boneChain(SCRATCH, moveBone), aim);
+        frame.bolt(GunFrame.partChain(SCRATCH_BOLT, boltBone, GunFrame.MOVE_BONE), boltBone);
     }
 
     /**
      * The right hand. On this gun it works the bolt and nothing else: the magazine is the support hand's job, so
-     * the firing grip is kept through every reload and only released to cycle.
+     * the firing grip is kept through the reload until the clip comes to the bolt.
      *
-     * <p>{@code bolt}'s own keyframes run {@code 0.25…0.85} of its 1.27s clip, so the hand is on the handle by
-     * {@code 0.20} and peeling off it by {@code 0.90}; the reloads work the bolt late, at {@code 0.69…0.78}.
+     * <p>While the bolt is off home the hand is on the <em>knob</em> — the point {@link GunFrame#boltGrip} moves
+     * with the live bone, so the fist and the handle are the same pose by construction rather than by a re-timing
+     * of keyframes here. {@link #handleHold} eases the changeover at either end; the middle is the clip's own
+     * answer, and {@code check_bolt_grip} measures the gap.</p>
      */
     public static float[] rightHand(String action, float progress, float[] out) {
-        if ("bolt".equals(action)) {
-            float toHandle = HandMotion.ramp(progress, 0.05F, 0.20F);
-            float pulled = HandMotion.bump(progress, 0.20F, 0.50F, 0.92F);
-            return HandMotion.lerpThenShift(out, GRIP, BOLT, toHandle, 0.0F, 0.0F, BOLT_TRAVEL * pulled);
+        if ("bolt".equals(action) || "inspect".equals(action) || "inspect_empty".equals(action)) {
+            return onBolt(out, holdOnHandle());
         }
-        if ("reload_empty".equals(action) || "reload_tactical".equals(action)) {
-            float toHandle = HandMotion.ramp(progress, 0.55F, 0.68F);
-            float pulled = HandMotion.bump(progress, 0.68F, 0.78F, 1.0F);
-            return HandMotion.lerpThenShift(out, GRIP, BOLT, toHandle, 0.0F, 0.0F, BOLT_TRAVEL * pulled);
+        if ("static_bolt_caught".equals(action)) {
+            // The whole clip is the bolt held open, so there is no changeover to ease — the hand is simply on it.
+            return onBolt(out, 1.0F);
+        }
+        if ("reload_empty".equals(action)) {
+            if (progress < BOLT_PICKUP) {
+                // Still on the firing grip: the support hand has the magazine, the right hand has nothing to do.
+                handleHold = 0.0F;
+                System.arraycopy(GRIP, 0, out, 0, 3);
+                return out;
+            }
+            return onBolt(out, holdOnHandle());
+        }
+        System.arraycopy(GRIP, 0, out, 0, 3);
+        return out;
+    }
+
+    /**
+     * Advances {@link #handleHold} for this frame: 1 while the live bolt is off its home position, 0 once the
+     * clip has run it closed, with {@link HandMotion#ease} at {@link #HOLD_TAU} for the travel between the two.
+     */
+    private static float holdOnHandle() {
+        float on = frame.boltActivity(BOLT_TURN_MAX, BOLT_PULL_MAX) > 0.02F ? 1.0F : 0.0F;
+        handleHold = HandMotion.ease(handleHold, on, HOLD_TAU);
+        return handleHold;
+    }
+
+    /**
+     * The firing grip, or the live handle if the hand belongs on it: {@code k} runs from 0 with the fist at the
+     * grip to 1 with it closed on the knob. Falls back to the grip whenever the renderer has handed no bolt over,
+     * so a hand never chases nothing.
+     */
+    private static float[] onBolt(float[] out, float k) {
+        if (k > 0.0F && frame.boltGrip(BOLT_KNOB, KNOB)) {
+            return HandMotion.lerp(out, GRIP, KNOB, k);
         }
         System.arraycopy(GRIP, 0, out, 0, 3);
         return out;

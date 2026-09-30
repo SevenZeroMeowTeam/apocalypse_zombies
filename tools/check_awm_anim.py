@@ -45,6 +45,11 @@ INV_S = 1.0 / S_GUN
 LOOPING = {'static_idle', 'static_bolt_caught'}
 TOL = 1e-3
 
+#: 提柄角必须翻号：TaCZ 的模型柄长在 +X 侧，我们这把长在 −X（同一个「绕 +Z 正向旋转」，
+#: 在 −X 侧是把柄往下压 —— 压进枪托里，就是拉栓穿模）。推导见 tools/bolt_lift_sign.py 顶部。
+#: 纯直译会得到 +60，装进我们的模型是反的，所以这里按翻转后的期望值比对。
+ROT_NEG = {('bolt', 'rotation')}
+
 sys.path.insert(0, os.path.join(HERE, 'tools'))
 from tacz_anim_transcribe import MAP, norm_chan, sample, rot_compose, rot_apply  # noqa: E402
 
@@ -195,6 +200,8 @@ def check_fidelity(anim):
         if kind.endswith('+') or kind == 'scale':
             continue                       # 合成/缩放通道另有逻辑，抽查意义不大
         scale = INV_S if kind == 'pos' else 1.0
+        if (db, dc) in ROT_NEG:
+            scale = -1.0                   # 提柄角翻号，见 ROT_NEG 的说明
         for clip, c in tacz.items():
             if clip not in anim:
                 continue
@@ -224,7 +231,7 @@ def check_kinematics(anim):
 
     rep = {}
     rep['bolt 栓后退最大 z'] = peak('bolt', 'bolt', 'position', 2)
-    rep['bolt 抬把最大 z'] = peak('bolt', 'bolt', 'rotation', 2)
+    rep['bolt 提柄角（负 = 上抬）'] = peak('bolt', 'bolt', 'rotation', 2, min)
     rep['bolt 抛壳最远 x'] = peak('bolt', 'casing', 'position', 0, min)
     rep['reload_empty 弹匣最低 y'] = peak('reload_empty', 'magazine', 'position', 1, min)
     rep['reload_empty 抛壳最远 x'] = peak('reload_empty', 'casing', 'position', 0, min)
@@ -235,7 +242,7 @@ def check_kinematics(anim):
     # 期望值来自 TaCZ 源 ÷S_GUN 或 1:1
     exp = {
         'bolt 栓后退最大 z': (round(4.6 * INV_S, 3), 0.01),
-        'bolt 抬把最大 z': (60.0, 0.01),
+        'bolt 提柄角（负 = 上抬）': (-60.0, 0.01),
         'reload_empty 弹匣最低 y': (round(-22.56 * INV_S, 3), 0.02),
         'shoot 枪口上跳 x': (-7.95, 0.5),
         'reload_tactical 枪身最大倾 z': (-25.74, 0.5),

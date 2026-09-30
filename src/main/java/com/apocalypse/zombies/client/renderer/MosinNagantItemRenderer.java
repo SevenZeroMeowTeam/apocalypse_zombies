@@ -34,6 +34,9 @@ public class MosinNagantItemRenderer extends GeoItemRenderer<MosinNagantItem> {
      */
     private static final String MOVE_BONE = "move";
 
+    /** The bolt — its live pose is what the right hand is put on while the clip works the handle. */
+    private static final String BOLT_BONE = "bolt";
+
     public MosinNagantItemRenderer() {
         super(new MosinNagantGeoModel());
     }
@@ -45,7 +48,8 @@ public class MosinNagantItemRenderer extends GeoItemRenderer<MosinNagantItem> {
 
         if (displayContext.firstPerson()) {
             CoreGeoBone move = getGeoModel().getAnimationProcessor().getBone(MOVE_BONE);
-            MosinNagantGeoModel.capture(itemRenderTranslations, move,
+            CoreGeoBone bolt = getGeoModel().getAnimationProcessor().getBone(BOLT_BONE);
+            MosinNagantGeoModel.capture(itemRenderTranslations, move, bolt,
                     com.apocalypse.zombies.client.GunAimState.getAimProgress());
         }
     }

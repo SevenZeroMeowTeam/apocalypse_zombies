@@ -56,17 +56,58 @@ public class MosinNagantGeoModel extends GeoModel<MosinNagantItem> {
     private static final float[] ROUNDS = {0.00F, 2.90F, -4.50F};
 
     /**
-     * The straight bolt handle, on the right of the receiver — what the right hand actually works. At
-     * z −2.10 the geo's x runs to −0.98 (the handle's own column, published space), and the knob sits at
-     * the top of it, y ≈ 2.0.
+     * The knob on the end of the handle — the part the hand actually closes on. Centre of the outer plate at
+     * x −0.62 (that plate runs x −0.68…−0.56, y 1.69…2.15), which is the outermost of the handle's three
+     * cubes; the hand is driven to wherever the clip has moved this point.
+     *
+     * <p>It is a point of the bolt, so the clip moves it: the handle turns about the bolt's own pivot — the
+     * bore line at (0, 1.75, −2.108), straight off the geo — and slides rearward with it. Rather than redo
+     * that arithmetic here, {@link GunFrame#boltGrip} applies the bolt's live chain, so the hand lands
+     * wherever the drawn handle actually is.</p>
      */
-    private static final float[] BOLT = {-0.75F, 2.05F, -2.10F};
+    private static final float[] BOLT_KNOB = {-0.62F, 1.93F, -2.05F};
+
+    /**
+     * The bolt's own maxima over the clips — 80° of turn, 1.55 px of travel — used only to read how far off
+     * its home position the bolt is this frame ({@link GunFrame#boltActivity}). Both are the values the
+     * {@code bolt} clip and the reloads key, and {@code check_bolt_grip} asserts they still are.
+     */
+    private static final float BOLT_TURN_MAX = 80.0F;
+    private static final float BOLT_PULL_MAX = 1.55F;
+
+    /**
+     * When each reload lets the right hand go back to the bolt, as a fraction of that clip. The clip itself
+     * starts running the handle down at 0.8996 ({@code reload_empty}) and 0.8796 ({@code reload_tactical}); the
+     * hand sets off a tenth of a second earlier so it is closed on the handle before the handle moves.
+     * {@code check_bolt_grip} re-reads both clips and fails if these stop matching them.
+     */
+    private static final float BOLT_PICKUP_EMPTY = 0.88F;
+    private static final float BOLT_PICKUP_TACTICAL = 0.86F;
+
+    /**
+     * How much of the hand's grip is on the handle, 0…1 — eased by {@link HandMotion#ease} at {@link #HOLD_TAU},
+     * so the fist reaches the knob on its own time instead of teleporting with a handle that flies open.
+     *
+     * <p>State rather than a fade, and driven by {@link #holdOnHandle} off the live bolt: the hand is on the
+     * handle for exactly as long as the clip holds the bolt off home, and lets go when the clip runs it closed —
+     * one rule that covers cycling, inspecting and the tail of a reload alike. A fade per clip would have to
+     * name a second timing for "still holding", and that is a second copy of the art, free to drift from it.</p>
+     */
+    private static float handleHold;
+
+    /** Seconds for the fist to reach (or leave) the handle. A reach across the receiver, so: not a snap. */
+    private static final float HOLD_TAU = 0.06F;
 
     /** The support hand, flat under the fore-end ahead of the receiver (that column runs y 0.56…2.06). */
     private static final float[] SUPPORT = {0.10F, 0.52F, -8.00F};
 
-    /** How far the bolt handle travels rearward, in model pixels — the hand pulls back with it. */
-    private static final float BOLT_TRAVEL = 1.55F;
+    /**
+     * Scratch: the live knob while the hand is on the handle, and the bolt's chain. The client renders on one
+     * thread and both are used inside a single {@link #rightHand} call, so one of each is enough — the same
+     * reasoning as {@link #SCRATCH}.
+     */
+    private static final float[] KNOB = new float[3];
+    private static final Matrix4f SCRATCH_BOLT = new Matrix4f();
 
     // ------------------------------------------------------------------ resources
 
@@ -93,46 +134,75 @@ public class MosinNagantGeoModel extends GeoModel<MosinNagantItem> {
      *
      * @param itemRenderTranslations GeckoLib's {@code itemRenderTranslations} for this item, off the renderer
      * @param moveBone the bone the clips animate (everything is under it), or {@code null} before it exists
+     * @param boltBone the {@code bolt} bone, whose live pose the right hand is driven from (may be {@code null})
      */
-    public static void capture(org.joml.Matrix4f itemRenderTranslations, CoreGeoBone moveBone, float aim) {
+    public static void capture(Matrix4f itemRenderTranslations, CoreGeoBone moveBone, CoreGeoBone boltBone,
+                               float aim) {
         if (itemRenderTranslations == null || moveBone == null) {
             frame.invalidate();
             return;
         }
         frame.capture(itemRenderTranslations, GunFrame.boneChain(SCRATCH, moveBone), aim);
+        frame.bolt(GunFrame.partChain(SCRATCH_BOLT, boltBone, GunFrame.MOVE_BONE), boltBone);
     }
 
     /**
      * Where the right hand is, in model pixels, for the action the gun is running.
      *
+     * <p>The bolt is worked by hand on this rifle, and the rule the hand follows is the one the user sees: it
+     * holds the <em>knob</em>, not a spot near it. So wherever the clip has the bolt, the hand is aimed at the
+     * point the knob has moved to ({@link GunFrame#boltGrip}) — the hand and the handle are then the same
+     * pose by construction, and no re-timing of keyframes here can drift away from the art.</p>
+     *
      * <p>Timings follow the clips' own keyframes rather than round numbers, because a hand that arrives after
      * the clip has already put the part down reads as a mistake:
      * <ul>
-     *   <li>{@code bolt} breaks the handle open over {@code 0.10…0.19}, pulls rearward to {@code 0.38} and is
-     *       home again by {@code 0.68} (the file: t=4.2 / 8.3 / 15.0 of 22).</li>
-     *   <li>The reloads hold the rounds over the receiver from {@code 0.04…0.16} through the last round at
-     *       {@code 0.83}, then close the bolt over {@code 0.84…0.96}.</li>
+     *   <li>{@code bolt} and {@code inspect} are the bolt cycle itself, so the hand simply holds the handle for
+     *       as long as the clip holds the bolt off home ({@link #holdOnHandle}) — it lets go only once the clip
+     *       has run it closed.</li>
+     *   <li>The reloads hold the rounds over the receiver until the clip starts closing the bolt at
+     *       {@code BOLT_PICKUP_*}, then the hand drops onto the handle and rides it home.</li>
      * </ul>
      */
     public static float[] rightHand(String action, float progress, float[] out) {
-        if ("bolt".equals(action)) {
-            float toHandle = HandMotion.ramp(progress, 0.10F, 0.19F);
-            float pulled = HandMotion.bump(progress, 0.19F, 0.38F, 0.68F);
-            return HandMotion.lerpThenShift(out, GRIP, BOLT, toHandle, 0.0F, 0.0F, BOLT_TRAVEL * pulled);
+        if ("bolt".equals(action) || "inspect".equals(action)) {
+            return onBolt(out, holdOnHandle());
         }
         if ("reload_empty".equals(action) || "reload_tactical".equals(action)) {
-            float toRounds = HandMotion.ramp(progress, 0.04F, 0.16F);
-            float press = HandMotion.ramp(progress, 0.16F, 0.30F);
-            if (progress < 0.84F) {
-                // Over the receiver, pressing each round home — the thumb goes down, the hand follows.
+            float pickup = "reload_empty".equals(action) ? BOLT_PICKUP_EMPTY : BOLT_PICKUP_TACTICAL;
+            if (progress < pickup) {
+                // Over the receiver, pressing each round home — the thumb goes down, the hand follows. The bolt
+                // is already open behind it, so the grip's own state is held down rather than left to follow it.
+                handleHold = 0.0F;
+                float toRounds = HandMotion.ramp(progress, 0.04F, 0.16F);
+                float press = HandMotion.ramp(progress, 0.16F, 0.30F);
                 return HandMotion.lerpThenShift(out, GRIP, ROUNDS, toRounds, 0.0F, -0.35F * press, 0.0F);
             }
-            // Then releases the handle and runs the bolt home, hand riding it forward.
-            float toHandle = HandMotion.ramp(progress, 0.84F, 0.92F);
-            float closed = HandMotion.bump(progress, 0.88F, 0.94F, 1.0F);
-            float[] back = HandMotion.lerp(out, ROUNDS, BOLT, toHandle);
-            back[2] -= BOLT_TRAVEL * closed;
-            return back;
+            // Then the clip closes the bolt over its last tenth, and the hand goes with it.
+            return onBolt(out, holdOnHandle());
+        }
+        System.arraycopy(GRIP, 0, out, 0, 3);
+        return out;
+    }
+
+    /**
+     * Advances {@link #handleHold} for this frame: 1 while the live bolt is off its home position, 0 once the
+     * clip has run it closed, with {@link HandMotion#ease} at {@link #HOLD_TAU} for the travel between the two.
+     */
+    private static float holdOnHandle() {
+        float on = frame.boltActivity(BOLT_TURN_MAX, BOLT_PULL_MAX) > 0.02F ? 1.0F : 0.0F;
+        handleHold = HandMotion.ease(handleHold, on, HOLD_TAU);
+        return handleHold;
+    }
+
+    /**
+     * The firing grip, or the live handle if the hand belongs on it: {@code k} runs from 0 with the fist at
+     * the grip to 1 with it closed on the knob. Falls back to the grip whenever the renderer has handed no
+     * bolt over (other display contexts, the first frames after a swap) so a hand never chases nothing.
+     */
+    private static float[] onBolt(float[] out, float k) {
+        if (k > 0.0F && frame.boltGrip(BOLT_KNOB, KNOB)) {
+            return HandMotion.lerp(out, GRIP, KNOB, k);
         }
         System.arraycopy(GRIP, 0, out, 0, 3);
         return out;

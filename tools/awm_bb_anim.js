@@ -127,8 +127,8 @@
 
   K(bolt, 'bolt', 'rotation', 0.00, [0, 0, 0]);
   K(bolt, 'bolt', 'rotation', 0.24, [0, 0, 0]);
-  K(bolt, 'bolt', 'rotation', 0.34, [0, 0, 60]);
-  K(bolt, 'bolt', 'rotation', 0.78, [0, 0, 60]);
+  K(bolt, 'bolt', 'rotation', 0.34, [0, 0, -60]);
+  K(bolt, 'bolt', 'rotation', 0.78, [0, 0, -60]);
   K(bolt, 'bolt', 'rotation', 0.90, [0, 0, 0]);
   K(bolt, 'bolt', 'rotation', 1.2667, [0, 0, 0]);
   K(bolt, 'bolt', 'position', 0.00, [0, 0, 0]);
@@ -293,8 +293,8 @@
   /* 枪栓：2.62 抬把 60° → 2.64~3.10 后退 2.18u → 3.45 闭锁 */
   K(re, 'bolt', 'rotation', 0.00, [0, 0, 0]);
   K(re, 'bolt', 'rotation', 2.40, [0, 0, 0]);
-  K(re, 'bolt', 'rotation', 2.62, [0, 0, 60]);
-  K(re, 'bolt', 'rotation', 3.10, [0, 0, 60]);
+  K(re, 'bolt', 'rotation', 2.62, [0, 0, -60]);
+  K(re, 'bolt', 'rotation', 3.10, [0, 0, -60]);
   K(re, 'bolt', 'rotation', 3.45, [0, 0, 0]);
   K(re, 'bolt', 'rotation', 3.7167, [0, 0, 0]);
   K(re, 'bolt', 'position', 0.00, [0, 0, 0]);

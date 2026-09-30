@@ -254,3 +254,23 @@ TaCZ 的**代码**是 GPL-3.0，**资产**另有声明 —— 依据是其 mod j
 - **要连借用关系也了断**：音效换 CC0 枪声只需替换 `sounds/awm/*.ogg` 并改 `sounds.json` 里的
   `name`，Java 一行都不用动；动画以 `awm.animation.handmade.bak.json`（五段手工版）为起点重做曲线。
 
+## v1.1.49（2026-09-30）拉栓提柄方向 + 手随活骨柄心
+
+**栓柄是往上抬的**：球头在模型 **−X 侧**（八块小方围成的球 x −1.50…−1.26，球心 `(-1.36, 1.80, 0.84)`、
+枢轴 `(-0.42, 1.85, 1.45)`），模型朝 −Z、相机在 +Z 侧朝 −Z 看 ⇒ 屏幕右 = +X。绕 +Z**正**转把 −X 侧的点
+往下压（`y' = x·sinθ < 0`）—— 柄扎进托/机匣就是穿模来源。真机是上抬 ⇒ `bolt.rotation.z` 取**负**：
+`bolt` / `inspect` / `inspect_empty` / `reload_empty` / `static_bolt_caught` 全部 −60°。
+后拉行程（1.932px / inspect 1.827px）与键时刻未动。
+
+- **手的目标点原来错了 0.6px**：旧常量 `BOLT = (-1.35, 1.85, 1.45)` 的 z 落在柄杆上（球心在 z 0.84），
+  `BOLT_TRAVEL = 1.60` 也比剪辑的 1.932 短 ⇒ 手一路比柄慢半拍。现在 `BOLT_KNOB = (-1.36, 1.80, 0.84)`
+  （geo 里柄头八块的中心，门禁比对差 0.060px），位置由活栓链路算出（`GunFrame.partChain` + `boltGrip`）。
+- **重新导出后必须再跑一次 `tools/bolt_lift_sign.py`**：`art/awm/awm.bbmodel` 里**没有动画数据**
+  （`animations: 0`，键在 `_anim_raw.json` 里），而 `tools/awm_anim_export.py` 是纯转换器、不含数值 ⇒
+  从 bbmodel 重导会把 −60° 覆盖回 +60°。`tools/bolt_lift_sign.py --check` 与 `tools/_deploy_149.py`
+  都会拦下这种回退。
+- 工具与留档：`tools/bolt_lift_sign.py`、`awm.animation.pre-lift.bak.json`（改动前，门禁做对照）、
+  `tools/check_bolt_grip.py`。实测：柄心抬升 −0.789 px → **+0.839 px**；柄头最大互嵌 6.87 mm → **0.00 mm**。
+- 已知建模取舍（本版未改几何）：柄杆根部插在机匣侧壁里 14.4mm（静止姿态就有，渲染出来是从机匣里伸出来，
+  看不见），拉栓时柄杆滑过这段内部区域，属焊接式建模；柄头本身全程 0 互嵌。
+
