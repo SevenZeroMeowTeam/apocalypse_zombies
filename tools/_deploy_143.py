@@ -1,43 +1,40 @@
-"""1.1.42 出货：修掉让全屏文字变方框的 Boss 动画形状缺陷。
+"""1.1.43 出货：尸潮领主的血量/护甲上调，并修掉「刷怪蛋召出来满血却是第 2 阶段」。
 
-事故（1.1.41）
---------------
-`logs/游戏日志 - 1.20.1-Forge_47.4.23-2.log`：
+事故（1.1.41 / 1.1.42 都在）
+--------------------------
+玩家实测：创造模式用刷怪蛋召出的尸潮领主，**血条是满的，却写着「第 2 阶段」**。
 
-    08:27:01  [Render thread/INFO] [minecraft/Minecraft]: Caught error loading resourcepacks,
-              removing all selected resourcepacks
-    Caused by: com.google.gson.JsonParseException: Invalid keyframe data - expected array, found
-              {"0.0":0.0,"0.375":1.6,...}
-        at geckolib...BakedAnimationsAdapter.addBedrockKeyframes
-    Caused by: GeckoLibException: apocalypse_zombies:animations/horde_overlord.animation.json
+根因（两段）：
+  1. 原版 `Attributes.MAX_HEALTH` 的上限硬编码 1024
+     （`RangedAttribute("attribute.name.generic.max_health", 20.0d, 1.0d, 1024.0d)`），
+     而 `AttributeInstance.calculateValue()` 的最后一句是 `attribute.sanitizeValue(total)`
+     —— **修饰符叠加完还要再夹一次上限**。所以 1.1.41 起写的 2500 一直是 1024。
+  2. 当时的阶段阈值是绝对数，`phaseFor(1024)` → `1024 > 833` → **Phase 2**（满血 + 第 2 阶段）。
 
-生成器的内部模型是按轴存的（{x: {t: v}, y: {...}}），`Clip.to_json()` 把这个结构
-原样写盘。GeckoLib 只认「时间 → 三元向量」（裸数组，或含 vector / post / pre 的对象），
-于是它把 `"x"` 当时间、把 `{"0.0": 0.0, ...}` 当值 → 抛异常。**异常抛在资源重载里**：
-整次重载失败 → 客户端清空用户选中的资源包（options.txt 的 resourcePacks 变空）→
-字体没能重建 → 全屏文字变方框。同一份日志里 awm / uzi / crossbow / bride / m1 / 莫辛
-都正常加载，只有 Boss 这一个文件抛异常 —— 缺陷是**这个文件独有的**。
-
-修法：`tools/boss_v1.py` 的 `to_json()` 在出口处把 x/y/z 合并成向量（按各轴自身的键
-线性取样，线性插值对段中插点不变，动作逐帧等价），并新增「动画通道符合 GeckoLib 形状」
-断言；`tools/check_boss.py` 与 `tools/check_gun_resources.py` 各加一道同样的闸门
-（后者罩所有动画文件，CI 也会跑）。
+修法：
+  * `ModEntities.liftHealthCap()` 反射抬 `RangedAttribute.maxValue`（按**值** 1024.0 认字段，
+    因为开发是 Mojang 名、出货包是 SRG 名），上限抬到 `RAISED_HEALTH_CAP = 1e9`。
+  * 三个阈值改成由 `BOSS_MAX_HEALTH` 推导；`phaseFor()` 比**运行时上限的比例**。
+  * `HordeOverlord.finalizeSpawn()` 把出生状态钉死（回满血 + 按满血重算阶段 + 计数清零）。
+  * 阶段推进逐级（不跨级），一击跨两级时中间段的入场技与标题不会被吞。
+  * 数值：血量 2500 → **4200**；护甲 5 → **15**、韧性 8 → **12**。
 
 验证项
 ------
- 1. 基线 = mods/ 里正在生效的 1.1.41，md5 先验身份（2ab31881da9ce8344262be00bba4dc21）。
- 2. jar 内 mods.toml == 1.1.42。
- 3. 相对 1.1.41 逐条字节比对：只允许动 {Boss 动画 json, mods.toml, MANIFEST}。
-    geo / 贴图 / Java 一个字节都不许变 —— 这是「只修动画形状」的硬证据。
+ 1. 基线 = mods/ 里正在生效的 1.1.42，md5 先验身份（6191b89f48f291e65af2b3247798a106）。
+ 2. jar 内 mods.toml == 1.1.43。
+ 3. 相对 1.1.42 逐条字节比对：只允许动 {HordeOverlord.class, ModEntities.class, mods.toml, MANIFEST}。
+    **geo / 动画 / 贴图一个字节都不许变** —— 本次只动 Java 数值与接线，没碰模型。
  4. 生成器重跑幂等 + 资产三向对账（art == src == jar）。
- 5. **GeckoLib 形状回读**：对 jar 里的动画条目逐通道校验（不是看源码，是看成品）。
- 6. 门禁：check_boss / check_gun_resources（含新增的全家动画形状闸门）/ check_uzi_anim / check_uzi_art。
- 7. 部署：旧包备份到 mods_backup/（保留 3 份）再从 mods/ 移除，装入 1.1.42。
+ 5. 基线动画必须是**合规**的（1.1.42 已修好形状；这里当回归守卫用）。
+ 6. 门禁：check_boss（含 1a 生命上限 / 1a2 出生状态）/ check_gun_resources
+    / check_uzi_anim / check_uzi_art。
+ 7. 部署：旧包备份到 mods_backup/（保留 3 份）再从 mods/ 移除，装入 1.1.43。
  8. 附带修复：1.1.41 那次重载失败把用户的资源包从 options.txt 里清空了
     （resourcePacks:[]），脚本在**游戏未运行**时把它们写回去（只在这两项确实是空的时候动，
     不覆盖你自己选的组合）。
 
-用法：python tools/_deploy_142.py
+用法：python tools/_deploy_143.py
 """
 import hashlib
 import json
@@ -54,19 +51,27 @@ VERSION_DIR = 'C:/Users/Administrator/Desktop/.minecraft/versions/1.20.1-Forge_4
 MODS = VERSION_DIR + '/mods'
 BACKUP = VERSION_DIR + '/mods_backup'      # mods 同级：mods/ 的子目录会被 Forge 递归扫到
 KEEP_BACKUPS = 3
-OLD, NEW = '1.1.41', '1.1.42'
+OLD, NEW = '1.1.42', '1.1.43'
 PREFIX = 'apocalypse_zombies-'
 JAR = PREFIX + NEW + '.jar'
-OLD_SHIPPED_MD5 = '2ab31881da9ce8344262be00bba4dc21'   # 1.1.41 出货件的唯一合法身份
+OLD_SHIPPED_MD5 = '6191b89f48f291e65af2b3247798a106'   # 1.1.42 出货件的唯一合法身份
 
 PKG = 'com/apocalypse/zombies/'
 RES = 'assets/apocalypse_zombies/'
 SRC = 'src/main/resources/'
 ANIM = RES + 'animations/horde_overlord.animation.json'
 
-# 预期变化集合（由 diff 实测写死）：本次只修动画形状 + 版本号
+# 预期变化集合（由 diff 实测写死）：本次只动 Java 数值/接线 + 版本号。
+# 两个「看着多余」的条目各有出处，写在这里免得下次又被拦：
+#   * HordeOverlord$1.class —— 主类的合成 switch-map 伴随类（javap -c 文本与 1.1.42 逐行相同）。
+#     规则是「主类名 + $」才算伴随类，别用 startswith(主类名)（那会顺手放行 HordeOverlordRenderer 之类）。
+#   * META-INF/NOTICE.md —— **不是本次改的**：工作树里网易那条产出线的说明（**按指示不进仓库**），
+#     这次构建自然带上；差异只多出 `-netease.jar` 两段（已逐行 diff 核对）。
 CHANGED = {
-    ANIM,
+    PKG + 'entity/HordeOverlord.class',
+    PKG + 'entity/HordeOverlord$1.class',
+    PKG + 'registry/ModEntities.class',
+    'META-INF/NOTICE.md',
     'META-INF/mods.toml',
     'META-INF/MANIFEST.MF',      # 每次构建都重写，下面断言它只差构建元数据
 }
@@ -284,9 +289,10 @@ if base_path is None:
 base = jar_bytes(base_path)
 print('[0] 基线 %s = %s  条目 %d  md5 %s' % (OLD, os.path.basename(base_path), len(base), OLD_SHIPPED_MD5))
 bad_base = anim_problems(base[ANIM])
-if not bad_base:
-    sys.exit('基线里的 Boss 动画居然是合规的 —— 说明基线不是出问题的那个 1.1.41，先查清楚')
-print('    基线里的 Boss 动画确认带缺陷：%d 处（%s）' % (len(bad_base), bad_base[0]))
+if bad_base:
+    sys.exit('基线里的 Boss 动画是坏的（%d 处，%s）—— 基线不是修好形状的 1.1.42，先查清楚'
+             % (len(bad_base), bad_base[0]))
+print('    基线里的 Boss 动画确认合规（回归守卫）')
 
 # ---------------------------------------------------------------- [1] 新包
 jar = os.path.join(ROOT, 'build', 'libs', JAR)
@@ -317,7 +323,7 @@ if changed != CHANGED or added != ADDED or removed != REMOVED:
              % (sorted(CHANGED - changed), sorted(changed - CHANGED),
                 sorted(ADDED - added), sorted(removed - REMOVED)))
 check_manifest(base['META-INF/MANIFEST.MF'], new['META-INF/MANIFEST.MF'], NEW)
-print('     ✔ MANIFEST 只差构建元数据；几何/贴图/Java 零漂移（只动了动画 json）')
+print('    ✔ MANIFEST 只差构建元数据；geo/动画/贴图零漂移，改动全部落在 Java 与版本号上')
 
 # ---------------------------------------------------------------- [4] 生成器重跑 + 三向对账
 print('[4] 生成器重跑 + 资产三向对账：')
@@ -434,10 +440,12 @@ else:
         sys.exit('options.txt 写回后读出来不一致：%r' % check)
     print('    已写回并回读确认：%s' % check)
 
-print('\n=== 1.1.42 出货完成 ===')
-print('  修复：Boss 动画通道形状（per-axis 嵌套 → 时间→[x,y,z]）')
-print('        1.1.41 因此丢掉资源包 → 字体没重建 → 全屏文字方框')
+print('\n=== 1.1.43 出货完成 ===')
+print('  修复：满血却是「第 2 阶段」（原版 MAX_HEALTH 上限 1024 → 阶段阈值改成上限比例）')
+print('        血量 2500 → 4200；护甲 5 → 15、韧性 8 → 12')
 print('  jar  : %s' % JAR)
 print('  md5  : %s' % new_md5)
 print('  部署时刻：%s' % time.strftime('%Y-%m-%d %H:%M:%S'))
 print('  ⚠ Forge 无热重载：必须完全退出重开客户端（别只退到主菜单）')
+print('  ⚠ 进游戏后自查：attribute @e[type=apocalypse_zombies:horde_overlord,limit=1] '
+      'minecraft:generic.max_health get  → 应为 4200.0')
