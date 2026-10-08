@@ -835,12 +835,18 @@ def selfcheck(geo, anims):
 # 本文件内部一切几何与动画都按**右手系**（与 Blender / Minecraft Java 模型同系）求解，
 # bf_selfcheck 也在这个空间里断言。但 .geo.json / .animation.json 的**文件格式**用的是
 # 镜像约定 —— 实测（Blockbench 5.2.1 + GeckoLib Animation Utils 插件）：
-#   · 立方体坐标 / 骨骼 pivot：X 取反（文件 limb_r origin.x=1.56 → 工程 x=-2.53）
+#   · 立方体坐标 / 立方体 pivot / 骨骼 pivot：X 取反（文件 limb_r origin.x=1.56 → 工程 x=-2.53）
 #   · 旋转：X、Y 取反（文件 draw limb_r Y=-14.05 → 工程 animator +14.05）
 #   · 动画位置通道：X 取反（文件 round_hand x=-2.6 → 工程 +2.6），Y/Z 不动
 # GeckoLib 运行时加载动画同样对旋转「X、Y 取负」（BakedAnimationsAdapter.java:221-223），
 # 与 Blockbench 内部表示一致；所以**文件必须写成取反形式**，游戏与 Blockbench 读回后
 # 才等于这里设计的物理模型。转换只发生在写出这一步，Python 侧数值与自检不受影响。
+#
+# ⚠ 2026-10-08 修：原先这里漏了 **cube 自己的 pivot**（只有骨级 pivot 被取反）。
+#   带 pivot 的方块在文件里绕一个「镜像前」的支点旋转 —— 而 origin 已经镜像过，于是
+#   支点落到了身体的另一侧。crossbow 有 372/421 个方块中招，游戏里表现为**模型散架**
+#   （方块各自绕错误支点转 8°~39° 后各奔东西）。因为本文件是十字弩专属工具链，
+#   只有它中招：awm/m1/mosin/uzi/s686 走的是别的生成路径，cube 级 pivot 都是对的。
 _NEG_POS = (0,)
 _NEG_ROT = (0, 1)
 
@@ -859,6 +865,10 @@ def game_convention_geo(doc):
                 if 'origin' in cube and 'size' in cube:
                     o, s = cube['origin'], cube['size']
                     cube['origin'] = [-(o[0] + s[0]), o[1], o[2]]
+                # pivot 是一个**点**（不是角），所以按普通点镜像取反即可 —— 与骨级 pivot 同规则。
+                # 漏掉这一条会让方块绕另一侧的支点旋转，见上面 2026-10-08 的说明。
+                if 'pivot' in cube:
+                    cube['pivot'] = _neg_axes(cube['pivot'], _NEG_POS)
                 if 'rotation' in cube:
                     cube['rotation'] = _neg_axes(cube['rotation'], _NEG_ROT)
     return doc

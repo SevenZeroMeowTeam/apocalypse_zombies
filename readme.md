@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.58` |
+| **当前版本** | `1.1.59` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.23） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -254,6 +254,28 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
   照旧**叠乘**在这之上，单波 ±15% 的抖动也保留（同一次围城里两波的人数仍不会完全一样）。
   单波硬上限 90 → 120（高配置下的保护，默认参数远够不到）。
 - 只动 `HordeManager.rollWaveSize` 一个方法 + `Config` 三个新键。
+
+### 1.1.59 — 2026-10-08
+
+**修复 · 十字弩在游戏里散架（cube 级 pivot 漏取反）**
+
+- **现象**：模型散架 —— 各部件位置不对、彼此分开，且**所有场景**都这样（第一人称 / 物品栏 / 地上）。
+- **根因**：`tools/crossbow_v1.py` 的写出行 `game_convention_geo()` 取反了**骨级** pivot、
+  镜像了 cube 的 `origin`、取反了 cube 的 `rotation` —— **唯独漏了 cube 自己的 `pivot`**。
+  于是方块的位置已经镜像了，它**绕以旋转的支点却还停在镜像前的那一侧**：
+  421 个带 pivot 的方块里 **372 个**中招（`cam_l`/`cam_r` 各 74/74、`scope` 128/175），
+  每个绕一个在身体另一侧的支点转 8.85°~39°，自然各奔东西。注释里那句
+  「立方体坐标 / 骨骼 pivot：X 取反」也没提这一档。
+- **修法**：`game_convention_geo()` 补 `cube['pivot'] = _neg_axes(cube['pivot'], _NEG_POS)`。
+  pivot 是个**点**不是最小角，按普通点镜像即可 —— 不要套 `origin` 那条 `-(x+size)`。
+- **范围**：**只有十字弩**。它是唯一「既走这套取反层、又带 cube 级 pivot」的模型；
+  awm 339 / s686 202 / uzi 128 / m1 218 / mosin 91 个带 pivot 的方块全部正常。
+- **验证**：修复后 421 个方块的支点**全部**落回自身包围盒 ±1.5u 内（修前 195）。
+  另外确认左右骨的 `rotation` 本来就是正确镜像的（`cam_l` rot.y 全负 / `cam_r` 全正），
+  所以**只动了 pivot 一项**。
+- 诊断工具留在 `build/check_crossbow_pivot.js`（可扫全部 geo，查这类镜像漏项）与
+  `build/diagnose_crossbow_mirror.js`（`--apply` 才写文件）。细节见
+  [`art/crossbow/README.md`](art/crossbow/README.md) §8。
 
 ### 1.1.58 — 2026-10-08
 
