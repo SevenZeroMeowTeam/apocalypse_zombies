@@ -71,6 +71,9 @@ public final class WeaponHandGrip {
     /** Reused by {@link #apply} (single-threaded client render). */
     private static final Matrix4f SCRATCH = new Matrix4f();
 
+    /** 诊断节流（{@code ClientEvents.DIAG_AIM} 打开时每 2 秒一行）。 */
+    private static long lastDiag;
+
     /**
      * Writes the held gun's sight-up offset into {@link GunPose} (camera space, blocks), where both the gun and
      * the arms read it from.
@@ -86,6 +89,31 @@ public final class WeaponHandGrip {
         }
         GunPose.setAds(gun.adsX(), gun.adsY(), gun.adsZ(), 0.0F, 0.0F, gun.firePitch() * GunRecoil.value(),
                 gun.adsPitch(), gun.adsYaw());
+    }
+
+    /**
+     * 姿态矩阵的健全性检查：它必须是「一个旋转 + 一小段平移」。
+     *
+     * <p><b>为什么需要</b>：实机上出现过「腰射正常、按住右键瞄准时枪与双手整层消失」。把所有代码路径逐条
+     * 读过之后，这一层数学应当是正常的（量算与真代码对拍都指向同一个结果），但<b>完全不可见</b>在几何上
+     * 只可能是矩阵把顶点送去了一个看不见的地方 —— 而 ADS 本身位移不到半格，做不到这一点。所以这里不再
+     * 假设"它一定没问题"：只要矩阵出现 NaN、行列式偏离 1、或平移超过 2 格，就判定它坏了，由调用方退回
+     * 腰射姿态（那种姿态已实测可见）。正常路径上这个检查恒为真，没有副作用。</p>
+     */
+    private static boolean saneStance(Matrix4f m) {
+        float tx = m.m30();
+        float ty = m.m31();
+        float tz = m.m32();
+        if (!Float.isFinite(tx) || !Float.isFinite(ty) || !Float.isFinite(tz)) {
+            return false;
+        }
+        if (Math.abs(tx) > 2.0F || Math.abs(ty) > 2.0F || Math.abs(tz) > 2.0F) {
+            return false;
+        }
+        float det = m.m00() * (m.m11() * m.m22() - m.m12() * m.m21())
+                - m.m01() * (m.m10() * m.m22() - m.m12() * m.m20())
+                + m.m02() * (m.m10() * m.m21() - m.m11() * m.m20());
+        return Float.isFinite(det) && Math.abs(det - 1.0F) < 0.25F;
     }
 
     /**
@@ -106,6 +134,21 @@ public final class WeaponHandGrip {
         pose.translate(i * BASE_X, BASE_Y - 0.6F * equipNow, BASE_Z);
         if (stack.getItem() instanceof GunItem gun) {
             pushAds(gun);
+            // 诊断（DIAG_AIM 打开时）：确认这一帧的 ADS 到底是什么值 —— 它是唯一"只在瞄准时生效"的位移项。
+            if (com.apocalypse.zombies.client.ClientEvents.DIAG_AIM) {
+                long now = System.currentTimeMillis();
+                if (now - lastDiag > 2000L) {
+                    lastDiag = now;
+                    com.apocalypse.zombies.ApocalypseZombies.LOGGER.info(
+                            "[瞄准调试·姿态] item={} ads=({}, {}, {} | lift={} roll={} fire={} pitch={} yaw={}) scaleFps={}",
+                            stack.getItem(),
+                            String.format("%.4f", GunPose.ADS[0]), String.format("%.4f", GunPose.ADS[1]),
+                            String.format("%.4f", GunPose.ADS[2]), String.format("%.2f", GunPose.ADS[3]),
+                            String.format("%.2f", GunPose.ADS[4]), String.format("%.2f", GunPose.ADS[5]),
+                            String.format("%.1f", GunPose.ADS[6]), String.format("%.1f", GunPose.ADS[7]),
+                            String.format("%.2f", gun.firstPersonScale()));
+                }
+            }
             // First-person enlargement, and this is the only place it can go. Downstream of the hand base, so
             // the gun stays in the hand instead of sliding towards the eye; upstream of the stance, so the
             // stance's own offsets — the sight-up compensation above all — are multiplied by it, which is what
@@ -120,6 +163,13 @@ public final class WeaponHandGrip {
             GunPose.matrix(com.apocalypse.zombies.client.GunAimState.getAimProgress(partialTick),
                     com.apocalypse.zombies.client.GunAimState.getSprintProgress(partialTick),
                     bobPhase(player, partialTick), SCRATCH);
+            if (!saneStance(SCRATCH)) {
+                // 保底：这一帧的姿态矩阵退化了。宁可让枪停在腰射位（那种姿态已实测可见），
+                // 也不能让它连同双手一起从画面上消失 —— 见 saneStance 的注释。
+                com.apocalypse.zombies.ApocalypseZombies.LOGGER.warn(
+                        "[S686] 姿态矩阵退化，已回退到腰射姿态：item={}", stack.getItem());
+                GunPose.matrix(0.0F, 0.0F, 0.0F, SCRATCH);
+            }
             pose.mulPoseMatrix(SCRATCH);
         }
         return true;

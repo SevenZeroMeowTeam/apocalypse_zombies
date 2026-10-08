@@ -1,4 +1,14 @@
 {
+  "ammo.apocalypse_zombies.standard": "普通弹",
+  "ammo.apocalypse_zombies.standard.tip": "数量多 · 覆盖面广",
+  "ammo.apocalypse_zombies.slug": "独头弹",
+  "ammo.apocalypse_zombies.slug.tip": "单发高伤 · 散布小",
+  "ammo.apocalypse_zombies.thermite": "铝热弹",
+  "ammo.apocalypse_zombies.thermite.tip": "命中点燃目标",
+
+  "wheel.apocalypse_zombies.hint": "松开 R 装填 · 光标移回中心保持原样",
+  "wheel.apocalypse_zombies.selected": "将装填：%s",
+
   "moon.apocalypse_zombies.none": "平凡的夜晚",
   "moon.apocalypse_zombies.blood_moon": "血月",
   "moon.apocalypse_zombies.super_blood_moon": "超级血月",

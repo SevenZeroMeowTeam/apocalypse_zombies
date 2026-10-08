@@ -1,8 +1,11 @@
 package com.apocalypse.zombies.item;
 
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
+
+import java.util.List;
 
 /**
  * Everything the rest of the mod needs from a gun, whatever gun it is.
@@ -171,6 +174,37 @@ public interface GunItem {
      */
     default void beginReload(ServerPlayer player, ItemStack stack, ServerLevel level, boolean single) {
         beginReload(player, stack, level);
+    }
+
+    /**
+     * 这把枪都能装哪些弹种，按轮盘里的显示顺序。
+     *
+     * <p>默认「普通弹 + 铝热弹」—— 铝热弹是通用弹种，任何枪装上它打中敌对生物都会点燃（见
+     * {@code event/ThermiteRounds}）。独头弹只有霰弹枪有，由 {@code S686Item} 重写这个方法补上。</p>
+     */
+    default List<AmmoType> ammoTypes(ItemStack stack) {
+        return List.of(AmmoType.STANDARD, AmmoType.THERMITE);
+    }
+
+    /**
+     * 膛里现在装的是哪一种弹。默认读 stack 的 NBT —— 五把枪共用同一个键（{@link AmmoType#TAG}），
+     * 所以「给所有武器加铝热弹」在数据层是零额外实现的。老存档没有这个键时退回普通弹。
+     */
+    default AmmoType currentAmmo(ItemStack stack) {
+        CompoundTag tag = stack.getTag();
+        return tag != null && tag.contains(AmmoType.TAG)
+                ? AmmoType.byId(tag.getString(AmmoType.TAG))
+                : AmmoType.STANDARD;
+    }
+
+    /**
+     * 轮盘选中的弹种，在装填之前落下来。
+     *
+     * <p>默认实现就是写进 NBT：装填动作本身仍由 {@link #beginReload} 驱动，这里只负责把"用哪种弹"
+     * 记下来，等那对弹膛打开时一起生效 —— 换弹途中改主意也不会串味。</p>
+     */
+    default void selectAmmo(ItemStack stack, AmmoType ammo) {
+        stack.getOrCreateTag().putString(AmmoType.TAG, ammo.id());
     }
 
     /**

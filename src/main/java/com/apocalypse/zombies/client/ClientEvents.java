@@ -7,7 +7,7 @@ import com.apocalypse.zombies.item.GunItem;
 import com.apocalypse.zombies.moon.MoonEvent;
 import com.apocalypse.zombies.network.FirePacket;
 import com.apocalypse.zombies.network.NetworkHandler;
-import com.apocalypse.zombies.network.ReloadPacket;
+import com.apocalypse.zombies.client.weapon.AmmoWheel;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -120,6 +120,8 @@ public final class ClientEvents {
         ClientMoonState.reset();
         ClientZombieTiers.clear();
         GunAimState.reset();
+        // 轮盘是本地状态：世界没了还挂着的话，回到主菜单会留一圈弹种名，而且鼠标还是释放状态。
+        AmmoWheel.dismiss(Minecraft.getInstance());
     }
 
     @SubscribeEvent
@@ -156,19 +158,15 @@ public final class ClientEvents {
         // Local-only: the zoom and the raised pose ease in over the gun's aim time, so this runs every tick.
         GunAimState.tick(minecraft);
 
-        boolean reload = false;
-        while (KeyBindings.RELOAD.consumeClick()) {
-            reload = true;
-        }
+        // 弹种轮盘：R 的按下与松开都归它管（按住弹、松开装）。必须排在下面那几个提前 return 之前 ——
+        // 手里没枪、或轮盘开着时又开了别的界面，这两种情况都得让"松开 R"这件事被处理掉，否则轮盘会挂住。
+        AmmoWheel.tick(minecraft);
+
         if (minecraft.screen != null || minecraft.player == null) {
             return;
         }
         if (!(minecraft.player.getMainHandItem().getItem() instanceof GunItem)) {
             return;
-        }
-        if (reload) {
-            // Sneak is the modifier: R swaps the clip, Shift+R tops off with a single round.
-            NetworkHandler.CHANNEL.sendToServer(new ReloadPacket(minecraft.options.keyShift.isDown()));
         }
         if (minecraft.options.keyAttack.isDown()
                 && minecraft.player.tickCount % FIRE_THROTTLE_TICKS == 0) {
@@ -252,7 +250,7 @@ public final class ClientEvents {
      * <p>默认关闭 —— 与 {@code WeaponArms} 里那个 {@code ARMSDBG} 探针同一条规矩：探针留在原地备用，
      * 平时不写日志。瞄准问题定位完可以整个删掉。</p>
      */
-    private static final boolean DIAG_AIM = false;
+    public static final boolean DIAG_AIM = false;
     private static long lastGripDiag;
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -468,11 +466,16 @@ public final class ClientEvents {
     /** A small corner readout so players can tell which blessing is running. */
     @SubscribeEvent
     public static void onRenderGui(RenderGuiEvent.Post event) {
+        Minecraft minecraft = Minecraft.getInstance();
+
+        // 弹种轮盘画在整个 HUD 之上。必须排在下面那个「今晚没有月相就直接返回」之前 ——
+        // 轮盘与月亮无关，不能因为是个平凡的夜晚就不显示。
+        AmmoWheel.render(event.getGuiGraphics(), minecraft);
+
         MoonEvent moon = ClientMoonState.getMoonEvent();
         if (!moon.isActive()) {
             return;
         }
-        Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.options.hideGui || minecraft.player == null || minecraft.level == null) {
             return;
         }

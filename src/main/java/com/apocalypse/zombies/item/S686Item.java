@@ -209,6 +209,20 @@ public class S686Item extends Item implements GeoItem, GunItem {
     /** Precomputed, so the per-pellet path does no trigonometry beyond its own polar sample. */
     private static final double SPREAD_TAN = Math.tan(Math.toRadians(SPREAD_DEGREES));
 
+    /**
+     * 独头弹：把八颗小弹丸换成一颗大铅弹。
+     *
+     * <p>贴脸 <b>34</b>，比鹿弹八颗全中的 32 略高；中远距离更耐打（26 / 18，鹿弹同距离是 24 / 16）。
+     * 代价是<b>只有一次命中判定</b> —— 打偏就是零，鹿弹靠覆盖面兜底。散布也收到鹿弹的四分之一，
+     * 它本来就是拿来打远的。</p>
+     */
+    private static final float SLUG_DAMAGE_NEAR = 34.0F;
+    private static final float SLUG_DAMAGE_MID = 26.0F;
+    private static final float SLUG_DAMAGE_FAR = 18.0F;
+    private static final double SLUG_RANGE_MID = 32.0D;
+    private static final double SLUG_RANGE_FAR = 64.0D;
+    private static final double SLUG_SPREAD_TAN = SPREAD_TAN * 0.25D;
+
     private static final ResourceKey<DamageType> DAMAGE_TYPE =
             ResourceKey.create(Registries.DAMAGE_TYPE,
                     new ResourceLocation(ApocalypseZombies.MOD_ID, "s686_bullet"));
@@ -481,7 +495,7 @@ public class S686Item extends Item implements GeoItem, GunItem {
         trigger(player, stack, level, TRIGGER_SHOOT);
         startAction(stack, ACTION_SHOOT, now);
 
-        fireShot(player, level, shells);
+        fireShot(player, level, stack, shells);
     }
 
     /**
@@ -492,7 +506,12 @@ public class S686Item extends Item implements GeoItem, GunItem {
      *
      * @param shells 1, or {@value #MAGAZINE_SIZE} for the two-barrel volley
      */
-    private void fireShot(ServerPlayer player, ServerLevel level, int shells) {
+    private void fireShot(ServerPlayer player, ServerLevel level, ItemStack stack, int shells) {
+        // 弹种决定这一枪打出去的是"一片"还是"一颗"：鹿弹是 8 颗小弹丸、锥面覆盖；独头弹是 1 颗大弹丸、
+        // 散布收四分之一。铝热弹不在这条分支里 —— 它只是把命中的敌对生物点着，由 ThermiteRounds 统一处理。
+        boolean slug = currentAmmo(stack) == AmmoType.SLUG;
+        int pellets = slug ? 1 : PELLETS;
+
         Vec3 eye = player.getEyePosition();
         Vec3 look = player.getLookAngle();
         Vec3 right = look.cross(new Vec3(0.0D, 1.0D, 0.0D)).normalize();
@@ -502,8 +521,8 @@ public class S686Item extends Item implements GeoItem, GunItem {
         Vec3 muzzle = eye.add(look.scale(0.90D)).add(right.scale(-0.06D)).add(0.0D, -0.10D, 0.0D);
 
         boolean headshot = false;
-        for (int pellet = 0; pellet < PELLETS * shells; pellet++) {
-            headshot |= firePellet(player, level, eye, spread(look, right, up, level), muzzle);
+        for (int pellet = 0; pellet < pellets * shells; pellet++) {
+            headshot |= firePellet(player, level, eye, spread(look, right, up, level, slug), muzzle, slug);
         }
         if (headshot) {
             level.playSound(null, player.getX(), player.getY(), player.getZ(),
@@ -524,8 +543,9 @@ public class S686Item extends Item implements GeoItem, GunItem {
      * half the pellets in the middle third of the cone, which reads as a gun that cannot miss; the square
      * root spreads them over the area instead, so the pattern on a wall is a disc rather than a blob.</p>
      */
-    private Vec3 spread(Vec3 look, Vec3 right, Vec3 up, ServerLevel level) {
-        double radius = SPREAD_TAN * Math.sqrt(level.random.nextDouble());
+    private Vec3 spread(Vec3 look, Vec3 right, Vec3 up, ServerLevel level, boolean slug) {
+        // 独头弹的散布收到鹿弹的四分之一：一颗弹丸没有覆盖面兜底，抖一点就是脱靶。
+        double radius = (slug ? SLUG_SPREAD_TAN : SPREAD_TAN) * Math.sqrt(level.random.nextDouble());
         double angle = level.random.nextDouble() * Math.PI * 2.0D;
         return look.add(right.scale(Math.cos(angle) * radius))
                 .add(up.scale(Math.sin(angle) * radius))
@@ -537,7 +557,8 @@ public class S686Item extends Item implements GeoItem, GunItem {
      *
      * @return true when the pellet landed in a head, so the caller can play the crit sound once a shot
      */
-    private boolean firePellet(ServerPlayer player, ServerLevel level, Vec3 eye, Vec3 direction, Vec3 muzzle) {
+    private boolean firePellet(ServerPlayer player, ServerLevel level, Vec3 eye, Vec3 direction, Vec3 muzzle,
+                               boolean slug) {
         Vec3 reach = eye.add(direction.scale(MAX_RANGE));
         BlockHitResult blockHit = level.clip(
                 new ClipContext(eye, reach, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
@@ -558,7 +579,7 @@ public class S686Item extends Item implements GeoItem, GunItem {
             Entity target = hit.getEntity();
             double distance = eye.distanceTo(hit.getLocation());
             boolean head = hit.getLocation().y > target.getY() + target.getBbHeight() * HEADSHOT_HEIGHT;
-            float damage = damageAt(distance) * (head ? HEADSHOT_MULTIPLIER : 1.0F);
+            float damage = damageAt(distance, slug) * (head ? HEADSHOT_MULTIPLIER : 1.0F);
 
             target.invulnerableTime = 0;
             target.hurt(bulletSource(level, player), damage);
@@ -609,12 +630,27 @@ public class S686Item extends Item implements GeoItem, GunItem {
         return targets;
     }
 
-    /** Distance-graded damage, this file's breakpoints. */
-    private static float damageAt(double distance) {
+    /** Distance-graded damage, this file's breakpoints. 独头弹走自己那一套（更高、更耐远）。 */
+    private static float damageAt(double distance, boolean slug) {
+        if (slug) {
+            if (distance <= SLUG_RANGE_MID) {
+                return SLUG_DAMAGE_NEAR;
+            }
+            return distance <= SLUG_RANGE_FAR ? SLUG_DAMAGE_MID : SLUG_DAMAGE_FAR;
+        }
         if (distance <= RANGE_MID) {
             return DAMAGE_NEAR;
         }
         return distance <= RANGE_FAR ? DAMAGE_MID : DAMAGE_FAR;
+    }
+
+    /**
+     * 霰弹枪比别的枪多一个独头弹。铝热弹与普通弹来自 {@link GunItem} 的默认实现 —— 那是通用弹种，
+     * 五把枪共用。
+     */
+    @Override
+    public List<AmmoType> ammoTypes(ItemStack stack) {
+        return List.of(AmmoType.STANDARD, AmmoType.SLUG, AmmoType.THERMITE);
     }
 
     private DamageSource bulletSource(ServerLevel level, ServerPlayer player) {

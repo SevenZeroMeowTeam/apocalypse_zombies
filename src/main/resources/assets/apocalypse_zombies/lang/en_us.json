@@ -1,4 +1,14 @@
 {
+  "ammo.apocalypse_zombies.standard": "Standard",
+  "ammo.apocalypse_zombies.standard.tip": "many pellets · wide",
+  "ammo.apocalypse_zombies.slug": "Slug",
+  "ammo.apocalypse_zombies.slug.tip": "one heavy · tight",
+  "ammo.apocalypse_zombies.thermite": "Thermite",
+  "ammo.apocalypse_zombies.thermite.tip": "sets targets alight",
+
+  "wheel.apocalypse_zombies.hint": "release R to load · centre keeps the current round",
+  "wheel.apocalypse_zombies.selected": "Loading: %s",
+
   "moon.apocalypse_zombies.none": "Ordinary Night",
   "moon.apocalypse_zombies.blood_moon": "Blood Moon",
   "moon.apocalypse_zombies.super_blood_moon": "Super Blood Moon",
