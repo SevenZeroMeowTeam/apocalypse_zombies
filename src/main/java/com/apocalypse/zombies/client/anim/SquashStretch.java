@@ -193,7 +193,7 @@ public final class SquashStretch {
         // 律动：相位取世界时间，于是同一维度里所有生物踩着同一个节拍（参考实现是跟玩偶的音乐走，
         // 我们这里没有玩偶，用世界时间即可 —— 玩家的背景音乐也是从进世界那一刻开始放的）。
         double seconds = (minecraft.level.getGameTime() + partialTick) / 20.0D;
-        float squash = jelly(seconds) * Config.SQUASH_INTENSITY.get().floatValue();
+        float squash = jelly(seconds) * Config.SQUASH_SWAY.get().floatValue();
 
         // 冲击：受伤 / 落地 / 被击退再压一下，谁更狠听谁的
         Impact impact = IMPACTS.get(entity.getId());
@@ -215,14 +215,29 @@ public final class SquashStretch {
             spinDegrees = spin(seconds) * Config.SQUASH_SPIN_SPEED.get().floatValue();
         }
 
+        // 绕圈：身体沿一个小圆周走（参考实现管这个叫「逆时针绕圈」）。用自己的相位而不是 spinDegrees，
+        // 这样即使把自转关掉、绕圈照样转；相位在周期边界连续（cos/sin 走满一圈回到原点）。
+        float orbitRadius = Config.SQUASH_ORBIT.get().floatValue();
+        double orbitX = 0.0D;
+        double orbitZ = 0.0D;
+        if (orbitRadius > 0.0F) {
+            double theta = -2.0D * Math.PI * phase(seconds) / PERIOD
+                    * Config.SQUASH_SPIN_SPEED.get().floatValue();
+            orbitX = Math.cos(theta) * orbitRadius;
+            orbitZ = Math.sin(theta) * orbitRadius;
+        }
+
         float xScale = widthScale(squash);
         float yScale = heightScale(squash);
         if (Math.abs(xScale - 1.0F) < DEAD_ZONE && Math.abs(yScale - 1.0F) < DEAD_ZONE
-                && Math.abs(spinDegrees) < 0.01F) {
+                && Math.abs(spinDegrees) < 0.01F && orbitRadius <= 0.0F) {
             return false;
         }
 
         pose.pushPose();
+        if (orbitRadius > 0.0F) {
+            pose.translate(orbitX, 0.0D, orbitZ);
+        }
         if (spinDegrees != 0.0F) {
             pose.mulPose(Axis.YP.rotationDegrees(spinDegrees));
         }

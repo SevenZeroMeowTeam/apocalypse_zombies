@@ -165,8 +165,16 @@ public final class Config {
 
     /** Q 弹（压扁回弹 + 自转）总开关。纯客户端，服务端不读。 */
     public static final ForgeConfigSpec.BooleanValue SQUASH_ENABLED;
-    /** 果冻律动的幅度倍率（1.0 = 曲线原样；调到 0 就只剩受击时弹一下）。 */
-    public static final ForgeConfigSpec.DoubleValue SQUASH_INTENSITY;
+    /**
+     * 果冻律动的幅度倍率（1.0 = 曲线原样；调到 0 就只剩受击时弹一下）。
+     *
+     * <p>键名从 {@code intensity} 改成 {@code sway}：那个名字在语义变之前是"压扁 25%"的**绝对值**，
+     * 老配置文件里存着 {@code 0.25}，而 Forge 对**已存在的键会原样保留** —— 于是新语义下它悄悄变成了
+     * "只有 1/4 幅度"，实机表现就是"压扁回弹不明显"。换个键名等于让它取回新默认值 1.0。</p>
+     */
+    public static final ForgeConfigSpec.DoubleValue SQUASH_SWAY;
+    /** 绕圈移动的半径（格）。0 = 只在原地压扁自转，身体不挪窝。 */
+    public static final ForgeConfigSpec.DoubleValue SQUASH_ORBIT;
     /** 压到底时高度缩掉多少（50 = 矮一半）。曲线与幅度照「朋友的酒」的果冻效果。 */
     public static final ForgeConfigSpec.DoubleValue SQUASH_COMPRESSION;
     /** 压到底时横向鼓出多少（50 = 宽一半）。 */
@@ -433,9 +441,15 @@ public final class Config {
                 .push("squash_stretch");
         SQUASH_ENABLED = b.comment("Master switch for the client-side squash & stretch effect.")
                 .define("enabled", true);
-        SQUASH_INTENSITY = b.comment("Amplitude multiplier on the idle jelly wobble (1.0 = the curve as authored).",
-                        "0 turns the idle wobble off and leaves only the impact kick.")
-                .defineInRange("intensity", 1.0D, 0.0D, 1.5D);
+        SQUASH_SWAY = b.comment("Amplitude multiplier on the idle jelly wobble (1.0 = the curve as authored).",
+                        "0 turns the idle wobble off and leaves only the impact kick.",
+                        "Renamed from 'intensity': that key meant '25% flatter' in an earlier take, and Forge",
+                        "keeps an existing key's old value, which quietly quartered the wobble.")
+                .defineInRange("sway", 1.0D, 0.0D, 1.5D);
+        SQUASH_ORBIT = b.comment("Radius, in blocks, of the little circle a mob walks while it wobbles.",
+                        "0 keeps it in place; 0.25 is a visible orbit that still reads as 'roughly here'.",
+                        "It laps once per wobble period, same rate as the spin.")
+                .defineInRange("orbit_radius", 0.25D, 0.0D, 2.0D);
         SQUASH_COMPRESSION = b.comment("How much shorter the body gets at full squash (50 = half height).")
                 .defineInRange("compression", 50.0D, 0.0D, 90.0D);
         SQUASH_WIDTH = b.comment("How much wider it gets at full squash (50 = half again as wide).",
