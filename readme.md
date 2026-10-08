@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.56` |
+| **当前版本** | `1.1.57` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.23） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -142,6 +142,19 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
 - **不互相攻击**：本模组阵营的怪之间伤害直接取消（`no_infighting`）；另有 `no_infighting_global`
   可扩到原版怪 —— 默认**关**，因为它会改变原版行为（凋灵、掠夺者与僵尸之间也会安静下来）。
 
+### 武器商（EasyNPC）
+
+本模组自带一份 [Easy NPC](https://www.curseforge.com/minecraft/mc-mods/easy-npc) 的 **NPC 预设**：
+`data/easy_npc/api/preset/apocalypse_zombies/weapon_merchant.npc.snbt`。装进游戏后在 EasyNPC 的
+预设列表里选**「武器商 Weapon Merchant」**摆下去，**右键就会打开交易界面**。
+
+- 外观是武器匠（大师级），`Invulnerable` + 掉率 0（打不死、不掉落）—— 这两项想改就改。
+- **商品与价格在游戏内的 EasyNPC 配置界面里配**（交易数据存在 NPC 实体上，不在预设文件里），
+  配好可以存成你自己的预设复用。价格就是交易表右格收什么、收多少。
+- **没有弹药物品可卖**：本模组的弹量与弹种都存在物品 NBT 里，靠 `R` 键轮盘切换、不消耗背包。
+  要让玩家补给，就卖**装满弹的枪**，或者搭配别的模组（如 TaCZ 的弹匣）。
+- 六个可卖物品 ID、字段含义、待实机确认的两点，见 [`docs/EasyNPC-武器商.md`](docs/EasyNPC-武器商.md)。
+
 ### 枪械
 
 | 物品 ID | 说明 |
@@ -240,6 +253,24 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
   照旧**叠乘**在这之上，单波 ±15% 的抖动也保留（同一次围城里两波的人数仍不会完全一样）。
   单波硬上限 90 → 120（高配置下的保护，默认参数远够不到）。
 - 只动 `HordeManager.rollWaveSize` 一个方法 + `Config` 三个新键。
+
+### 1.1.57 — 2026-10-08
+
+**新增 · EasyNPC 武器商（配合已装的 Easy NPC 模组）**
+
+- 仓库里加了一份 **EasyNPC 的 NPC 预设**：
+  `src/main/resources/data/easy_npc/api/preset/apocalypse_zombies/weapon_merchant.npc.snbt`。
+  随 jar 分发，装进游戏后在 EasyNPC 的预设列表里能找到「武器商 Weapon Merchant」，摆下去
+  **右键直接开交易界面**。外观是武器匠（大师级），并设了 `Invulnerable` + 掉率 0 ——
+  末日里不至于被打死、也不掉一地东西。
+- **商品与价格不在这个文件里**，而是存在 NPC 实体上（EasyNPC 的 `TradingDataSet` + 交易表），
+  所以配商品是在**游戏内的 EasyNPC 配置界面**里做的，改完还能存成自己的预设复用。
+  换句话说这个文件只是起点，真正"可自行修改"的部分在游戏里。
+- 配套文档 [`docs/EasyNPC-武器商.md`](docs/EasyNPC-武器商.md)：怎么加商品与改价格、
+  本模组六个可卖物品 ID、预设里各字段的含义，以及**本模组没有弹药物品可卖**这件事
+  （弹量与弹种都在物品 NBT 里、靠 `R` 键轮盘切换，不消耗背包）。
+- **诚实标注**：这份预设是按 EasyNPC 7.14.0 的类结构反推写的（NBT 键取自
+  `data.trading.TradingDataSet` 的常量），**没有实机验证**。文档末尾列了两个待确认点。
 
 ### 1.1.56 — 2026-10-08
 
