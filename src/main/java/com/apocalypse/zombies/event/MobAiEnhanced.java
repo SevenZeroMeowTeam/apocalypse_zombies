@@ -19,6 +19,8 @@ import com.apocalypse.zombies.moon.MoonEventManager;
 
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
@@ -29,9 +31,11 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.GoalSelector;
+import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.ai.goal.RangedAttackGoal;
 import net.minecraft.world.entity.ai.goal.RangedBowAttackGoal;
 import net.minecraft.world.entity.ai.goal.WrappedGoal;
+import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.entity.ai.memory.WalkTarget;
 import net.minecraft.world.entity.ai.navigation.FlyingPathNavigation;
@@ -41,6 +45,9 @@ import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.schedule.Activity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.SwordItem;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
@@ -74,10 +81,15 @@ public final class MobAiEnhanced {
 
     /** 敌对生物追击范围的修饰符 UUID（固定值：用来判断这一只加过没有）。 */
     private static final UUID HOSTILE_RANGE_ID = UUID.fromString("6f1c0a94-4dbe-4f9c-9c1e-0f2a7c3b8d11");
+    /** 追击速度倍率（1.1.56 起）。 */
+    private static final UUID HOSTILE_SPEED_ID = UUID.fromString("6f1c0a94-4dbe-4f9c-9c1e-0f2a7c3b8d14");
 
     /** 铁傀儡追击范围与击退的修饰符 UUID。 */
     private static final UUID GOLEM_RANGE_ID = UUID.fromString("6f1c0a94-4dbe-4f9c-9c1e-0f2a7c3b8d12");
     private static final UUID GOLEM_KNOCKBACK_ID = UUID.fromString("6f1c0a94-4dbe-4f9c-9c1e-0f2a7c3b8d13");
+    /** 铁傀儡的移动速度与攻击伤害（1.1.56 起）。 */
+    private static final UUID GOLEM_SPEED_ID = UUID.fromString("6f1c0a94-4dbe-4f9c-9c1e-0f2a7c3b8d15");
+    private static final UUID GOLEM_DAMAGE_ID = UUID.fromString("6f1c0a94-4dbe-4f9c-9c1e-0f2a7c3b8d16");
 
     private MobAiEnhanced() {
     }
@@ -93,9 +105,35 @@ public final class MobAiEnhanced {
             enhanceGolem(golem);
             return;
         }
+        if (event.getEntity() instanceof Villager villager) {
+            armVillager(villager);
+            return;
+        }
         if (event.getEntity() instanceof Monster monster && eligible(monster)) {
             enhanceHostile(monster);
         }
+    }
+
+    /**
+     * 15% 的村民出生时手里就有把铁剑，而且不再只会跑。
+     *
+     * <p>村民本体走 Brain 系统、没有攻击能力，所以这里给它补上原版那套 Goal：一个近战 Goal，
+     * 加一个「把怪当敌人」的目标 Goal。两套系统挂在同一条实体上不算优雅，但这是零侵入的做法 ——
+     * 不碰 {@code Villager} 的行为包，也就不会牵动原版那些职业与日程。</p>
+     *
+     * <p>掉率设 0：否则每杀一个武装村民就掉一把剑，村庄会变成剑的产地。</p>
+     */
+    private static void armVillager(Villager villager) {
+        double chance = Config.AI_VILLAGER_ARM_CHANCE.get();
+        if (chance <= 0.0D || villager.getRandom().nextDouble() >= chance) {
+            return;
+        }
+        villager.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.IRON_SWORD));
+        villager.setDropChance(EquipmentSlot.MAINHAND, 0.0F);
+        addOnce(villager.goalSelector, 1, MeleeAttackGoal.class,
+                () -> new MeleeAttackGoal(villager, 1.0D, true));
+        addOnce(villager.targetSelector, 1, NearestAttackableTargetGoal.class,
+                () -> new NearestAttackableTargetGoal<>(villager, Monster.class, true));
     }
 
     private static void enhanceHostile(Monster monster) {
@@ -109,6 +147,13 @@ public final class MobAiEnhanced {
             addOnce(monster.targetSelector, 1, PreyTargetGoal.class, () -> new PreyTargetGoal(monster));
             applyModifier(monster, Attributes.FOLLOW_RANGE, HOSTILE_RANGE_ID, "apocalypse_ai_range",
                     Config.AI_FOLLOW_RANGE.get());
+            // 追击速度：把原版速度乘一个倍率。写的是「属性基值 × 倍率」而不是一个绝对值，
+            // 这样僵尸、骷髅、蜘蛛各自原本的快慢差别还在，只是一起变快。
+            double speedMul = Config.AI_HOSTILE_SPEED.get();
+            if (speedMul != 1.0D) {
+                applyModifier(monster, Attributes.MOVEMENT_SPEED, HOSTILE_SPEED_ID, "apocalypse_ai_speed",
+                        monster.getAttributeBaseValue(Attributes.MOVEMENT_SPEED) * speedMul);
+            }
             if (Config.AI_SURROUND_ENABLED.get() && !hasRangedIdentity(monster)) {
                 // 优先级 1：必须比原版近战 Goal（僵尸 2 / 蜘蛛 3）更优先，否则拿不到 MOVE
                 addOnce(monster.goalSelector, 1, SurroundGoal.class,
@@ -140,6 +185,10 @@ public final class MobAiEnhanced {
                 Config.AI_GOLEM_FOLLOW_RANGE.get());
         applyModifier(golem, Attributes.ATTACK_KNOCKBACK, GOLEM_KNOCKBACK_ID, "apocalypse_golem_knockback",
                 Config.AI_GOLEM_KNOCKBACK.get());
+        applyModifier(golem, Attributes.MOVEMENT_SPEED, GOLEM_SPEED_ID, "apocalypse_golem_speed",
+                Config.AI_GOLEM_SPEED.get());
+        applyModifier(golem, Attributes.ATTACK_DAMAGE, GOLEM_DAMAGE_ID, "apocalypse_golem_damage",
+                Config.AI_GOLEM_DAMAGE.get());
     }
 
     // ------------------------------------------------------------------ 2. 刷怪那一刻
@@ -167,10 +216,57 @@ public final class MobAiEnhanced {
 
     @SubscribeEvent
     public static void onLivingTick(LivingEvent.LivingTickEvent event) {
-        if (!(event.getEntity() instanceof Villager villager) || villager.level().isClientSide()) {
+        if (event.getEntity().level().isClientSide()) {
             return;
         }
+        // 一个事件入口、两条互不相干的支线：村民的行为包，与敌对生物的必中判定。
+        if (event.getEntity() instanceof Villager villager) {
+            tickVillager(villager);
+        } else if (event.getEntity() instanceof Mob mob
+                && (mob instanceof Zombie || mob instanceof AbstractSkeleton)) {
+            tickSureHit(mob);
+        }
+    }
+
+    /**
+     * 僵尸 / 骷髅的「必中」：按 {@code sure_hit_chance} 的概率把当前目标的受击无敌帧清掉。
+     *
+     * <p>原版近战几乎不会真的挥空 —— 「打了没伤害」绝大多数时候是受击冷却吃掉的：目标刚挨过一下，
+     * {@code invulnerableTime > 10}，这一下就白挥（箭也一样会被弹开）。所以在攻击落地之前清掉那个冷却，
+     * 效果就是这一下必中。判定按 {@code sure_hit_interval} 节流：每个 tick 都判的话无敌帧等于不存在。</p>
+     *
+     * <p>只在「马上要挨上」的距离内动手，否则远处一只骷髅会把玩家的受击冷却一直清零，
+     * 让别的伤害也能连续命中 —— 那不是必中，那是把玩家变成靶子。</p>
+     */
+    private static void tickSureHit(Mob mob) {
+        float chance = Config.AI_SURE_HIT_CHANCE.get().floatValue();
+        if (chance <= 0.0F) {
+            return;
+        }
+        int interval = Config.AI_SURE_HIT_INTERVAL.get();
+        if ((mob.tickCount + mob.getId()) % interval != 0) {
+            return;
+        }
+        LivingEntity target = mob.getTarget();
+        if (target == null || !target.isAlive()) {
+            return;
+        }
+        double reach = mob instanceof AbstractSkeleton ? 24.0D : 6.0D;
+        if (mob.distanceToSqr(target) > reach * reach) {
+            return;
+        }
+        if (mob.getRandom().nextFloat() >= chance) {
+            return;
+        }
+        target.invulnerableTime = 0;
+    }
+
+    private static void tickVillager(Villager villager) {
         if (!Config.AI_VILLAGER_ENABLED.get()) {
+            return;
+        }
+        // 拿了武器的村民不逃：它归战斗支线管，见 armVillager 挂上的那两个 Goal。
+        if (isArmed(villager)) {
             return;
         }
         int interval = Config.AI_VILLAGER_INTERVAL.get();
@@ -197,6 +293,11 @@ public final class MobAiEnhanced {
         if (villager.hasLineOfSight(threat)) {
             callGolems(villager, threat);
         }
+    }
+
+    /** 这个村民是不是当年那 15% 之一。 */
+    private static boolean isArmed(Villager villager) {
+        return villager.getMainHandItem().getItem() instanceof SwordItem;
     }
 
     /** 村民呼救：把威胁交给附近还没进入战斗的铁傀儡。 */

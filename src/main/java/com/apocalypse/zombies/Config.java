@@ -119,14 +119,31 @@ public final class Config {
     public static final ForgeConfigSpec.DoubleValue AI_MARKSMAN_LOCK_TURN;
     public static final ForgeConfigSpec.DoubleValue AI_MARKSMAN_LOCK_SPEED;
     public static final ForgeConfigSpec.IntValue AI_MARKSMAN_LOCK_LIFE;
+    /**
+     * 僵尸 / 骷髅「必中」的概率：这一下攻击无视目标的受击无敌帧，必定造成伤害。
+     *
+     * <p>原版近战很少真的打空，被"吃掉"的伤害大多来自受击冷却 —— 目标刚被打过、
+     * {@code invulnerableTime > 10}，这一下就白挥了。所以这里的必中做成"攻击前先把目标的冷却清掉"。</p>
+     */
+    public static final ForgeConfigSpec.DoubleValue AI_SURE_HIT_CHANCE;
+    /** 必中判定的间隔（tick）。判定太勤等于无敌帧形同虚设，太疏则几乎撞不上。 */
+    public static final ForgeConfigSpec.IntValue AI_SURE_HIT_INTERVAL;
+    /** 敌对生物的追击速度倍率（1.0 = 原版）。 */
+    public static final ForgeConfigSpec.DoubleValue AI_HOSTILE_SPEED;
     public static final ForgeConfigSpec.BooleanValue AI_VILLAGER_ENABLED;
     public static final ForgeConfigSpec.IntValue AI_VILLAGER_INTERVAL;
     public static final ForgeConfigSpec.DoubleValue AI_VILLAGER_ALERT_RADIUS;
     public static final ForgeConfigSpec.DoubleValue AI_VILLAGER_CALL_RADIUS;
+    /** 村民出生时拿起武器的概率。拿了的会反击，且不再一味逃跑。 */
+    public static final ForgeConfigSpec.DoubleValue AI_VILLAGER_ARM_CHANCE;
     public static final ForgeConfigSpec.BooleanValue AI_GOLEM_ENABLED;
     public static final ForgeConfigSpec.IntValue AI_GOLEM_FOLLOW_RANGE;
     public static final ForgeConfigSpec.DoubleValue AI_GOLEM_KNOCKBACK;
     public static final ForgeConfigSpec.DoubleValue AI_GOLEM_GUARD_RADIUS;
+    /** 铁傀儡的移动速度（原版 0.25）。 */
+    public static final ForgeConfigSpec.DoubleValue AI_GOLEM_SPEED;
+    /** 铁傀儡的攻击伤害（原版 15）。 */
+    public static final ForgeConfigSpec.DoubleValue AI_GOLEM_DAMAGE;
     /**
      * 敌对生物之间不互相攻击（本模组生效档）。
      *
@@ -390,6 +407,21 @@ public final class Config {
                 .defineInRange("villager_alert_radius", 16.0D, 4.0D, 48.0D);
         AI_VILLAGER_CALL_RADIUS = b.comment("How far a villager calls for an iron golem (needs line of sight).")
                 .defineInRange("villager_call_radius", 16.0D, 4.0D, 64.0D);
+        AI_VILLAGER_ARM_CHANCE = b.comment("Chance a villager spawns armed with an iron sword.",
+                        "An armed villager stops fleeing and fights back instead: it gets a melee goal",
+                        "and a monster target goal, and the panic branch is skipped for it.",
+                        "0 disables the whole feature (and unarmed villagers behave as before).")
+                .defineInRange("villager_arm_chance", 0.15D, 0.0D, 1.0D);
+        AI_SURE_HIT_CHANCE = b.comment("Chance that a zombie's or skeleton's attack counts as a sure hit:",
+                        "the target's hurt cooldown is cleared first, so the blow cannot be eaten by",
+                        "invulnerability frames. 0 restores vanilla behaviour.")
+                .defineInRange("sure_hit_chance", 0.35D, 0.0D, 1.0D);
+        AI_SURE_HIT_INTERVAL = b.comment("Ticks between sure-hit rolls. Rolling every tick would make",
+                        "invulnerability frames meaningless.")
+                .defineInRange("sure_hit_interval", 10, 1, 200);
+        AI_HOSTILE_SPEED = b.comment("Chase speed multiplier for hostile mobs (1.0 = vanilla).",
+                        "Applies to this mod's mobs and vanilla zombies/skeletons alike.")
+                .defineInRange("hostile_speed", 1.1D, 0.5D, 3.0D);
         AI_GOLEM_ENABLED = b.comment("Iron golems prioritise whatever is threatening a villager, and hit harder.")
                 .define("golem_enabled", true);
         AI_GOLEM_FOLLOW_RANGE = b.comment("Follow range iron golems are raised to (vanilla is 35).")
@@ -398,6 +430,10 @@ public final class Config {
                 .defineInRange("golem_knockback", 2.0D, 0.0D, 10.0D);
         AI_GOLEM_GUARD_RADIUS = b.comment("Radius in which golems look for monsters threatening villagers.")
                 .defineInRange("golem_guard_radius", 24.0D, 4.0D, 64.0D);
+        AI_GOLEM_SPEED = b.comment("Iron golem movement speed (vanilla is 0.25).")
+                .defineInRange("golem_speed", 0.28D, 0.1D, 1.0D);
+        AI_GOLEM_DAMAGE = b.comment("Iron golem attack damage (vanilla is 15).")
+                .defineInRange("golem_damage", 18.0D, 1.0D, 100.0D);
         NO_INFIGHTING = b.comment("Hostile mobs do not hurt or fight each other. Any exchange where one",
                         "side is one of this mod's mobs is cancelled outright, so the vanilla",
                         "retaliation goal never records a grudge. Other mods' and vanilla mobs",
