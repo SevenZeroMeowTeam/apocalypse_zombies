@@ -59,6 +59,17 @@ public final class ModSounds {
     /** 弹夹弹出时的金属碰撞声"叮"。 */
     public static final RegistryObject<SoundEvent> AMMO_CLIP_POP = sound("ammo_clip_pop");
 
+    /**
+     * 「朋友的酒」—— 常驻背景音乐，客户端循环播放，见 {@code client/music/FriendsWineMusic}。
+     *
+     * <p><b>这一条不是 TaCZ 的借用资产</b>：音频由玩家自备、随本模组分发，与上面那批 AWM 录音
+     * 的许可来源无关。但要注意分发口径 —— {@code build.gradle} 的 {@code borrowedEntries} 目前是
+     * <b>整目录</b>排除 {@code assets/apocalypse_zombies/sounds/**} 与 {@code sounds.json}
+     * （为了剥掉 AWM 音效），所以 {@code cleanJar} 出来的纯净包里也没有这首音乐；
+     * 它随开发/自用包分发。</p>
+     */
+    public static final RegistryObject<SoundEvent> MUSIC_FRIENDS_WINE = sound("music_friends_wine");
+
     private ModSounds() {
     }
 

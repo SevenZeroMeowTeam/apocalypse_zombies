@@ -102,6 +102,16 @@ public class MosinNagantGeoModel extends GeoModel<MosinNagantItem> {
     private static final float[] SUPPORT = {0.10F, 0.52F, -8.00F};
 
     /**
+     * Where the rounds come from: the pouch at the player's hip, behind and below the rifle.
+     *
+     * <p>This rifle has no detachable magazine — the rounds go into a fixed five-round well, so they have to be
+     * fetched by hand. Unlike every other point here this one rides <b>no</b> part chain: the hand is reaching
+     * for the player's own body, not for the bolt or the receiver, so it only follows the gun's whole-body pose
+     * and sways with the player.</p>
+     */
+    private static final float[] AMMO = {-2.00F, -8.00F, 4.60F};
+
+    /**
      * Scratch: the live knob while the hand is on the handle, and the bolt's chain. The client renders on one
      * thread and both are used inside a single {@link #rightHand} call, so one of each is enough — the same
      * reasoning as {@link #SCRATCH}.
@@ -174,9 +184,15 @@ public class MosinNagantGeoModel extends GeoModel<MosinNagantItem> {
                 // Over the receiver, pressing each round home — the thumb goes down, the hand follows. The bolt
                 // is already open behind it, so the grip's own state is held down rather than left to follow it.
                 handleHold = 0.0F;
-                float toRounds = HandMotion.ramp(progress, 0.04F, 0.16F);
-                float press = HandMotion.ramp(progress, 0.16F, 0.30F);
-                return HandMotion.lerpThenShift(out, GRIP, ROUNDS, toRounds, 0.0F, -0.35F * press, 0.0F);
+                // Fetch the rounds first: the rifle stays shouldered and the left hand keeps it there, so the
+                // firing hand is free to drop to the pouch and come back with them (see AMMO).
+                float toAmmo = HandMotion.ramp(progress, 0.02F, 0.12F);
+                float toRounds = HandMotion.ramp(progress, 0.20F, 0.32F);
+                float press = HandMotion.ramp(progress, 0.32F, 0.46F);
+                HandMotion.lerp(out, GRIP, AMMO, toAmmo);
+                HandMotion.lerp(out, out, ROUNDS, toRounds);
+                out[1] -= 0.35F * press;
+                return out;
             }
             // Then the clip closes the bolt over its last tenth, and the hand goes with it.
             return onBolt(out, holdOnHandle());

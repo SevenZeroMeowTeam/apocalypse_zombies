@@ -132,12 +132,13 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
 | `m1_garand` | 半自动步枪，.30-06，8 发漏夹。铁瞄 |
 | `mosin_nagant` | 栓动步枪，7.62×54R，固定 5 发盒式弹仓。铁瞄 |
 | `uzi` | 冲锋枪，9mm，**全自动**：按住左键连发、松手停火、弹匣打空自动停 |
+| `s686` | 金板 S686 上下双管折开式霰弹枪，12 号。**2 发**：每扣一次扳机打 1 发、每发 8 颗弹丸、1 秒一发；潜行扣扳机 = 双管齐射（2 发 / 16 颗） |
 | `crossbow` | 十字弩，现代复合结构；右键 = 透明十字瞄准镜 |
 
-- **五把枪打完自动换弹**：弹匣打空立刻换；空匣状态下扣扳机也触发。
+- **六把枪打完自动换弹**：弹匣打空立刻换；空匣状态下扣扳机也触发。
 - **铁瞄还是镜，由枪自己回答**：`hasScopeOverlay()` / `hidesModelWhileAimed()` 走 `GunItem` 的实现，
-  不写死在渲染层 —— 铁瞄枪（M1 / 莫辛 / Uzi）照门就是瞄准点，枪必须留在画面里。
-- **跑步持枪姿态**（1.1.40）：跑动时枪从瞄准线上下到身侧，五把枪共用一套姿态，见更新日志。
+  不写死在渲染层 —— 铁瞄枪（M1 / 莫辛 / Uzi / S686）照门就是瞄准点，枪必须留在画面里。
+- **跑步持枪姿态**（1.1.40）：跑动时枪从瞄准线上下到身侧，六把枪共用一套姿态，见更新日志。
 - 持枪时**左键开火**（Uzi 按住连发）、**右键抬镜**、`R` 换弹、**`Shift + R` 单发补弹（M1 加兰德）**
   （可在控制里改键，分类「Apocalypse Zombies」）。
 - **服务端权威**：客户端只发请求（`FirePacket` / `ReloadPacket`），「有没有子弹、动作是否占用、
@@ -150,6 +151,13 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
   —— 那一段起手枪机就已经在后退位，只把新夹压下去。
 - 姿态走客户端 `GunAimState` + `GunPose`：站立腰射 / 跑步持枪 / 抬镜三态连续混合；`WeaponArms` 按
   玩家皮肤绘制手臂，跟随各枪 `*GeoModel` 给出手部目标。
+- **S686 是折开式（break-action）双管，机制与其余枪不同**：没有自动机、没有拉栓循环、没有弹匣 ——
+  枪管组绕铰链折下 38° 露出上下两个弹膛，所以 `bolt` 这条动画在这里的含义是「折开检查再合上」
+  （空膛扣扳机跑的就是它，26 ticks），也没有 `shoot_auto` 这样的连发片段。每扣一次扳机打 1 发，
+  每发是 **8 颗各自独立命中**的弹丸（每颗按距离分级、都不穿透身体），贴脸 8×4 点、32 格外只剩零头；
+  潜行扣扳机则双管齐射（消耗 2 发、16 颗），沿用同一条 `shoot` 动画。换弹按「膛内还有没有弹」分流：
+  有弹走 `reload_tactical`（折开、接住那发实弹、补两发、合膛），空枪走 `reload_empty`
+  （折开、退壳、上两发、合膛），两条都在片段结束时补满 2 发。
 - 副手 / 背包 / 开镜状态都有对应封包处理。
 
 ### 指令
@@ -180,6 +188,130 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
 ---
 
 ## 更新日志
+
+### 1.1.50 — 2026-10-08
+
+**新增枪械 · 金板 S686（折开式双管霰弹枪）＋ 全生物 Q 弹（压扁回弹旋转）**
+
+**新增枪械 · 注册名 `s686`：上下双管折开式，2 发 × 每发 8 颗弹丸、1 秒一发、铁瞄**
+
+- **几何 / 贴图 / 动画**（本次到货，非代码改动）：25 骨 / 281 块 / 512² 贴图，8 条片段全裸名
+  （`static_idle` / `draw` / `shoot` / `bolt` / `reload_tactical` / `reload_empty` / `ADS_up` / `ADS_down`）。
+  **没有 `shoot_auto`** —— 折开式双管没有全自动，Java 侧也就不声明连发那一组常量。
+- **接线**（照 `uzi` 的全套结构）：新增 `S686Item` / `S686GeoModel` / `S686ItemRenderer` /
+  `models/item/s686.json` / `damage_type/s686_bullet.json`；`ModItems` 注册并进战斗页签；`WeaponArms`
+  加渲染分支与 `forgetFrames` 回收（漏后者的表现是「枪能动但没手」）；两套 lang、枪械表同步。
+  音效走 AWM 那套 id（`ModSounds` 与 `sounds.json` 零改动，不新增音效键）。
+- **量算，不是眼估**：本机没有 python，`tools/pose_measure.py` 与 `tools/uzi_tp_solve.py` 两条链在
+  `build/s686_pose_solve.js` 里做了 Node 逐行移植并先过标定 —— Uzi 的 `ADS` 复现到 1.1e-5、第三人称
+  四常量复现到 4.3e-4，M1 的 `ADS` 复现到 4.4e-4（它源码只存到 3 位小数），对得上才允许拿它算新枪。
+  瞄具线取**前准星珠心**（`fs_bead` 圆心 y=0.300 / z=−9.60；**折开式没有后照门**，全枪唯一的瞄具就是
+  这颗珠，所以锚点必须是它 —— 初版误用了肋条顶面 y=0.175，珠子会浮在屏幕中心上方）：
+  `ADS_X = −0.4749` / `ADS_Y = +0.3533`，抵消 display 旋转后夹角 **0.00°**、残差 4.2e-5；
+  第三人称 `TP_X_RIGHT / TP_X_LEFT / TP_Y / TP_Z = −0.608 / −0.392 / 0.618 / −0.591`，
+  自检 `TP_X_RIGHT − TP_X_LEFT = 2·(1/16)/S` 差为 0。
+- **display 块按长度插值**：19.50u 夹在 M1（17.63u）与莫辛（22.90u）之间，各 scale 取两者的线性混合
+  （第一人称 0.80、第三人称 0.58、GUI **0.36** / 地面 0.27 / 物品框 0.37 / 头盔 0.53）；第一人称
+  `translation` 的 y 由量算定（+0.6px）—— 那是把腰射握把 NDC 从 −1.61（出画）抬进画面的值。
+  GUI 缩放发布前从 0.31 上调到 0.36：物品栏里的显示长度 = 枪长 × scale，0.31 只有 6.10u 偏小，
+  0.36 是 7.08u，落在 AWM（7.20）与莫辛（6.87）之间，与其它长枪的栏内观感齐平。
+- **机制**：每扣一次扳机消耗 1 发、射出 8 颗弹丸（锥面内均匀采样，每颗独立判定、独立分级伤害、
+  都不穿透身体）；射击间隔 20 ticks。潜行扣扳机 = 双管齐射（2 发 / 16 颗），沿用同一条 `shoot` 片段，
+  **不新增动画**。空膛扣扳机跑 `bolt`（折开检查再合上，26 ticks）。换弹按膛内还有没有实弹分流：
+  `reload_tactical` 52t / `reload_empty` 66t，都在片段结束时补满 2 发。
+- **手的目标**：右手始终握枪颈（开膛的上顶杆就在这只手拇指下，开枪的手不离开枪）；
+  左手扶着前护木，而护木是 `barrel` 骨的孩子 ⇒ **折开由活骨带着手走**（`GunFrame.partChain`，
+  与 1.1.49 的拉栓手柄同一条规矩），Java 里不复刻折叠曲线；上弹那一段手挂在上弹壳骨上被带着入膛。
+- **验收**：编译 **0 错误 0 警告**（132 个 class，含 `S686Item` / `S686GeoModel` / `S686ItemRenderer`）。
+  口径说明：本会话的文件沙箱不让 Gradle 起 build daemon（fork JVM 走管道被拒，`gradlew compileJava` 一律
+  停在 `A problem occurred starting process 'Gradle build daemon'`），所以改用**同一份 sourceSet**
+  （`build.gradle:118` 排除 `**/*_bytes.java`）+ **同一套依赖 jar** 直接 `javac`，脚本与日志留在
+  `build/run_javac_s686.bat` / `build/javac_s686.log`；放宽沙箱后仍应补跑一次真正的 `gradlew build`。
+  `tools/check_gun_resources.py` 会卡的那几条硬契约（本机无 python 跑不了该脚本）由
+  `build/check_s686_contract.js` 逐条等价复刻核对 —— ANIM_/TRIGGER_ 常量 ↔ 8 条片段名、
+  5 个 `*_TICKS` ↔ `ceil(animation_length × 20)`、`DISPLAY_PITCH/YAW` ↔ `models/item/s686.json` 的
+  `firstperson_righthand.rotation`（且 roll = 0、左右手同值）、`ADS_X/ADS_Y` 区间且与量算值一致
+  （残差 8e-6）、伤害类型 id 与 `message_id`、贴图 512²、`WeaponArms` 里确有 S686 分支、
+  音效未新增键 —— 15 组检查全过。
+
+**同时新增 · 全生物 Q 弹（压扁 → 回弹 → 旋转摆动），纯客户端**
+
+- **两条渲染钩子，少一条就静默漏一半**：`RenderLivingEvent.Pre/Post` 覆盖原版与本模组内走人形
+  渲染器的生物，`GeoRenderEvent.Entity.Pre/Post` 覆盖 GeckoLib 生物 —— `GeoEntityRenderer` 自己重写
+  `render` 且不调 `super`，**根本不发布** `RenderLivingEvent`，只挂一条会漏掉骸骨射手 / 美女僵尸 /
+  士兵僵尸 / 尸潮之主四只（而且不报错）。两条链的实体集合不相交，不会双重形变。
+- **不发网络包**：受伤看**血量掉没掉**（`getHealth() + getAbsorptionAmount()`，走 `SynchedEntityData`，
+  对所有生物都同步），落地 / 起跳 / 被击退用客户端自己逐 tick 追踪的 `onGround` 与 `deltaMovement`。
+  观察只在渲染钩子里顺手做，不做全实体扫描 —— 血月围城上百只怪也不会多出一轮遍历。
+- **别用 `hurtTime` 当受伤信号（踩过的坑）**：初版读的是 `LivingEntity.hurtTime`，结果**一次都没触发**。
+  翻 1.20.1 源码才看清：受伤动画走 `ClientboundHurtAnimationPacket`，而构造那个包的地方**只有
+  `ServerPlayer` 一处**（它只把「自己被打」发给自己）。也就是说除了玩家本人，**任何生物的
+  `hurtTime` 在客户端永远是 0**。血量才是真正对所有生物同步的那个量。
+- **形变锚在脚底**：两个钩子触发时 PoseStack 的原点正落在脚底，缩放天然不会把怪压进地里；
+  再套一层 `抬到身体中心 → 非等比缩放 → 落回脚底` 的三明治，观感才是「果冻」而不是「从地面长出来」。
+  回弹走阻尼余弦（t=0 必定压到最深），并叠一点绕 Z 的侧倾与绕 X 的俯仰 —— 那就是「旋转」那一半。
+- **每只怪相位不同**：种子由实体 id 派生，起手始终是「立刻压到最深」，但后续几次回弹的频率各怪不同，
+  不会整群像广播体操一样同相位弹。
+- **玩家显式排除**：`PlayerRenderer.render` 会先 post `RenderPlayerEvent` 再调 `super.render`
+  （内部又 post `RenderLivingEvent`），两边都做就是双倍形变；本需求只说「生物」。
+- **push/pop 严格配对**：`RenderLivingEvent.Pre` 可被别的模组取消，而官方注释明确「Pre 被取消则
+  Post 不触发」——所以用「本帧确实 push 过」的集合兜底，而不是带条件的 push 配无条件 pop。
+- **配置**：`config/apocalypse_zombies-common.toml` 的 `[squash_stretch]` 段 —— `enabled`（默认开）/
+  `intensity` 0.25 / `wobble_frequency` 13 / `damping` 3 / `max_roll_degrees` 6。只在客户端读，
+  不参与任何服务端判定，与 `AI_GIANT_ARROW_SCALE` 同一条先例，因此不需要同步包。
+- **增删**：新增 `client/anim/SquashStretch.java`、`client/SquashStretchEvents.java`，改 `Config.java`。
+**顺手修 · 双手持枪时不再画副手物品（第一人称）**
+
+- 六把枪都是双手握持，而左手是 `WeaponArms` 自己画的那一只 —— 原版副手那一路再画一次，物品就会从
+  **同一只手的中间**穿出来（火把 / 盾牌斜插在护木上）。现在只要主手是我们任意一把枪，
+  `RenderHandEvent` 的**副手整层**（物品连同手臂）都被取消。
+- 原逻辑只在「光学瞄具抬镜过半、镜头占满画面」时取消副手；那条规则保留，因为对 AWM 那类枪它更极端。
+- 只动 `ClientEvents.onRenderHand` 里的一处判断。第三人称不受影响 —— 那里的副手物品由原版的手持层画，
+  与枪的骨骼模型不共享手部，不会穿模。
+
+**新增 · S686 与莫辛纳甘的「回身取弹」手部动作**
+
+- 这两把是**非弹匣**装填：S686 折开后往膛里塞两发霰弹，莫辛往固定五发弹仓里压弹。原来手虽然会移到
+  弹膛 / 机匣上，却是**从枪上直接过去**的 —— 全程没离开枪，弹药看起来像凭空出现。
+- 现在换弹时序里多了一段**回身取弹**：手先离开枪、下探到腰间的弹带 / 弹袋（新锚点 `AMMO`），
+  停一拍表示抓住弹药，再带它回到枪上装填，最后回护木 / 枪颈。
+- `AMMO` 是这两把枪里**唯一不挂部件链**的手部目标：手伸向的是**玩家自己的身体**，不是折开的枪管
+  （S686）也不是枪机（莫辛），跟着部件转就错了。它只走枪的整体姿态链，所以人晃动时弹带跟着晃。
+- S686 让**左手**去取（右手始终握着枪颈 —— 开膛的上顶杆就在这只手的拇指下）；
+  莫辛让**右手**去取（枪夹在肩上、左手扶着护木，这本来就是莫辛装填的样子）。
+- 时间窗按各自 clip 的关键帧排：S686 是「折开之后、新弹入膛之前」，莫辛是 `BOLT_PICKUP_*`（0.86 / 0.88）之前。
+- 只改 `client/model/S686GeoModel.java` 与 `MosinNagantGeoModel.java` 的手部目标与两段 ramp；
+  其余四把（弹匣类：AWM / M1 / Uzi / 十字弩）不动 —— 它们的手本来就跟着弹匣骨走。
+
+**同时新增 · 「朋友的酒」常驻背景音乐（客户端）**
+
+- **就是循环放**：进世界起一首、一直放到离开世界。不挑场景（白天 / 夜晚 / 血月 / 洞穴都一样）。
+  循环**不交给 OpenAL**：音频是 `stream: true` 的流式音源，而 `AL_LOOPING` 只对「整段一次性入队」
+  的缓冲有效，流式音源是边解边喂 buffer，到曲末那条路不一定接得上。所以改用原版 `MusicManager`
+  用了几十年的办法 —— 每 tick 查一次 `SoundManager#isActive`，播放结束就重新起一首。
+  代价只是曲末到重播之间最多一个 tick（50 ms），换来的是「一定会循环」。
+- **音频**：`assets/apocalypse_zombies/sounds/music/friends_wine.ogg` —— Ogg Vorbis、44.1 kHz 立体声、
+  128 kbps、约 5.7 分钟；`sounds.json` 里标 `"stream": true`。长音频必须流式解码，否则整曲一次性进内存。
+- **怎么接管原版音乐**：Forge 1.20.1 **没有** `SelectMusicEvent`（那是更高版本才有的 API），
+  没有「把场景音乐换成我的」这条正规途径，于是反过来做 —— 只要我们的音乐在放，就每 tick 调一次
+  `MusicManager#stopPlaying()` 让原版让位。这个调用是幂等的（没有正在播的音乐时什么都不做），
+  原版自己在没有音乐时也一直在做同一件事，所以反复调用无副作用。开关 `suppress_vanilla`，
+  关掉就会听到两首叠在一起。
+- **尊重玩家设置**：音源用 `SoundSource.MUSIC`，玩家的「音乐」滑块照常生效；mod 侧的 `volume`
+  是**乘子**而不是替代（滑块拉到 0 时直接停播，省掉流式解码）。
+- **配置**：`config/apocalypse_zombies-common.toml` 的 `[friends_wine_music]` 段 ——
+  `enabled`（默认开）/ `volume`（1.0）/ `suppress_vanilla`（true）。纯客户端，服务端不读。
+- **增删**：新增 `client/music/FriendsWineMusic.java`；`ModSounds` 加一个 `MUSIC_FRIENDS_WINE`；
+  `sounds.json` 加第一条 `"category": "music"` 的条目。
+- **分发口径（重要）**：`build.gradle` 的 `borrowedEntries` 目前是**整目录**排除
+  `assets/apocalypse_zombies/sounds/**` 与 `sounds.json`（为了剥掉 TaCZ 的 AWM 录音），
+  所以 `cleanJar` 出来的纯净包里**也没有**这首音乐 —— 连 `ammo_clip_pop` 那类原创音效同样没有，
+  它们共用同一个 `sounds.json`。它随开发/自用包分发。要让纯净包也带上原创音频，得把排除项收窄成
+  `sounds/awm/**`，并把 `sounds.json` 按来源拆成两份。
+
+- **工程**：`mod_version` `1.1.49` → `1.1.50`；根 `mod.toml` 顺带补上（它此前停在 `1.1.45`）；
+  三个新类（S686 三件套 + Q 弹两件套 + 音乐控制器）、S686 资源与这首音乐一并进 jar，
+  替换 `F:\.minecraft\versions\1.20.1-Forge_47.4.26\mods\` 里的旧包。
 
 ### 1.1.49 — 2026-09-30
 

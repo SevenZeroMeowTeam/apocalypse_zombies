@@ -158,6 +158,24 @@ public final class Config {
     /** 标记持续时间（tick），每次命中都会刷新。 */
     public static final ForgeConfigSpec.IntValue DEATH_MARK_DURATION;
 
+    /** Q 弹（压扁回弹）效果总开关。纯客户端，服务端不读。 */
+    public static final ForgeConfigSpec.BooleanValue SQUASH_ENABLED;
+    /** 满冲击时压扁多深（0.25 = Y 轴矮 25%，XZ 按比例鼓起）。 */
+    public static final ForgeConfigSpec.DoubleValue SQUASH_INTENSITY;
+    /** 回弹抖动的角频率（弧度/秒）：越大越「弹」。 */
+    public static final ForgeConfigSpec.DoubleValue SQUASH_FREQUENCY;
+    /** 阻尼系数：越大衰减越快，3 大约能看见三次摆动。 */
+    public static final ForgeConfigSpec.DoubleValue SQUASH_DAMPING;
+    /** 回弹时摆动旋转的峰值角度（度）。 */
+    public static final ForgeConfigSpec.DoubleValue SQUASH_MAX_ROLL;
+
+    /** 「朋友的酒」常驻背景音乐总开关。纯客户端，服务端不读。 */
+    public static final ForgeConfigSpec.BooleanValue FRIENDS_WINE_MUSIC;
+    /** 音乐音量乘子（0~1）。最终音量还要乘玩家自己的「音乐」滑块，两者是相乘关系。 */
+    public static final ForgeConfigSpec.DoubleValue FRIENDS_WINE_VOLUME;
+    /** 是否在原版背景音乐要开播时把它压下去（不压就会两首歌重叠）。 */
+    public static final ForgeConfigSpec.BooleanValue FRIENDS_WINE_SUPPRESS_VANILLA;
+
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
 
@@ -383,6 +401,36 @@ public final class Config {
                 .defineInRange("death_mark_max_stacks", 3, 1, 10);
         DEATH_MARK_DURATION = b.comment("Mark duration in ticks (200 = 10 seconds). Every hit refreshes it.")
                 .defineInRange("death_mark_duration", 200, 20, 6000);
+        b.pop();
+
+        // 纯客户端效果：像 AI_GIANT_ARROW_SCALE 一样只被渲染代码读取，不参与任何服务端判定，
+        // 所以不需要同步包，也不会在专用服务器上被求值。
+        b.comment("Squash & stretch: mobs compress on impact and wobble back, like jelly.",
+                        "Q 弹：生物受击/落地时身体压扁、XZ 鼓起，随后带旋转地弹回。纯客户端表现。")
+                .push("squash_stretch");
+        SQUASH_ENABLED = b.comment("Master switch for the client-side squash & stretch effect.")
+                .define("enabled", true);
+        SQUASH_INTENSITY = b.comment("How far the body squashes at full impact (0.25 = 25% flatter).")
+                .defineInRange("intensity", 0.25D, 0.0D, 0.6D);
+        SQUASH_FREQUENCY = b.comment("Wobble frequency in radians per second; higher = snappier jelly.")
+                .defineInRange("wobble_frequency", 13.0D, 4.0D, 40.0D);
+        SQUASH_DAMPING = b.comment("How fast the wobble dies out. 3 = about three visible bounces.")
+                .defineInRange("damping", 3.0D, 0.5D, 12.0D);
+        SQUASH_MAX_ROLL = b.comment("Peak roll of the wobble, in degrees.")
+                .defineInRange("max_roll_degrees", 6.0D, 0.0D, 25.0D);
+        b.pop();
+
+        // 同样是纯客户端表现：只有客户端的音乐控制器读它，专用服务器上不会被求值。
+        b.comment("The player's own background track (\"朋友的酒\"), looped for as long as you are in a world.",
+                        "玩家自备的背景音乐，进世界就一直循环放；离开世界或关掉开关即停。纯客户端。")
+                .push("friends_wine_music");
+        FRIENDS_WINE_MUSIC = b.comment("Play it at all.")
+                .define("enabled", true);
+        FRIENDS_WINE_VOLUME = b.comment("Volume multiplier (0~1). Multiplied with your own Music slider, not replacing it.")
+                .defineInRange("volume", 1.0D, 0.0D, 1.0D);
+        FRIENDS_WINE_SUPPRESS_VANILLA = b.comment("Keep vanilla background music from starting underneath it.",
+                        "Off means you may hear both at once.")
+                .define("suppress_vanilla", true);
         b.pop();
 
         SPEC = b.build();

@@ -257,10 +257,15 @@ public final class ClientEvents {
             return;
         }
         if (event.getHand() != InteractionHand.MAIN_HAND) {
-            // We draw nothing in the off hand, but an optic owns the whole frame once it is up: an off-hand
-            // torch — or the arm under it — floating in the middle of the lens is exactly what an eyepiece is
-            // supposed to black out.
-            if (sightOwnsFrame(event.getPartialTick())) {
+            // The guns are two-handed, and the left hand you see on them is ours (WeaponArms): vanilla's
+            // off-hand pass would draw its item out of the middle of that same hand — a torch or a shield
+            // sticking through the fore-end. So whenever one of our guns is in the main hand, the whole
+            // off-hand pass is cancelled, item and arm alike.
+            //
+            // An optic that owns the whole frame once it is up is the same cancellation for one more reason:
+            // an off-hand torch — or the arm under it — floating in the middle of the lens is exactly what an
+            // eyepiece is supposed to black out.
+            if (player.getMainHandItem().getItem() instanceof GunItem || sightOwnsFrame(event.getPartialTick())) {
                 event.setCanceled(true);
             }
             return;

@@ -5,6 +5,7 @@ import com.apocalypse.zombies.item.AWMItem;
 import com.apocalypse.zombies.item.CrossbowItem;
 import com.apocalypse.zombies.item.M1GarandItem;
 import com.apocalypse.zombies.item.MosinNagantItem;
+import com.apocalypse.zombies.item.S686Item;
 import com.apocalypse.zombies.item.UziItem;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
@@ -44,6 +45,10 @@ public final class ModItems {
     /** Uzi 冲锋枪：32 发匣、600 rpm 全自动、铁瞄。 */
     public static final RegistryObject<Item> UZI =
             ITEMS.register("uzi", () -> new UziItem(new Item.Properties().stacksTo(1)));
+
+    /** 金板 S686：上下双管折开式霰弹枪，2 发、每发 8 颗弹丸、1 秒一发、铁瞄。 */
+    public static final RegistryObject<Item> S686 =
+            ITEMS.register("s686", () -> new S686Item(new Item.Properties().stacksTo(1)));
 
     /** 美女僵尸远程技能「抛花刺」甩出去的那束花。不是武器，只是投射物的载体（自带 16×16 贴图）。 */
     public static final RegistryObject<Item> BOUQUET_DART =
@@ -94,6 +99,7 @@ public final class ModItems {
             event.accept(MOSIN_NAGANT);
             event.accept(CROSSBOW);
             event.accept(UZI);
+            event.accept(S686);
         }
         if (event.getTabKey() == CreativeModeTabs.SPAWN_EGGS) {
             event.accept(SCREAMER_SPAWN_EGG);

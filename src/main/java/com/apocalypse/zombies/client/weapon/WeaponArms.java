@@ -5,12 +5,14 @@ import java.util.Locale;
 import com.apocalypse.zombies.client.model.CrossbowGeoModel;
 import com.apocalypse.zombies.client.model.M1GarandGeoModel;
 import com.apocalypse.zombies.client.model.MosinNagantGeoModel;
+import com.apocalypse.zombies.client.model.S686GeoModel;
 import com.apocalypse.zombies.client.model.UziGeoModel;
 import com.apocalypse.zombies.item.AWMItem;
 import com.apocalypse.zombies.item.CrossbowItem;
 import com.apocalypse.zombies.item.GunItem;
 import com.apocalypse.zombies.item.M1GarandItem;
 import com.apocalypse.zombies.item.MosinNagantItem;
+import com.apocalypse.zombies.item.S686Item;
 import com.apocalypse.zombies.item.UziItem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
@@ -195,6 +197,21 @@ public final class WeaponArms {
     }
 
     /**
+     * Gold Plate - S686: the <b>right</b> hand holds the grip through every clip, because the gun's one control
+     * — the top lever — is a thumb latch sitting right above it, so opening the action never costs the trigger
+     * hand its hold. The <b>left</b> hand carries the fore-end, which is the half of a break-action that moves:
+     * the barrels fold 38° on their hinge, the fore-end goes with them, and so does the hand. While loading it
+     * leaves the fore-end for the breech, takes the fresh pair of shells home, and is back on the fore-end to
+     * ride the barrels shut.
+     */
+    public static void renderS686(Minecraft mc, PoseStack pose, MultiBufferSource buffer, int light,
+                                  String action, float progress) {
+        render(mc, pose, buffer, light, S686GeoModel.frame,
+                S686GeoModel.rightHand(action, progress, new float[3]),
+                S686GeoModel.leftHand(action, progress, new float[3]));
+    }
+
+    /**
      * Draws the arms for whichever of our guns is in hand, or nothing.
      *
      * <p>The gun answers for itself where its hands are: it knows which action is running
@@ -214,6 +231,8 @@ public final class WeaponArms {
             renderAwp(mc, pose, buffer, light, action, progress);
         } else if (stack.getItem() instanceof UziItem) {
             renderUzi(mc, pose, buffer, light, action, progress);
+        } else if (stack.getItem() instanceof S686Item) {
+            renderS686(mc, pose, buffer, light, action, progress);
         } else {
             forgetFrames();
         }
@@ -226,6 +245,7 @@ public final class WeaponArms {
         MosinNagantGeoModel.frame.invalidate();
         AWMGeoModel.frame.invalidate();
         UziGeoModel.frame.invalidate();
+        S686GeoModel.frame.invalidate();
     }
 
     private static void render(Minecraft mc, PoseStack pose, MultiBufferSource buffer, int light,

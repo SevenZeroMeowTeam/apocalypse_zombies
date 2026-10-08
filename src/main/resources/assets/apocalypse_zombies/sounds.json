@@ -1,4 +1,13 @@
 {
+  "music_friends_wine": {
+    "category": "music",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:music/friends_wine",
+        "stream": true
+      }
+    ]
+  },
   "ammo_clip_pop": {
     "category": "player",
     "sounds": [

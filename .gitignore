@@ -33,4 +33,9 @@
 __pycache__/
 *.pyc
 
+# ===== 本机音频源文件 =====
+# 《朋友的酒》的原始导入件放在工作区根目录即可，是随包分发那一份的来源；
+# 真正进仓库的成品在 src/main/resources/assets/apocalypse_zombies/sounds/music/friends_wine.ogg
+/朋友的酒.ogg
+
 # 注意：gradle/wrapper/gradle-wrapper.jar 必须进仓库 —— CI 靠它启动 Gradle。
