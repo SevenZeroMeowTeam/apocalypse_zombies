@@ -222,6 +222,14 @@ public class S686Item extends Item implements GeoItem, GunItem {
     private static final double SLUG_RANGE_MID = 32.0D;
     private static final double SLUG_RANGE_FAR = 64.0D;
     private static final double SLUG_SPREAD_TAN = SPREAD_TAN * 0.25D;
+    /**
+     * 独头弹的爆头倍率，比普通弹高得多。
+     *
+     * <p>普通弹是「一片小弹丸里有一颗蒙到头顶」（×2）；独头弹是「一颗大铅弹整个打进头里」——
+     * 34 × 4 = <b>136</b>，一枪能把绝大多数目标从满血带走，精英和 Boss 也扛不住几发。代价是它只有
+     * 这一颗弹丸：打偏是零，打身上只有 34。高风险高回报正是它的定位。</p>
+     */
+    private static final float SLUG_HEADSHOT_MULTIPLIER = 4.0F;
 
     private static final ResourceKey<DamageType> DAMAGE_TYPE =
             ResourceKey.create(Registries.DAMAGE_TYPE,
@@ -583,7 +591,10 @@ public class S686Item extends Item implements GeoItem, GunItem {
             Entity target = hit.getEntity();
             double distance = eye.distanceTo(hit.getLocation());
             boolean head = hit.getLocation().y > target.getY() + target.getBbHeight() * HEADSHOT_HEIGHT;
-            float damage = damageAt(distance, ammo) * (head ? HEADSHOT_MULTIPLIER : 1.0F);
+            // 爆头倍率按弹种分：独头弹那一颗大弹丸打进头里，和一片小弹丸里蒙中一颗，不是一回事
+            float multiplier = !head ? 1.0F
+                    : (ammo == AmmoType.SLUG ? SLUG_HEADSHOT_MULTIPLIER : HEADSHOT_MULTIPLIER);
+            float damage = damageAt(distance, ammo) * multiplier;
 
             target.invulnerableTime = 0;
             target.hurt(bulletSource(level, player), damage);
