@@ -13,41 +13,57 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Q 弹（squash &amp; stretch）状态机：生物受到冲击时被压扁、XZ 鼓起，随后带旋转地阻尼回弹。
+ * Q 弹（squash &amp; stretch）：生物压扁、回弹、转圈。
  *
- * <p>锚点在<b>脚底</b>：两个渲染钩子（{@code RenderLivingEvent.Pre} 与
- * {@code GeoRenderEvent.Entity.Pre}）触发时，PoseStack 里只有「相机 → 实体世界坐标」，
- * 原点正落在脚底，所以在这里缩放天然不会把怪压进地里。要让形变像果冻而不是
- * 「从地面长出来」，再套一层 {@code 抬到身体中心 → 缩放 → 落回脚底} 的三明治。</p>
+ * <p>曲线与幅度照「朋友的酒」(friendswine) 的果冻效果实现 —— 那套数据的来源是它的
+ * {@code JellyAnimation} / {@code DollRenderer.applyAnimation}：</p>
  *
- * <p><b>为什么不发包</b>：受伤读血量（见 {@link #observeHurt}），落地/起跳/击退用客户端自己
- * 逐 tick 追踪的 {@code onGround} 与 {@code deltaMovement}，都是客户端已经拿得到的东西。
- * 因此整套效果是纯客户端的，服务端（含专用服务器）不需要加载这个类。</p>
+ * <pre>
+ *   squash = smoothstep 关键帧，周期 0.91667 s，一个周期走 0 → 1 → 0 → 1 → 0
+ *   scale(1 + width·s, 1 − compression·s, 1)     // Z 轴不动
+ *   自转 = 绕 Y 轴，一个周期 −360°（逆时针一圈）
+ * </pre>
  *
- * <p><b>观察时机</b>：只在渲染钩子里「顺便观察」，不做全实体扫描 —— 这样血月围城里
- * 上百只怪也不会多出一轮遍历，天然只处理屏幕上可见的实体。</p>
+ * <p>三点和朴素写法不一样、但正是那套效果的关键：</p>
+ * <ul>
+ *   <li><b>smoothstep 而不是正弦</b>：每段是 {@code 3t² − 2t³}，两端速度为零 —— 所以是「duang」
+ *       地弹一下再停住，而不是一直匀速晃。</li>
+ *   <li><b>Z 轴不缩放</b>：只压宽度与高度。这是正面压扁，不是体积守恒的压扁；配合绕 Y 自转，
+ *       形变方向跟着转，正面看始终是标准的卡通压扁。</li>
+ *   <li><b>锚点在脚底</b>：钩子触发时 PoseStack 的原点正落在脚底，所以直接 scale 就是绕脚底压，
+ *       不会陷进地里，也不需要「抬到中心再落回」那层三明治。</li>
+ * </ul>
+ *
+ * <p>在这层持续律动之上，受击 / 落地 / 被击退会再叠一次更强的冲击（取两者中更狠的那个），
+ * 让打中东西时还有额外的反馈。</p>
+ *
+ * <p>纯客户端：专用服务器不加载这个类。</p>
  */
 public final class SquashStretch {
 
-    /** 冲击的存活上限：超过这个 tick 数振幅已衰减到看不见，直接回收。 */
-    private static final int MAX_AGE_TICKS = 60;
+    /** 一个律动周期的长度，秒 —— 与参考实现同值。 */
+    public static final double PERIOD = 0.91667D;
 
-    /** 低于这个缩放差就不值得动矩阵了（省掉一次 push/pop 与矩阵乘法）。 */
+    /** 关键帧：一个周期内两次「压到底」。取值与参考实现逐字相同。 */
+    private static final double[] JELLY_TIMES = {0.0D, 0.25D, 0.45833D, 0.70833D, 0.91667D};
+    private static final double[] JELLY_VALUES = {0.0D, 1.0D, 0.0D, 1.0D, 0.0D};
+
+    /** 低于这个缩放差就不值得动矩阵了。 */
     private static final float DEAD_ZONE = 0.002F;
 
+    /** 冲击的存活上限：超过这个 tick 数振幅已衰减到看不见。 */
+    private static final int MAX_AGE_TICKS = 60;
+
     private static final Map<Integer, Impact> IMPACTS = new ConcurrentHashMap<>();
-    /**
-     * 上一帧看到的血量。受伤检测就看它掉没掉 —— 见 {@link #observeHurt} 里为什么不用 hurtTime。
-     */
+    /** 上一帧看到的血量 —— 受伤检测看它掉没掉。 */
     private static final Map<Integer, Float> LAST_HEALTH = new ConcurrentHashMap<>();
     private static final Map<Integer, Boolean> LAST_ON_GROUND = new ConcurrentHashMap<>();
     private static final Map<Integer, Double> LAST_VY = new ConcurrentHashMap<>();
     private static final Map<Integer, Double> LAST_HORIZONTAL = new ConcurrentHashMap<>();
-    /** 本帧已经 push 过的实体 id：Pre 可被别的模组取消（取消后 Post 不触发），
-     *  所以 pop 必须靠这个集合判定，不能靠「Pre 里算出来非零」这种带条件的推断。 */
+    /** 本帧已经 push 过的实体：Pre 可被别的模组取消（取消后 Post 不触发），所以 pop 靠这个集合兜底。 */
     private static final Set<Integer> PUSHED = ConcurrentHashMap.newKeySet();
 
-    /** 只在第一次真正弹起来时写一行日志，用来证明事件确实接上了。 */
+    /** 只在第一次真正形变时写一行日志，用来证明事件确实接上了。 */
     private static boolean announced;
 
     private SquashStretch() {
@@ -55,39 +71,70 @@ public final class SquashStretch {
 
     private static final class Impact {
         int ageTicks;
-        /** 0..1，冲击强度：受伤按掉血比例，落地按竖直速度，起跳给小值。 */
         float strength;
-        /** 每只怪不同的相位种子，避免整群怪像广播体操一样同相位弹。 */
-        float seed;
     }
 
-    // ------------------------------------------------------------------ 观察
+    // ------------------------------------------------------------------ 曲线
+
+    /** 周期内的相位，0 … {@link #PERIOD}。 */
+    public static double phase(double seconds) {
+        return Math.max(0.0D, seconds) % PERIOD;
+    }
 
     /**
-     * 受伤：看<b>血量</b>掉没掉。
+     * 持续律动的压扁量，0 … 1：一个周期里走 0 → 1 → 0 → 1 → 0，两段各用 smoothstep
+     * （{@code 3t² − 2t³}）插值，所以每一下都是「弹到位再停住」。
+     */
+    public static float jelly(double seconds) {
+        double g = phase(seconds);
+        int i = 0;
+        while (i < JELLY_TIMES.length - 2 && g > JELLY_TIMES[i + 1]) {
+            i++;
+        }
+        double span = JELLY_TIMES[i + 1] - JELLY_TIMES[i];
+        double t = span <= 1.0E-9D ? 0.0D : (g - JELLY_TIMES[i]) / span;
+        double eased = t * t * (3.0D - 2.0D * t);
+        return (float) (JELLY_VALUES[i] + (JELLY_VALUES[i + 1] - JELLY_VALUES[i]) * eased);
+    }
+
+    /** 自转角度（度）：一个周期转一整圈，负号 = 逆时针，与参考实现同向。 */
+    public static float spin(double seconds) {
+        return (float) (-360.0D * phase(seconds) / PERIOD);
+    }
+
+    /** 横向鼓起的倍率：{@code 1 + width/100 · squash}。 */
+    public static float widthScale(float squash) {
+        return 1.0F + Config.SQUASH_WIDTH.get().floatValue() / 100.0F * squash;
+    }
+
+    /** 高度压缩的倍率：{@code 1 − compression/100 · squash}。 */
+    public static float heightScale(float squash) {
+        return 1.0F - Config.SQUASH_COMPRESSION.get().floatValue() / 100.0F * squash;
+    }
+
+    // ------------------------------------------------------------------ 观察（冲击层）
+
+    /**
+     * 受伤：看血量掉没掉。
      *
-     * <p>这里原本读的是 {@link LivingEntity#hurtTime}，那是错的 —— 1.19.4 起受伤动画走
-     * {@code ClientboundHurtAnimationPacket}，而翻遍 1.20.1 的源码，构造那个包的只有
-     * {@code ServerPlayer} 一处（它只把「自己被打」发给自己）。也就是说除了玩家本人，
-     * <b>任何生物的 {@code hurtTime} 在客户端永远是 0</b>，靠它触发等于永不触发。</p>
-     *
-     * <p>血量则不同：它走 {@code SynchedEntityData}，对所有生物都同步。所以掉血就是受伤，
-     * 掉多少决定弹多狠。吸收伤害（金苹果那层）也算，否则「打不掉血」的那一下会没有反馈。</p>
+     * <p>不能用 {@code hurtTime}：1.20.1 里受伤动画走 {@code ClientboundHurtAnimationPacket}，
+     * 而构造那个包的地方只有 {@code ServerPlayer} 一处（它只把「自己被打」发给自己）——
+     * 除玩家本人外，任何生物的 {@code hurtTime} 在客户端永远是 0。血量走
+     * {@code SynchedEntityData}，对所有生物都同步。</p>
      */
     public static void observeHurt(LivingEntity entity) {
         int id = entity.getId();
         float health = entity.getHealth() + entity.getAbsorptionAmount();
         Float prev = LAST_HEALTH.put(id, health);
         if (prev == null || health >= prev - 0.01F) {
-            return;                      // 第一次见到它，或者没掉血
+            return;
         }
         float lost = prev - health;
         float max = Math.max(1.0F, entity.getMaxHealth());
-        // 掉 25% 血就吃满强度；只蹭掉一点也保证有 0.5 的起手，不然轻击完全看不出来
         trigger(entity, Math.min(1.0F, 0.5F + lost / max * 2.2F));
     }
 
-    /** 落地 / 起跳 / 被击退：只用客户端已有的运动学字段，客户端预测的位移也一并算数。 */
+    /** 落地 / 起跳 / 被击退：只用客户端已有的运动学字段。 */
     public static void observeMotion(LivingEntity entity) {
         int id = entity.getId();
         boolean onGround = entity.onGround();
@@ -100,17 +147,14 @@ public final class SquashStretch {
 
         if (prevGround != null && prevVy != null) {
             if (!prevGround && onGround && prevVy < -0.30D) {
-                // 落地：竖直速度越大压得越扁（跳下三格以上就吃满强度）
                 trigger(entity, (float) Math.min(1.0D, 0.5D + Math.abs(prevVy) / 1.4D) * 0.85F);
             } else if (prevGround && !onGround && vy > 0.30D) {
-                // 起跳：轻微拉伸，给动作一个「弹起来」的起手
                 trigger(entity, 0.45F);
             }
         }
         if (prevHorizontal != null && prevGround != null && prevGround && onGround) {
             double jump = horizontal - prevHorizontal;
             if (jump > 0.32D) {
-                // 被击退：水平速度突变。这类冲击比落地轻，但要能看出来
                 trigger(entity, (float) Math.min(0.75D, 0.35D + jump / 1.6D));
             }
         }
@@ -122,71 +166,77 @@ public final class SquashStretch {
         }
         int id = entity.getId();
         Impact impact = IMPACTS.computeIfAbsent(id, k -> new Impact());
-        // 相位种子由实体 id 派生：同一只怪始终同一个种子（回弹手感稳定），
-        // 不同怪之间错开（不会整齐划一）
-        impact.seed = (id * 0.6180339F) % 1.0F;
         impact.strength = Math.max(impact.strength * 0.35F, Math.min(1.0F, strength));
         impact.ageTicks = 0;
-
-        if (!announced) {
-            announced = true;
-            ApocalypseZombies.LOGGER.info("[Q弹] 已生效：{} 触发了一次挤压（强度 {}）",
-                    entity.getName().getString(), String.format("%.2f", strength));
-        }
     }
 
     // ------------------------------------------------------------------ 施加
 
     /**
-     * 往 PoseStack 上叠加本帧形变。调用方负责保证与 {@link #popIfApplied} 成对。
+     * 往 PoseStack 上叠加本帧形变。调用方保证与 {@link #popIfApplied} 成对。
      *
-     * @return true 表示确实 push 了（调用方无需关心，配对由内部集合兜底）
+     * @return true 表示确实 push 了（配对由内部集合兜底）
      */
     public static boolean apply(LivingEntity entity, PoseStack pose, float partialTick) {
         if (!Config.SQUASH_ENABLED.get()) {
             return false;
         }
         if (entity instanceof Player) {
-            // 玩家渲染会同时触发 RenderPlayerEvent 与 RenderLivingEvent（Forge 在
-            // PlayerRenderer.render 里先 post Player 事件再调 super.render），
-            // 两边都做就是双倍形变。本需求只针对生物，直接排除玩家。
+            // 玩家渲染会同时触发 RenderPlayerEvent 与 RenderLivingEvent —— 两边都做就是双倍形变。
             return false;
         }
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null) {
+            return false;
+        }
+
+        // 律动：相位取世界时间，于是同一维度里所有生物踩着同一个节拍（参考实现是跟玩偶的音乐走，
+        // 我们这里没有玩偶，用世界时间即可 —— 玩家的背景音乐也是从进世界那一刻开始放的）。
+        double seconds = (minecraft.level.getGameTime() + partialTick) / 20.0D;
+        float squash = jelly(seconds) * Config.SQUASH_INTENSITY.get().floatValue();
+
+        // 冲击：受伤 / 落地 / 被击退再压一下，谁更狠听谁的
         Impact impact = IMPACTS.get(entity.getId());
-        if (impact == null) {
-            return false;
+        if (impact != null) {
+            float t = (impact.ageTicks + partialTick) / 20.0F;
+            float wave = (float) (Math.exp(-t * Config.SQUASH_DAMPING.get())
+                    * Math.cos(t * Config.SQUASH_FREQUENCY.get()));
+            float shock = impact.strength * wave;
+            if (shock > squash) {
+                squash = shock;
+            }
+        }
+        if (squash < 0.0F) {
+            squash = 0.0F;
         }
 
-        float seconds = (impact.ageTicks + partialTick) / 20.0F;
-        double damping = Config.SQUASH_DAMPING.get();
-        // 频率按种子微调：起手始终是「立刻压到最深」（t=0 时 cos=1），
-        // 但后续几次回弹的节奏各怪不同，比整群同频自然得多
-        double frequency = Config.SQUASH_FREQUENCY.get() + impact.seed * 3.0D;
-        float wave = (float) (Math.exp(-seconds * damping) * Math.cos(seconds * frequency));
-        float amplitude = impact.strength * Config.SQUASH_INTENSITY.get().floatValue();
-        float squash = amplitude * wave;
-        if (Math.abs(squash) < DEAD_ZONE) {
-            return false;
+        float spinDegrees = 0.0F;
+        if (Config.SQUASH_ROTATE.get()) {
+            spinDegrees = spin(seconds) * Config.SQUASH_SPIN_SPEED.get().floatValue();
         }
 
-        float yScale = 1.0F - squash;                 // 正冲击 → Y 变矮
-        float xzScale = 1.0F + squash * 0.6F;         // XZ 鼓起，保住体积感
-        float halfHeight = Math.max(0.5F, entity.getBbHeight() * 0.5F);
+        float xScale = widthScale(squash);
+        float yScale = heightScale(squash);
+        if (Math.abs(xScale - 1.0F) < DEAD_ZONE && Math.abs(yScale - 1.0F) < DEAD_ZONE
+                && Math.abs(spinDegrees) < 0.01F) {
+            return false;
+        }
 
         pose.pushPose();
-        // 三明治：抬到身体中心 → 非等比缩放 → 落回脚底。这样压扁是「绕身体中心」发生的，
-        // 底面仍然贴地（直接 scale 的话观感像从地里长出来）
-        pose.translate(0.0F, halfHeight, 0.0F);
-        pose.scale(xzScale, yScale, xzScale);
-        pose.translate(0.0F, -halfHeight, 0.0F);
-
-        // Q 弹的另一半：回弹时的旋转摆动（绕 Z 侧倾 + 少量绕 X 前后俯仰）
-        float roll = amplitude * Config.SQUASH_MAX_ROLL.get().floatValue()
-                * (float) Math.sin(seconds * frequency * 0.72D + impact.seed * 6.2832D);
-        pose.mulPose(Axis.ZP.rotationDegrees(roll));
-        pose.mulPose(Axis.XP.rotationDegrees(roll * 0.45F));
-
+        if (spinDegrees != 0.0F) {
+            pose.mulPose(Axis.YP.rotationDegrees(spinDegrees));
+        }
+        // Z 轴不缩放 —— 与参考实现一致：只压宽度与高度（正面压扁）
+        pose.scale(xScale, yScale, 1.0F);
         PUSHED.add(entity.getId());
+
+        if (!announced) {
+            announced = true;
+            ApocalypseZombies.LOGGER.info("[Q弹] 已生效：{} 正在做果冻律动（压扁 {} / 鼓起 {} / 自转 {}°）",
+                    entity.getName().getString(),
+                    String.format("%.3f", yScale), String.format("%.3f", xScale),
+                    String.format("%.1f", spinDegrees));
+        }
         return true;
     }
 
@@ -199,7 +249,7 @@ public final class SquashStretch {
 
     // ------------------------------------------------------------------ 驱动
 
-    /** 每客户端 tick 推进一次年龄并回收过期记录。 */
+    /** 每客户端 tick 推进冲击的年龄并回收过期记录。 */
     public static void tick() {
         if (IMPACTS.isEmpty() && LAST_HEALTH.isEmpty()) {
             return;
@@ -209,7 +259,6 @@ public final class SquashStretch {
         }
         IMPACTS.entrySet().removeIf(entry -> entry.getValue().ageTicks > MAX_AGE_TICKS);
 
-        // 实体卸载后这些 id 会永远留在表里，顺手清掉不在当前世界里的
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null) {
             clear();
@@ -227,7 +276,7 @@ public final class SquashStretch {
         table.keySet().removeIf(id -> !(minecraft.level.getEntity(id) instanceof LivingEntity));
     }
 
-    /** 退出世界时整体清空：世界对象换了，id 空间也换了，留着只会串味。 */
+    /** 退出世界时整体清空：世界换了，实体 id 空间也换了。 */
     public static void clear() {
         IMPACTS.clear();
         LAST_HEALTH.clear();

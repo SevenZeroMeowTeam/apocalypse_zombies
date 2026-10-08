@@ -234,31 +234,38 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
   （残差 8e-6）、伤害类型 id 与 `message_id`、贴图 512²、`WeaponArms` 里确有 S686 分支、
   音效未新增键 —— 15 组检查全过。
 
-**同时新增 · 全生物 Q 弹（压扁 → 回弹 → 旋转摆动），纯客户端**
+**同时新增 · 全生物 Q 弹（压扁 → 回弹 → 绕竖直轴自转），纯客户端**
 
+**曲线与幅度是照「朋友的酒」(friendswine) 的果冻效果做的** —— 拆开那个 jar 读了它的
+`JellyAnimation` 与 `DollRenderer.applyAnimation` 才把下面三点定下来，而不是凭空调参：
+
+- **它是怎么做的**：`squash = smoothstep 关键帧`（周期 **0.91667 s**，一个周期里压扁量走
+  `0 → 1 → 0 → 1 → 0`，每段用 `3t² − 2t³` 插值 —— 所以每一下都是「弹到位再停住」，不是匀速晃）；
+  形变是 `scale(1 + width·s, 1 − compression·s, **1**)`；自转绕 **Y 轴**、一个周期 −360°。
+- **Z 轴不缩放**：只压宽度与高度。这是**正面压扁**，不是体积守恒的压扁；配合自转，形变方向跟着转，
+  正面看始终是标准的卡通 squash。照抄这一条（而不是 XZ 一起鼓）是观感对上的关键。
+- **锚点在脚底**：钩子触发时 PoseStack 的原点正落在脚底，所以直接 `scale` 就是绕脚底压 ——
+  不需要「抬到身体中心再落回」那层三明治，也不会把怪压进地里。
+- **两层叠加**：主体是**持续律动**（所有生物一直踩着同一个节拍做果冻）；在这之上，受伤 / 落地 /
+  被击退再叠一次更狠的冲击（阻尼余弦，t=0 必定压到最深），**谁更狠听谁的**。
 - **两条渲染钩子，少一条就静默漏一半**：`RenderLivingEvent.Pre/Post` 覆盖原版与本模组内走人形
   渲染器的生物，`GeoRenderEvent.Entity.Pre/Post` 覆盖 GeckoLib 生物 —— `GeoEntityRenderer` 自己重写
   `render` 且不调 `super`，**根本不发布** `RenderLivingEvent`，只挂一条会漏掉骸骨射手 / 美女僵尸 /
   士兵僵尸 / 尸潮之主四只（而且不报错）。两条链的实体集合不相交，不会双重形变。
-- **不发网络包**：受伤看**血量掉没掉**（`getHealth() + getAbsorptionAmount()`，走 `SynchedEntityData`，
-  对所有生物都同步），落地 / 起跳 / 被击退用客户端自己逐 tick 追踪的 `onGround` 与 `deltaMovement`。
-  观察只在渲染钩子里顺手做，不做全实体扫描 —— 血月围城上百只怪也不会多出一轮遍历。
-- **别用 `hurtTime` 当受伤信号（踩过的坑）**：初版读的是 `LivingEntity.hurtTime`，结果**一次都没触发**。
-  翻 1.20.1 源码才看清：受伤动画走 `ClientboundHurtAnimationPacket`，而构造那个包的地方**只有
-  `ServerPlayer` 一处**（它只把「自己被打」发给自己）。也就是说除了玩家本人，**任何生物的
-  `hurtTime` 在客户端永远是 0**。血量才是真正对所有生物同步的那个量。
-- **形变锚在脚底**：两个钩子触发时 PoseStack 的原点正落在脚底，缩放天然不会把怪压进地里；
-  再套一层 `抬到身体中心 → 非等比缩放 → 落回脚底` 的三明治，观感才是「果冻」而不是「从地面长出来」。
-  回弹走阻尼余弦（t=0 必定压到最深），并叠一点绕 Z 的侧倾与绕 X 的俯仰 —— 那就是「旋转」那一半。
-- **每只怪相位不同**：种子由实体 id 派生，起手始终是「立刻压到最深」，但后续几次回弹的频率各怪不同，
-  不会整群像广播体操一样同相位弹。
+  （参考实现是 mixin 到 `EntityRenderDispatcher.render`；本仓库零 mixin 配置，用这两条 Forge 事件
+  拿到同样的时机。）
+- **受伤信号用血量，不用 `hurtTime`（踩过的坑）**：初版读的是 `LivingEntity.hurtTime`，结果**一次都没
+  触发**。翻 1.20.1 源码才看清：受伤动画走 `ClientboundHurtAnimationPacket`，而构造那个包的地方
+  **只有 `ServerPlayer` 一处**（它只把「自己被打」发给自己）—— 除玩家本人，**任何生物的 `hurtTime`
+  在客户端永远是 0**。血量走 `SynchedEntityData`，才是对所有生物同步的那个量。
 - **玩家显式排除**：`PlayerRenderer.render` 会先 post `RenderPlayerEvent` 再调 `super.render`
   （内部又 post `RenderLivingEvent`），两边都做就是双倍形变；本需求只说「生物」。
 - **push/pop 严格配对**：`RenderLivingEvent.Pre` 可被别的模组取消，而官方注释明确「Pre 被取消则
-  Post 不触发」——所以用「本帧确实 push 过」的集合兜底，而不是带条件的 push 配无条件 pop。
+  Post 不触发」—— 所以用「本帧确实 push 过」的集合兜底，而不是带条件的 push 配无条件 pop。
 - **配置**：`config/apocalypse_zombies-common.toml` 的 `[squash_stretch]` 段 —— `enabled`（默认开）/
-  `intensity` 0.25 / `wobble_frequency` 13 / `damping` 3 / `max_roll_degrees` 6。只在客户端读，
-  不参与任何服务端判定，与 `AI_GIANT_ARROW_SCALE` 同一条先例，因此不需要同步包。
+  `intensity`（律动幅度倍率，1.0）/ `compression` 50 / `width` 50 / `rotate`（默认开）/
+  `spin_speed` 1.0 / `wobble_frequency` 13 / `damping` 3。只在客户端读，与 `AI_GIANT_ARROW_SCALE`
+  同一条先例，不需要同步包。
 - **增删**：新增 `client/anim/SquashStretch.java`、`client/SquashStretchEvents.java`，改 `Config.java`。
 **顺手修 · 双手持枪时不再画副手物品（第一人称）**
 

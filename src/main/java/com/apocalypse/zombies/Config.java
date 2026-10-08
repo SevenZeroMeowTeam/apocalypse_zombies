@@ -158,16 +158,22 @@ public final class Config {
     /** 标记持续时间（tick），每次命中都会刷新。 */
     public static final ForgeConfigSpec.IntValue DEATH_MARK_DURATION;
 
-    /** Q 弹（压扁回弹）效果总开关。纯客户端，服务端不读。 */
+    /** Q 弹（压扁回弹 + 自转）总开关。纯客户端，服务端不读。 */
     public static final ForgeConfigSpec.BooleanValue SQUASH_ENABLED;
-    /** 满冲击时压扁多深（0.25 = Y 轴矮 25%，XZ 按比例鼓起）。 */
+    /** 果冻律动的幅度倍率（1.0 = 曲线原样；调到 0 就只剩受击时弹一下）。 */
     public static final ForgeConfigSpec.DoubleValue SQUASH_INTENSITY;
-    /** 回弹抖动的角频率（弧度/秒）：越大越「弹」。 */
+    /** 压到底时高度缩掉多少（50 = 矮一半）。曲线与幅度照「朋友的酒」的果冻效果。 */
+    public static final ForgeConfigSpec.DoubleValue SQUASH_COMPRESSION;
+    /** 压到底时横向鼓出多少（50 = 宽一半）。 */
+    public static final ForgeConfigSpec.DoubleValue SQUASH_WIDTH;
+    /** 是否一边压扁一边绕竖直轴自转（那个模组叫「逆时针绕圈」）。 */
+    public static final ForgeConfigSpec.BooleanValue SQUASH_ROTATE;
+    /** 自转速度倍率（1.0 = 一个律动周期正好转一整圈）。 */
+    public static final ForgeConfigSpec.DoubleValue SQUASH_SPIN_SPEED;
+    /** 受击冲击的抖动角频率（弧度/秒）：越大越「弹」。 */
     public static final ForgeConfigSpec.DoubleValue SQUASH_FREQUENCY;
-    /** 阻尼系数：越大衰减越快，3 大约能看见三次摆动。 */
+    /** 冲击的阻尼系数：越大衰减越快。 */
     public static final ForgeConfigSpec.DoubleValue SQUASH_DAMPING;
-    /** 回弹时摆动旋转的峰值角度（度）。 */
-    public static final ForgeConfigSpec.DoubleValue SQUASH_MAX_ROLL;
 
     /** 「朋友的酒」常驻背景音乐总开关。纯客户端，服务端不读。 */
     public static final ForgeConfigSpec.BooleanValue FRIENDS_WINE_MUSIC;
@@ -405,19 +411,28 @@ public final class Config {
 
         // 纯客户端效果：像 AI_GIANT_ARROW_SCALE 一样只被渲染代码读取，不参与任何服务端判定，
         // 所以不需要同步包，也不会在专用服务器上被求值。
-        b.comment("Squash & stretch: mobs compress on impact and wobble back, like jelly.",
-                        "Q 弹：生物受击/落地时身体压扁、XZ 鼓起，随后带旋转地弹回。纯客户端表现。")
+        b.comment("Squash & stretch: mobs compress and wobble back like jelly, and can spin.",
+                        "Q 弹：生物压扁、回弹、绕竖直轴自转。曲线与幅度照「朋友的酒」的果冻效果",
+                        "（周期 0.91667 s，一个周期 0→1→0→1→0，只压宽度与高度，Z 轴不动）。纯客户端。")
                 .push("squash_stretch");
         SQUASH_ENABLED = b.comment("Master switch for the client-side squash & stretch effect.")
                 .define("enabled", true);
-        SQUASH_INTENSITY = b.comment("How far the body squashes at full impact (0.25 = 25% flatter).")
-                .defineInRange("intensity", 0.25D, 0.0D, 0.6D);
-        SQUASH_FREQUENCY = b.comment("Wobble frequency in radians per second; higher = snappier jelly.")
+        SQUASH_INTENSITY = b.comment("Amplitude multiplier on the idle jelly wobble (1.0 = the curve as authored).",
+                        "0 turns the idle wobble off and leaves only the impact kick.")
+                .defineInRange("intensity", 1.0D, 0.0D, 1.5D);
+        SQUASH_COMPRESSION = b.comment("How much shorter the body gets at full squash (50 = half height).")
+                .defineInRange("compression", 50.0D, 0.0D, 90.0D);
+        SQUASH_WIDTH = b.comment("How much wider it gets at full squash (50 = half again as wide).",
+                        "Z (thickness) is never scaled — this is a face-on squash, not a volume-preserving one.")
+                .defineInRange("width", 50.0D, 0.0D, 90.0D);
+        SQUASH_ROTATE = b.comment("Spin about the vertical axis while squashing.")
+                .define("rotate", true);
+        SQUASH_SPIN_SPEED = b.comment("Spin speed multiplier (1.0 = one full turn per wobble period).")
+                .defineInRange("spin_speed", 1.0D, 0.0D, 5.0D);
+        SQUASH_FREQUENCY = b.comment("Impact kick: wobble frequency in radians per second; higher = snappier.")
                 .defineInRange("wobble_frequency", 13.0D, 4.0D, 40.0D);
-        SQUASH_DAMPING = b.comment("How fast the wobble dies out. 3 = about three visible bounces.")
+        SQUASH_DAMPING = b.comment("Impact kick: how fast it dies out. 3 = about three visible bounces.")
                 .defineInRange("damping", 3.0D, 0.5D, 12.0D);
-        SQUASH_MAX_ROLL = b.comment("Peak roll of the wobble, in degrees.")
-                .defineInRange("max_roll_degrees", 6.0D, 0.0D, 25.0D);
         b.pop();
 
         // 同样是纯客户端表现：只有客户端的音乐控制器读它，专用服务器上不会被求值。
