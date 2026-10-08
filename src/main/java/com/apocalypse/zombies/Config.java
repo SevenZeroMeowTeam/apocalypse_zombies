@@ -50,6 +50,11 @@ public final class Config {
     public static final ForgeConfigSpec.IntValue HORDE_MAX_RADIUS;
     /** Population multiplier per global evolution level, e.g. 0.15 -> +15% mobs per level. */
     public static final ForgeConfigSpec.DoubleValue HORDE_SCALE_PER_LEVEL;
+    /** Head count the first wave rolls (inclusive band, before the growth and evolution multipliers). */
+    public static final ForgeConfigSpec.IntValue HORDE_BASE_MIN;
+    public static final ForgeConfigSpec.IntValue HORDE_BASE_MAX;
+    /** Each wave's population relative to the one before it, e.g. 1.15 -> +15% per wave (compounds). */
+    public static final ForgeConfigSpec.DoubleValue HORDE_WAVE_GROWTH;
     public static final ForgeConfigSpec.BooleanValue HORDE_BOSS_BAR;
 
     // ---- Special hostiles ----
@@ -240,6 +245,17 @@ public final class Config {
                 .defineInRange("horde_max_radius", 48, 16, 256);
         HORDE_SCALE_PER_LEVEL = b.comment("Extra horde population per global evolution level.")
                 .defineInRange("horde_scale_per_level", 0.15D, 0.0D, 10.0D);
+        HORDE_BASE_MIN = b.comment("Smallest head count the first wave rolls (before the per-wave growth",
+                        "and the evolution multiplier).")
+                .defineInRange("horde_base_min", 10, 1, 90);
+        HORDE_BASE_MAX = b.comment("Largest head count the first wave rolls.")
+                .defineInRange("horde_base_max", 16, 1, 200);
+        HORDE_WAVE_GROWTH = b.comment("Each wave's population relative to the previous one.",
+                        "1.15 = every wave is 15% bigger than the one before it.",
+                        "It compounds: with 5 waves, wave 5 is 1.15^4 = 1.75x wave 1; with 12 waves,",
+                        "wave 12 is 1.15^11 = 4.65x. Applied before the evolution multiplier, and the",
+                        "usual +/-15% jitter is rolled on top.")
+                .defineInRange("horde_wave_growth", 1.15D, 1.0D, 3.0D);
         HORDE_BOSS_BAR = b.comment("Show a boss bar tracking the current wave and remaining mobs.")
                 .define("horde_boss_bar", true);
         HORDE_BOSS_ON_FINAL_WAVE = b.comment("Let the Horde Overlord lead the last wave.",

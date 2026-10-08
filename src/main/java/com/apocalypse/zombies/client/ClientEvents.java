@@ -246,6 +246,15 @@ public final class ClientEvents {
      * from here at all: past {@link #SCOPE_HIDE_MODEL_AT} of the raise the rifle and the arms are gone and the
      * scope overlay's lens is the only thing the player is looking through.</p>
      */
+    /**
+     * 一次性诊断开关：右键瞄准时看不到枪和手，打开它会把渲染链的关键分支每秒打一行到日志。
+     *
+     * <p>默认关闭 —— 与 {@code WeaponArms} 里那个 {@code ARMSDBG} 探针同一条规矩：探针留在原地备用，
+     * 平时不写日志。瞄准问题定位完可以整个删掉。</p>
+     */
+    private static final boolean DIAG_AIM = false;
+    private static long lastGripDiag;
+
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRenderHand(RenderHandEvent event) {
         Minecraft minecraft = Minecraft.getInstance();
@@ -293,7 +302,21 @@ public final class ClientEvents {
 
         PoseStack pose = event.getPoseStack();
         pose.pushPose();
-        if (WeaponHandGrip.apply(pose, player, player.getMainArm(), stack, event.getEquipProgress())) {
+        boolean gripApplied = WeaponHandGrip.apply(pose, player, player.getMainArm(), stack,
+                event.getEquipProgress());
+        // 诊断（默认关）：确认渲染链走到哪一步。
+        long diagNow = System.currentTimeMillis();
+        if (DIAG_AIM && diagNow - lastGripDiag > 2000L) {
+            lastGripDiag = diagNow;
+            ApocalypseZombies.LOGGER.info(
+                    "[瞄准调试] item={} usingItem={} useAnim={} equip={} aim={} sprint={} sightOwns={} gripApplied={}",
+                    stack.getItem(), player.isUsingItem(), stack.getUseAnimation(),
+                    String.format("%.2f", event.getEquipProgress()),
+                    String.format("%.2f", GunAimState.getAimProgress(event.getPartialTick())),
+                    String.format("%.2f", GunAimState.getSprintProgress(event.getPartialTick())),
+                    sightOwnsFrame(event.getPartialTick()), gripApplied);
+        }
+        if (gripApplied) {
             // The context carries the hand, so the model's display block lands it exactly where vanilla would.
             minecraft.getItemRenderer().renderStatic(stack, ItemDisplayContext.FIRST_PERSON_RIGHT_HAND,
                     event.getPackedLight(), OverlayTexture.NO_OVERLAY, pose, event.getMultiBufferSource(),

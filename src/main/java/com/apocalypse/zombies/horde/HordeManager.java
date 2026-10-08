@@ -227,16 +227,25 @@ public final class HordeManager {
     }
 
     /**
-     * Population for one wave. The band widens with the wave index and the world's evolution stage,
-     * then the result is jittered so the exact head count is never the same twice.
+     * Population for one wave.
+     *
+     * <p>The band starts at {@code horde_base_min}…{@code horde_base_max} and is scaled, in order, by
+     * <b>the per-wave growth</b> and by the world's evolution stage. The growth <b>compounds</b>: each wave is
+     * {@code horde_wave_growth} times the one before it, so with the default 1.15 and five waves, wave 5 is
+     * 1.15⁴ ≈ 1.75× wave 1 (and wave 12 would be 4.65×).</p>
+     *
+     * <p>This used to be linear ({@code 4 + index·3} / {@code 9 + index·5}), which made later waves feel like a
+     * slightly longer version of the first instead of an escalation. The result is still jittered ±15% so the
+     * exact head count is never the same twice.</p>
      */
     public static int rollWaveSize(ServerLevel level, RandomSource random, int waveIndex) {
-        double scale = 1.0D + MoonEventManager.getEvolutionLevel(level) * Config.HORDE_SCALE_PER_LEVEL.get();
-        int lo = Math.max(1, (int) Math.round((4 + waveIndex * 3) * scale));
-        int hi = Math.max(lo, (int) Math.round((9 + waveIndex * 5) * scale));
+        double evolution = 1.0D + MoonEventManager.getEvolutionLevel(level) * Config.HORDE_SCALE_PER_LEVEL.get();
+        double growth = Math.pow(Config.HORDE_WAVE_GROWTH.get(), Math.max(0, waveIndex));
+        int lo = Math.max(1, (int) Math.round(Config.HORDE_BASE_MIN.get() * growth * evolution));
+        int hi = Math.max(lo, (int) Math.round(Config.HORDE_BASE_MAX.get() * growth * evolution));
         int count = lo + random.nextInt(hi - lo + 1);
         count = (int) Math.round(count * (0.85D + random.nextDouble() * 0.30D));
-        return Mth.clamp(count, 1, 90);
+        return Mth.clamp(count, 1, 120);
     }
 
     private static int spawnWave(ServerLevel level, List<ServerPlayer> players,

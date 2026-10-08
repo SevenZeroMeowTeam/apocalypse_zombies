@@ -177,3 +177,20 @@ console.log(`  TP_X_LEFT  = ${tpL[0].toFixed(3)}F`);
 console.log(`  TP_Y       = ${tpR[1].toFixed(3)}F`);
 console.log(`  TP_Z       = ${tpR[2].toFixed(3)}F`);
 console.log(`  自检 TP_X_RIGHT - TP_X_LEFT = ${(tpR[0] - tpL[0]).toFixed(6)}，理论 2*(1/16)/S = ${(2 / 16 / CHOSEN_TP.scale).toFixed(6)}`);
+
+// ------------------------------------------------------------------ [4] 瞄准姿态下的落点
+// NDC：±1 = 屏幕边缘；cameraPoint 的 z 就是相机空间的 z，只有 z < 0 才在相机前方。
+console.log('\n=== [4] 瞄准（aim=1）时各锚点落在哪（MODEL_FOV_AIM = 45）===');
+const ADS_S686 = [adsX, adsY, 0];
+function aimNdc(px, display, fps, ads) {
+  const p = cameraPoint(px, display, fps, 1.0, ads);
+  return { ndc: ndc(p, 45.0), cam: p };
+}
+for (const [name, p] of [['珠心(瞄具)', S686.rear], ['握把', S686.grip], ['枪口', S686.muzzle]]) {
+  const r = aimNdc(p, CHOSEN_DISPLAY, S686.scaleFps, ADS_S686);
+  console.log(`  ${name.padEnd(11)} NDC=(${r.ndc.map(v => v.toFixed(2)).join(', ')})  相机空间=(${r.cam.map(v => v.toFixed(3)).join(', ')})  `
+    + `离眼=${Math.hypot(...r.cam).toFixed(2)}  ${r.cam[2] < 0 ? '相机前方' : '*** 相机后方 ***'}`);
+}
+const aimGrip = aimNdc(S686.grip, CHOSEN_DISPLAY, S686.scaleFps, ADS_S686);
+console.log(`  GunFrame 的 SANITY = 4.0：握把离眼 ${Math.hypot(...aimGrip.cam).toFixed(3)}，超了就不画手臂`);
+
