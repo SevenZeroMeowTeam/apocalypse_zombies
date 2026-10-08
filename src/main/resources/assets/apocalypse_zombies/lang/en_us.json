@@ -5,6 +5,8 @@
   "ammo.apocalypse_zombies.slug.tip": "one heavy · tight",
   "ammo.apocalypse_zombies.thermite": "Thermite",
   "ammo.apocalypse_zombies.thermite.tip": "sets targets alight",
+  "ammo.apocalypse_zombies.explosive": "Explosive",
+  "ammo.apocalypse_zombies.explosive.tip": "detonates · splash",
 
   "wheel.apocalypse_zombies.hint": "release R to load · centre keeps the current round",
   "wheel.apocalypse_zombies.selected": "Loading: %s",

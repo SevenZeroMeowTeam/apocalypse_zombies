@@ -183,7 +183,7 @@ public interface GunItem {
      * {@code event/ThermiteRounds}）。独头弹只有霰弹枪有，由 {@code S686Item} 重写这个方法补上。</p>
      */
     default List<AmmoType> ammoTypes(ItemStack stack) {
-        return List.of(AmmoType.STANDARD, AmmoType.THERMITE);
+        return List.of(AmmoType.STANDARD, AmmoType.THERMITE, AmmoType.EXPLOSIVE);
     }
 
     /**

@@ -5,6 +5,8 @@
   "ammo.apocalypse_zombies.slug.tip": "单发高伤 · 散布小",
   "ammo.apocalypse_zombies.thermite": "铝热弹",
   "ammo.apocalypse_zombies.thermite.tip": "命中点燃目标",
+  "ammo.apocalypse_zombies.explosive": "爆炸弹",
+  "ammo.apocalypse_zombies.explosive.tip": "命中炸开 · 范围伤害",
 
   "wheel.apocalypse_zombies.hint": "松开 R 装填 · 光标移回中心保持原样",
   "wheel.apocalypse_zombies.selected": "将装填：%s",

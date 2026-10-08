@@ -109,7 +109,9 @@ public final class GunAimState {
         if (held != null) {
             gun = held;
         }
-        boolean holding = held != null && minecraft.screen == null;
+        // 轮盘开着时不瞄：那会儿鼠标在选弹，枪还跟着右键抬起来只会挡住选项
+        boolean holding = held != null && minecraft.screen == null
+                && !com.apocalypse.zombies.client.weapon.AmmoWheel.isOpen();
 
         aiming = holding && minecraft.options.keyUse.isDown();
 

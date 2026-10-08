@@ -3,7 +3,7 @@ mod_id = "apocalypse_zombies"
 mod_name = "Apocalypse Zombies"
 mod_author = "Hermes"
 mod_license = "GPL-3.0-or-later / CC BY-NC-ND 4.0"
-mod_version = "1.1.52"
+mod_version = "1.1.53"
 mod_description = "A zombie apocalypse mod with evolving zombies, lunar events, zombie hordes and four special hostiles. Forge 1.20.1"
 
 # Dependencies

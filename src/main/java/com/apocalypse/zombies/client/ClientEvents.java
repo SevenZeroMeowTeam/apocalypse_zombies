@@ -189,6 +189,11 @@ public final class ClientEvents {
                 || !(minecraft.player.getMainHandItem().getItem() instanceof GunItem)) {
             return;
         }
+        // 轮盘开着的时候鼠标是用来选弹的：左键不该走火，右键也不该抬镜
+        if (AmmoWheel.isOpen()) {
+            event.setCanceled(true);
+            return;
+        }
         if (event.isAttack()) {
             event.setSwingHand(false);
             event.setCanceled(true);

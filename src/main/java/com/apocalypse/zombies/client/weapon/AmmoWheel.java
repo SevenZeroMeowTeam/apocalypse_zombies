@@ -28,8 +28,8 @@ import java.util.List;
  */
 public final class AmmoWheel {
 
-    /** 光标离屏幕中心多近算"没在选"。 */
-    private static final double DEAD_ZONE = 10.0D;
+    /** 光标离屏幕中心多近算"没在选"。给得宽一点：手柄化的小幅抖动不该把选项切走。 */
+    private static final double DEAD_ZONE = 20.0D;
     /** 标签环半径，占屏幕短边的比例。 */
     private static final float RADIUS_FRACTION = 0.17F;
     private static final int LABEL_W = 48;
@@ -69,10 +69,13 @@ public final class AmmoWheel {
         if (holding && !open) {
             open(minecraft, gun, stack);
         } else if (!holding && open) {
-            // 松开 = 确认。发出去以后由服务端裁决能不能装（可能正忙、可能已经满了）。
-            AmmoType chosen = options.isEmpty() ? AmmoType.STANDARD : options.get(selected);
-            NetworkHandler.CHANNEL.sendToServer(
-                    new ReloadPacket(minecraft.options.keyShift.isDown(), chosen.id()));
+            // 松开 = 确认。但如果是因为打开了别的界面才松开的（Esc 菜单、背包、换了手持物品），
+            // 那就是放弃，不发包 —— 否则按 Esc 想取消反而会把弹装进去。
+            if (minecraft.screen == null) {
+                AmmoType chosen = options.isEmpty() ? AmmoType.STANDARD : options.get(selected);
+                NetworkHandler.CHANNEL.sendToServer(
+                        new ReloadPacket(minecraft.options.keyShift.isDown(), chosen.id()));
+            }
             dismiss(minecraft);
             return;
         }

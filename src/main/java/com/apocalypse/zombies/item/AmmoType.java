@@ -21,7 +21,21 @@ public enum AmmoType {
      */
     SLUG("slug", 0),
     /** 铝热弹：命中敌对生物会把它点着。伤害不变，价值在持续灼烧。 */
-    THERMITE("thermite", 5);
+    THERMITE("thermite", 5),
+    /**
+     * 爆炸弹：命中敌对生物时在它身上炸开一小片，范围内的敌对生物一起挨伤害。
+     *
+     * <p>直接命中那一下的伤害<b>反而最低</b> —— 它是引信不是弹头，价值全在范围。打僵尸群用它，
+     * 打单个硬目标不如铝热弹划算。不破坏方块：只结算伤害，不动地形。</p>
+     */
+    EXPLOSIVE("explosive", 0);
+
+    /** 爆炸弹的爆炸半径（格）。 */
+    public static final double EXPLOSION_RADIUS = 2.5D;
+    /** 爆炸中心那一圈的伤害，向外线性衰减到 0。 */
+    public static final float EXPLOSION_DAMAGE = 14.0F;
+    /** 直接命中那一下（引信）的伤害 —— 比普通弹的单颗还低。 */
+    public static final float EXPLOSIVE_IMPACT_DAMAGE = 6.0F;
 
     /**
      * stack NBT 里记弹种的键。五把枪共用同一个键，所以"给所有武器加铝热弹"不需要各自的实现。

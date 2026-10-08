@@ -98,6 +98,25 @@ public class S686ItemRenderer extends GeoItemRenderer<S686Item> {
             CoreGeoBone shell = getGeoModel().getAnimationProcessor().getBone(SHELL_BONE);
             S686GeoModel.capture(itemRenderTranslations, move, barrel, shell,
                     com.apocalypse.zombies.client.GunAimState.getAimProgress());
+
+            // 诊断（DIAG_AIM 打开时）：枪这一帧究竟被放到了相机空间的哪里。
+            // 平移列就是枪原点的位置；离眼距离超过 GunFrame 的 SANITY(4) 就说明它已经被推出画面。
+            if (com.apocalypse.zombies.client.ClientEvents.DIAG_AIM) {
+                long now = System.currentTimeMillis();
+                if (now - lastDiag > 2000L) {
+                    lastDiag = now;
+                    org.joml.Vector3f t = poseStack.last().pose().getTranslation(new org.joml.Vector3f());
+                    com.apocalypse.zombies.ApocalypseZombies.LOGGER.info(
+                            "[瞄准调试·枪] ctx={} aim={} 枪原点相机空间=({}, {}, {}) 离眼={}",
+                            displayContext,
+                            String.format("%.2f", com.apocalypse.zombies.client.GunAimState.getAimProgress()),
+                            String.format("%.3f", t.x), String.format("%.3f", t.y),
+                            String.format("%.3f", t.z), String.format("%.2f", t.length()));
+                }
+            }
         }
     }
+
+    /** 诊断节流（{@code DIAG_AIM} 打开时每 2 秒一行）。 */
+    private static long lastDiag;
 }
