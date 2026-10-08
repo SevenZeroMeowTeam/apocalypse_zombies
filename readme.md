@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.57` |
+| **当前版本** | `1.1.58` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.23） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -135,8 +135,9 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
   原版近战几乎不会真的挥空，"打了没伤害"绝大多数是受击冷却造成的 —— 所以必中做成"先清冷却"，
   而不是"无视距离硬打"（后者会让僵尸隔空揍人）。10 tick 节流，且只在贴近时生效。
 - **村民**：遇袭会恐慌撤离并**呼叫最近的铁傀儡**；**1.1.56 起 15% 的村民出生时手持铁剑**
-  （`villager_arm_chance`），它们不再逃跑，而是迎战 —— 村民本体走 Brain 系统、没有攻击能力，
-  所以是从 Goal 侧补的近战与目标选择。
+  （`villager_arm_chance`），它们不再逃跑，而是迎战。近战走的是本模组自己的
+  `VillagerDefendGoal`（1.1.58 修正）—— **不能用原版 `MeleeAttackGoal`**：村民的
+  `createAttributes()` 里没有 `ATTACK_DAMAGE`，那个 Goal 一攻击就会抛异常把服务端带崩。
 - **铁傀儡**：优先处理威胁村民的怪、跟随范围抬到 48、击退翻倍；**1.1.56 起速度 0.25 → 0.28、
   伤害 15 → 18**。
 - **不互相攻击**：本模组阵营的怪之间伤害直接取消（`no_infighting`）；另有 `no_infighting_global`
@@ -253,6 +254,23 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
   照旧**叠乘**在这之上，单波 ±15% 的抖动也保留（同一次围城里两波的人数仍不会完全一样）。
   单波硬上限 90 → 120（高配置下的保护，默认参数远够不到）。
 - 只动 `HordeManager.rollWaveSize` 一个方法 + `Config` 三个新键。
+
+### 1.1.58 — 2026-10-08
+
+**修复 · 放置武装村民导致服务端崩溃（`Can't find attribute minecraft:generic.attack_damage`）**
+
+- **根因**：1.1.56 给武装村民挂的是原版 `MeleeAttackGoal`，而它的攻击路径 `Mob.doHurtTarget`
+  第一步就去读 `ATTACK_DAMAGE` 属性 —— **村民的 `createAttributes()` 里没有这个属性**
+  （只有移动速度与跟随范围）。`AttributeSupplier.getValue` 找不到属性时直接抛
+  `IllegalArgumentException`，于是"放下武装村民 → 服务端 tick 到它 → 崩"。
+  崩溃报告里的链条很干净：`MeleeAttackGoal.tick → checkAndPerformAttack → Mob.doHurtTarget
+  → LivingEntity.getAttribute → AttributeSupplier.getValue`。
+- **修法**：`AttributeMap` 没有公开的"添加属性"接口，没法凭空把 `ATTACK_DAMAGE` 补给村民，
+  所以新写了 `entity/ai/VillagerDefendGoal` 自己走一遍 —— 贴到攻击距离直接 `hurt()`，
+  伤害值由模组给定（**5.0**，取在铁剑 6 之下：村民是自卫，不该比僵尸更能打）、不经过属性系统，
+  再让村民挥手做动作。等价于把原版那个 Goal 里唯一需要属性的一步换掉。
+- **教训**：给一个本来不打架的实体挂攻击 Goal 之前，先确认它的 `createAttributes()` 里
+  有没有那个 Goal 要读的属性。
 
 ### 1.1.57 — 2026-10-08
 

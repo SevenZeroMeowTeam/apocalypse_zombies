@@ -15,6 +15,7 @@ import com.apocalypse.zombies.entity.ai.PreyTargetGoal;
 import com.apocalypse.zombies.entity.ai.SharedAggroGoal;
 import com.apocalypse.zombies.entity.ai.SkirmishGoal;
 import com.apocalypse.zombies.entity.ai.SurroundGoal;
+import com.apocalypse.zombies.entity.ai.VillagerDefendGoal;
 import com.apocalypse.zombies.moon.MoonEventManager;
 
 import net.minecraft.resources.ResourceLocation;
@@ -31,7 +32,6 @@ import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.GoalSelector;
-import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.ai.goal.RangedAttackGoal;
 import net.minecraft.world.entity.ai.goal.RangedBowAttackGoal;
 import net.minecraft.world.entity.ai.goal.WrappedGoal;
@@ -84,6 +84,14 @@ public final class MobAiEnhanced {
     /** 追击速度倍率（1.1.56 起）。 */
     private static final UUID HOSTILE_SPEED_ID = UUID.fromString("6f1c0a94-4dbe-4f9c-9c1e-0f2a7c3b8d14");
 
+    /**
+     * 武装村民每次挥击的伤害。
+     *
+     * <p>写在代码里而不是走属性，正是因为村民没有 {@code ATTACK_DAMAGE} 属性 —— 见
+     * {@link VillagerDefendGoal}。数值取在铁剑（6）之下：村民是自卫，不该比僵尸更能打。</p>
+     */
+    private static final float VILLAGER_ATTACK_DAMAGE = 5.0F;
+
     /** 铁傀儡追击范围与击退的修饰符 UUID。 */
     private static final UUID GOLEM_RANGE_ID = UUID.fromString("6f1c0a94-4dbe-4f9c-9c1e-0f2a7c3b8d12");
     private static final UUID GOLEM_KNOCKBACK_ID = UUID.fromString("6f1c0a94-4dbe-4f9c-9c1e-0f2a7c3b8d13");
@@ -130,8 +138,11 @@ public final class MobAiEnhanced {
         }
         villager.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.IRON_SWORD));
         villager.setDropChance(EquipmentSlot.MAINHAND, 0.0F);
-        addOnce(villager.goalSelector, 1, MeleeAttackGoal.class,
-                () -> new MeleeAttackGoal(villager, 1.0D, true));
+        // 近战用本模组自己的 Goal，**不是** MeleeAttackGoal：村民的 createAttributes() 里没有
+        // ATTACK_DAMAGE，原版那条路（Mob.doHurtTarget 读属性）会抛 IllegalArgumentException，
+        // 表现就是「放下武装村民 → 服务端 tick 到它 → 崩溃」。详见 VillagerDefendGoal 的类注释。
+        addOnce(villager.goalSelector, 1, VillagerDefendGoal.class,
+                () -> new VillagerDefendGoal(villager, 1.0D, VILLAGER_ATTACK_DAMAGE, 2.5D));
         addOnce(villager.targetSelector, 1, NearestAttackableTargetGoal.class,
                 () -> new NearestAttackableTargetGoal<>(villager, Monster.class, true));
     }
