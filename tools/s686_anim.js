@@ -161,6 +161,34 @@ ANIM.reload_empty = {
   },
 };
 
+/*
+ * 换弹两段整体加速（1.1.55 起）：reload_tactical 2.6 s -> 1.95 s、reload_empty 3.3 s -> 2.475 s。
+ *
+ * 放在这里统一缩放，而不是把上面几十个时间字面量逐个手改 —— 上面那些 0.50 / 1.55 / 2.05 / 2.6
+ * 之类的数字改漏一个，就会让动画与 S686Item 的 *_TICKS、以及 RELOAD_*_SOUNDS 的时刻表错开。
+ * 那两处（json 与 Java）用的是同一个倍率，见 S686Item 的换弹常量注释。
+ */
+const RELOAD_SPEED = 0.75;
+
+function speedUpReload(clip, factor) {
+  clip.length = Math.round(clip.length * factor * 1000) / 1000;
+  for (const bone of Object.values(clip.bones ?? {})) {
+    for (const track of Object.values(bone)) {
+      if (Array.isArray(track)) {
+        for (const key of track) {
+          if (typeof key.time === 'number') {
+            key.time = Math.round(key.time * factor * 1000) / 1000;
+          }
+        }
+      }
+    }
+  }
+  return clip;
+}
+
+speedUpReload(ANIM.reload_tactical, RELOAD_SPEED);
+speedUpReload(ANIM.reload_empty, RELOAD_SPEED);
+
 /* ---------------- ADS_up / ADS_down 瞄准进出 ---------------- */
 ANIM.ADS_up = {
   length: 0.18,

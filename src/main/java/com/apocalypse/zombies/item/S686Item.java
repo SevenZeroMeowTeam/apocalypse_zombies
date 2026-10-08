@@ -125,12 +125,17 @@ public class S686Item extends Item implements GeoItem, GunItem {
     public static final String ANIM_ADS_UP = "ADS_up";
     public static final String ANIM_ADS_DOWN = "ADS_down";
 
-    /** Clip lengths in ticks (20 t/s), taken from s686.animation.json. */
+    /**
+     * Clip lengths in ticks (20 t/s), taken from s686.animation.json.
+     *
+     * <p>换弹这两段在 1.1.55 被整体加速 25%（2.6 s → 1.95 s、3.3 s → 2.475 s）：动画关键帧、这里的
+     * 动作时长、以及 {@code RELOAD_*_SOUNDS} 的时刻表是同一次改动的三个面，必须是同一个倍率。</p>
+     */
     private static final int DRAW_TICKS = 20;              // 1.0 s
     private static final int SHOOT_TICKS = 12;              // 0.6 s — the recoil, and nothing else
     private static final int BOLT_TICKS = 26;               // 1.2667 s — fold open, check, fold shut
-    private static final int RELOAD_TACTICAL_TICKS = 52;    // 2.6 s
-    private static final int RELOAD_EMPTY_TICKS = 66;       // 3.3 s
+    private static final int RELOAD_TACTICAL_TICKS = 39;    // 1.95 s（原 2.6 s，换弹加速 25%）
+    private static final int RELOAD_EMPTY_TICKS = 50;       // 2.475 s（原 3.3 s）
 
     /**
      * Ticks between shots: one second.
@@ -287,28 +292,31 @@ public class S686Item extends Item implements GeoItem, GunItem {
             14, ModSounds.AWM_RECHAMBER_END);
 
     /**
-     * The live-shell swap: open (t=2 lever, t=10 barrels), the shells out and back in at 1.625→2.0 s
-     * (t=32…40), barrels shut at 2.042 s (t=41), lever home at 2.208 s (t=44).
+     * The live-shell swap: open (t=2 lever, t=8 barrels), the shells out and back in at 1.225→1.55 s
+     * (t=24…31), barrels shut at 1.55 s (t=31), lever home at 1.65 s (t=33).
+     *
+     * <p>1.1.55 把这两段换弹动画整体加速了 25%，这张表按同一倍率挪过 —— <b>动画关键帧、动作时长
+     * （{@value #RELOAD_TACTICAL_TICKS}）与本表三者必须同步</b>，任何一处单独动都会让声音和画面错开。</p>
      */
     private static final Map<Integer, RegistryObject<SoundEvent>> RELOAD_TACTICAL_SOUNDS = Map.of(
             2, ModSounds.AWM_RECHAMBER_OUT,
-            10, ModSounds.AWM_RELOAD_MAGOUT,
-            32, ModSounds.AWM_RELOAD_MAGIN,
-            41, ModSounds.AWM_RELOAD_EMPTY_BOLTCLOSE,
-            44, ModSounds.AWM_RELOAD_END);
+            8, ModSounds.AWM_RELOAD_MAGOUT,
+            24, ModSounds.AWM_RELOAD_MAGIN,
+            31, ModSounds.AWM_RELOAD_EMPTY_BOLTCLOSE,
+            33, ModSounds.AWM_RELOAD_END);
 
     /**
-     * The empty-gun reload: lever at 0.167 s (t=3), barrels open 0.125→0.542 s (t=11), the extractor lifts
-     * the spent cases at 0.833 s (t=17), fresh shells ride home 2.0→2.333 s (t=41), barrels shut at 2.75 s
-     * (t=55), lever latched at 2.792 s (t=61).
+     * The empty-gun reload: lever at 0.125 s (t=2), barrels open 0.1→0.425 s (t=8), the extractor lifts
+     * the spent cases at 0.65 s (t=13), fresh shells ride home 1.5→1.75 s (t=31), barrels shut at 2.05 s
+     * (t=41), lever latched at 2.3 s (t=46). 同样按 1.1.55 的 25% 加速挪过。
      */
     private static final Map<Integer, RegistryObject<SoundEvent>> RELOAD_EMPTY_SOUNDS = Map.of(
-            3, ModSounds.AWM_RECHAMBER_OUT,
-            11, ModSounds.AWM_RELOAD_EMPTY_MAGOUT,
-            17, ModSounds.AWM_RELOAD_EJECT,
-            41, ModSounds.AWM_RELOAD_EMPTY_MAGIN,
-            55, ModSounds.AWM_RELOAD_EMPTY_BOLTCLOSE,
-            61, ModSounds.AWM_RELOAD_EMPTY_END);
+            2, ModSounds.AWM_RECHAMBER_OUT,
+            8, ModSounds.AWM_RELOAD_EMPTY_MAGOUT,
+            13, ModSounds.AWM_RELOAD_EJECT,
+            31, ModSounds.AWM_RELOAD_EMPTY_MAGIN,
+            41, ModSounds.AWM_RELOAD_EMPTY_BOLTCLOSE,
+            46, ModSounds.AWM_RELOAD_EMPTY_END);
 
     private static final double SHOT_HEARD_SQR = 64.0D * 64.0D;
 

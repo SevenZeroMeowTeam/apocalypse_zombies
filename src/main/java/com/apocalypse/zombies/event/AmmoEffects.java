@@ -35,8 +35,23 @@ public final class AmmoEffects {
     private AmmoEffects() {
     }
 
+    /**
+     * 正在结算爆炸伤害。这期间的任何 {@code hurt} 都不该再触发弹种效果。
+     *
+     * <p><b>没有这道闸就是无限递归</b>：爆炸拿 {@code player} 当伤害来源（击杀才算在玩家头上），于是那
+     * 一发爆炸伤害又走进这个事件、又满足「手里是爆炸弹」、又引爆一次；而 {@link #detonate} 为了穿透受击
+     * 冷却会把受害者的 {@code invulnerableTime} 清 0，于是原版靠受击冷却天然形成的递归屏障也被拆掉了。
+     * 表现出来正是玩家看到的「有粒子、有爆炸声，但目标一点血都不掉」—— 栈溢出以后那一发伤害整个作废。</p>
+     *
+     * <p>服务端是单线程，所以一个静态布尔就够。</p>
+     */
+    private static boolean detonating;
+
     @SubscribeEvent
     public static void onLivingHurt(LivingHurtEvent event) {
+        if (detonating) {
+            return;
+        }
         if (!(event.getSource().getEntity() instanceof Player player)) {
             return;
         }
