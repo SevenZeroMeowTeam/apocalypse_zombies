@@ -204,6 +204,8 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
   单波硬上限 90 → 120（高配置下的保护，默认参数远够不到）。
 - 只动 `HordeManager.rollWaveSize` 一个方法 + `Config` 三个新键。
 
+### 1.1.52 — 2026-10-08
+
 **修复 · Q 弹「压扁回弹不明显」—— 是旧配置键把幅度砍到了 1/4**
 
 - 症状：所有生物确实在做果冻律动，但幅度小到几乎看不出压扁。
@@ -248,6 +250,11 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
   推出了画面。为此在 `ClientEvents.onRenderHand` 留了探针 `DIAG_AIM`（**默认 false**，与
   `WeaponArms` 的 `ARMSDBG` 同一条规矩：留在原地备用、平时不写日志）。打开后每秒打一行
   `[瞄准调试] …`，看 `gripApplied` 就能一次分开这两种病因。
+
+**工程**：`mod_version` `1.1.51` → `1.1.52`。本版的三批改动是在 1.1.51 的包发出去之后才陆续进 jar 的
+（Q 弹幅度修复 → 弹种系统与轮盘 → 瞄准的防御修复），所以按历史归到这个版本段下；1.1.51 段只留尸潮那一条。
+新增 4 个类（`item/AmmoType`、`event/ThermiteRounds`、`client/weapon/AmmoWheel`，以及 `GunItem` 的三个
+default 方法），替换 `F:\.minecraft\versions\1.20.1-Forge_47.4.26\mods\` 里的旧包。
 
 ### 1.1.50 — 2026-10-08
 
