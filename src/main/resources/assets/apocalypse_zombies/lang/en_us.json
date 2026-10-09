@@ -104,5 +104,6 @@
   "death.attack.s686_bullet.player": "%1$s was turned into a colander by %2$s",
 
   "key.categories.apocalypse_zombies": "Apocalypse Zombies",
-  "key.apocalypse_zombies.reload": "Reload"
+  "key.apocalypse_zombies.reload": "Reload / Ammo wheel",
+  "key.apocalypse_zombies.collect": "Collect items"
 }

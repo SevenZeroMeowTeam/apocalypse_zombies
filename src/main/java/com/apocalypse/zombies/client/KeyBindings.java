@@ -17,6 +17,10 @@ public final class KeyBindings {
     public static final KeyMapping RELOAD = new KeyMapping(
             "key.apocalypse_zombies.reload", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_R, CATEGORY);
 
+    /** G — 一键采集范围内的掉落物（范围与上限在配置的 [collect] 段）。 */
+    public static final KeyMapping COLLECT = new KeyMapping(
+            "key.apocalypse_zombies.collect", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, CATEGORY);
+
     private KeyBindings() {
     }
 }

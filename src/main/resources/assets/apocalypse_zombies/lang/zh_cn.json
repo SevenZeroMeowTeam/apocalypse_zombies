@@ -104,5 +104,6 @@
   "death.attack.s686_bullet.player": "%1$s 被 %2$s 用金板 S686 一喷带走",
 
   "key.categories.apocalypse_zombies": "末日僵尸",
-  "key.apocalypse_zombies.reload": "换弹"
+  "key.apocalypse_zombies.reload": "换弹 / 弹种轮盘",
+  "key.apocalypse_zombies.collect": "一键采集"
 }

@@ -40,6 +40,7 @@ public final class ClientModBusEvents {
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(KeyBindings.RELOAD);
+        event.register(KeyBindings.COLLECT);
     }
 
     /**

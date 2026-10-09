@@ -159,6 +159,28 @@ public final class Config {
      */
     public static final ForgeConfigSpec.BooleanValue NO_INFIGHTING_GLOBAL;
 
+    // ---- 僵尸掉落 ----
+    /** 僵尸掉落整段的开关。 */
+    public static final ForgeConfigSpec.BooleanValue ZOMBIE_LOOT_ENABLED;
+    /** crafting-dead 的僵尸保留自身掉落物的概率（它原本必掉）。 */
+    public static final ForgeConfigSpec.DoubleValue ZOMBIE_LOOT_CRAFTINGDEAD_CHANCE;
+    /** 是否额外补一套原版掉落（食物 / 工具 / 武器 / 装备 / 稀有枪械）。 */
+    public static final ForgeConfigSpec.BooleanValue ZOMBIE_LOOT_EXTRA_ENABLED;
+    public static final ForgeConfigSpec.DoubleValue ZOMBIE_LOOT_FOOD_CHANCE;
+    public static final ForgeConfigSpec.DoubleValue ZOMBIE_LOOT_TOOL_CHANCE;
+    public static final ForgeConfigSpec.DoubleValue ZOMBIE_LOOT_WEAPON_CHANCE;
+    public static final ForgeConfigSpec.DoubleValue ZOMBIE_LOOT_GEAR_CHANCE;
+    public static final ForgeConfigSpec.DoubleValue ZOMBIE_LOOT_RARE_CHANCE;
+
+    // ---- 相同物品一键采集 ----
+    public static final ForgeConfigSpec.BooleanValue COLLECT_ENABLED;
+    /** 采集半径（格）。 */
+    public static final ForgeConfigSpec.DoubleValue COLLECT_RADIUS;
+    /** 一次最多收多少个物品实体。 */
+    public static final ForgeConfigSpec.IntValue COLLECT_MAX;
+    /** 只收与手上相同的物品；手上为空时一律收全部。 */
+    public static final ForgeConfigSpec.BooleanValue COLLECT_MATCH_HAND;
+
     // ---- 持枪怪的贴身行为 + 死亡标记 ----
     /**
      * 枪手与目标贴到这么近时，把移动通道交还出去，由原版近战接手。
@@ -444,6 +466,42 @@ public final class Config {
                         "it changes vanilla behaviour (a wither, pillagers and zombies that would",
                         "normally tear into each other go quiet as well).")
                 .define("no_infighting_global", false);
+        b.pop();
+
+        b.comment("僵尸掉落：压制 crafting-dead 那份掉落，并按档次补上食物 / 武器 / 装备 / 工具。")
+                .push("zombie_loot");
+        ZOMBIE_LOOT_ENABLED = b.comment("Master switch for everything in this section.")
+                .define("enabled", true);
+        ZOMBIE_LOOT_CRAFTINGDEAD_CHANCE = b.comment("crafting-dead 的僵尸（craftingdeadsurvival:*）保留自身掉落物的概率。",
+                        "它原本是必掉，0.02 就是「只有 2% 的僵尸会掉东西」。")
+                .defineInRange("craftingdead_drop_chance", 0.02D, 0.0D, 1.0D);
+        ZOMBIE_LOOT_EXTRA_ENABLED = b.comment("是否给僵尸额外补掉落（下面五档的总开关）。",
+                        "补的都是原版物品，各档概率独立判定：一只僵尸可能同时掉好几样，也可能什么都不掉。")
+                .define("extra_drops_enabled", true);
+        ZOMBIE_LOOT_FOOD_CHANCE = b.comment("掉食物的概率（面包 / 熟肉 / 苹果这类原版食物）。")
+                .defineInRange("food_chance", 0.12D, 0.0D, 1.0D);
+        ZOMBIE_LOOT_TOOL_CHANCE = b.comment("掉工具的概率（铁锹 / 镐 / 斧 / 锄）。")
+                .defineInRange("tool_chance", 0.05D, 0.0D, 1.0D);
+        ZOMBIE_LOOT_WEAPON_CHANCE = b.comment("掉武器的概率（剑 / 弓 / 弩）。")
+                .defineInRange("weapon_chance", 0.04D, 0.0D, 1.0D);
+        ZOMBIE_LOOT_GEAR_CHANCE = b.comment("掉装备的概率（皮革 / 锁链护甲的一个部件）。")
+                .defineInRange("gear_chance", 0.06D, 0.0D, 1.0D);
+        ZOMBIE_LOOT_RARE_CHANCE = b.comment("掉本模组枪械的概率。默认极低 —— 枪是稀罕物，",
+                        "不该变成打僵尸的常规产出。")
+                .defineInRange("rare_gun_chance", 0.002D, 0.0D, 1.0D);
+        b.pop();
+
+        b.comment("相同物品一键采集。")
+                .push("collect");
+        COLLECT_ENABLED = b.comment("Master switch.")
+                .define("enabled", true);
+        COLLECT_RADIUS = b.comment("采集半径（格）。")
+                .defineInRange("radius", 6.0D, 1.0D, 32.0D);
+        COLLECT_MAX = b.comment("一次最多收多少个物品实体。")
+                .defineInRange("max_items", 64, 1, 512);
+        COLLECT_MATCH_HAND = b.comment("true = 只收与手上物品相同的；false = 收范围内所有掉落物。",
+                        "手上是空的时候一律收全部。")
+                .define("match_hand_only", true);
         b.pop();
 
         b.comment("Gun-armed mobs up close, and the mark they leave on you.")

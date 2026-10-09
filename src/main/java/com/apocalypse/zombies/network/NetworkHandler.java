@@ -32,5 +32,7 @@ public final class NetworkHandler {
                 ReloadPacket::encode, ReloadPacket::decode, ReloadPacket::handle);
         CHANNEL.registerMessage(id++, FirePacket.class,
                 FirePacket::encode, FirePacket::decode, FirePacket::handle);
+        CHANNEL.registerMessage(id++, CollectPacket.class,
+                CollectPacket::encode, CollectPacket::decode, CollectPacket::handle);
     }
 }

@@ -5,6 +5,7 @@ import com.apocalypse.zombies.client.weapon.WeaponArms;
 import com.apocalypse.zombies.client.weapon.WeaponHandGrip;
 import com.apocalypse.zombies.item.GunItem;
 import com.apocalypse.zombies.moon.MoonEvent;
+import com.apocalypse.zombies.network.CollectPacket;
 import com.apocalypse.zombies.network.FirePacket;
 import com.apocalypse.zombies.network.NetworkHandler;
 import com.apocalypse.zombies.client.weapon.AmmoWheel;
@@ -161,6 +162,11 @@ public final class ClientEvents {
         // 弹种轮盘：R 的按下与松开都归它管（按住弹、松开装）。必须排在下面那几个提前 return 之前 ——
         // 手里没枪、或轮盘开着时又开了别的界面，这两种情况都得让"松开 R"这件事被处理掉，否则轮盘会挂住。
         AmmoWheel.tick(minecraft);
+
+        // 一键采集：按一下发一次请求。排在下面那些提前 return 之前 —— 手里没枪、轮盘开着时也该能捡东西。
+        while (KeyBindings.COLLECT.consumeClick()) {
+            NetworkHandler.CHANNEL.sendToServer(new CollectPacket());
+        }
 
         if (minecraft.screen != null || minecraft.player == null) {
             return;
