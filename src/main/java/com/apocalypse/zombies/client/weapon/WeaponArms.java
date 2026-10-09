@@ -2,12 +2,14 @@ package com.apocalypse.zombies.client.weapon;
 
 import com.apocalypse.zombies.client.model.AWMGeoModel;
 import java.util.Locale;
+import com.apocalypse.zombies.client.model.Colt1878GeoModel;
 import com.apocalypse.zombies.client.model.CrossbowGeoModel;
 import com.apocalypse.zombies.client.model.M1GarandGeoModel;
 import com.apocalypse.zombies.client.model.MosinNagantGeoModel;
 import com.apocalypse.zombies.client.model.S686GeoModel;
 import com.apocalypse.zombies.client.model.UziGeoModel;
 import com.apocalypse.zombies.item.AWMItem;
+import com.apocalypse.zombies.item.Colt1878Item;
 import com.apocalypse.zombies.item.CrossbowItem;
 import com.apocalypse.zombies.item.GunItem;
 import com.apocalypse.zombies.item.M1GarandItem;
@@ -212,6 +214,18 @@ public final class WeaponArms {
     }
 
     /**
+     * 柯尔特 1878 教练枪：与 S686 同一套分工（右手握托颈、左手在枪管链上），但**手部落点是按本枪
+     * 那份 geo 另量的**（{@code Colt1878GeoModel}）—— 机匣、前托、托颈位置都不一样，抄 S686 的数字
+     * 会让手悬在枪外面。注意本类要排在 {@code instanceof S686Item} **之前**判断：教练枪是它的子类。
+     */
+    public static void renderColt1878(Minecraft mc, PoseStack pose, MultiBufferSource buffer, int light,
+                                      String action, float progress) {
+        render(mc, pose, buffer, light, Colt1878GeoModel.frame,
+                Colt1878GeoModel.rightHand(action, progress, new float[3]),
+                Colt1878GeoModel.leftHand(action, progress, new float[3]));
+    }
+
+    /**
      * Draws the arms for whichever of our guns is in hand, or nothing.
      *
      * <p>The gun answers for itself where its hands are: it knows which action is running
@@ -231,6 +245,8 @@ public final class WeaponArms {
             renderAwp(mc, pose, buffer, light, action, progress);
         } else if (stack.getItem() instanceof UziItem) {
             renderUzi(mc, pose, buffer, light, action, progress);
+        } else if (stack.getItem() instanceof Colt1878Item) {
+            renderColt1878(mc, pose, buffer, light, action, progress);
         } else if (stack.getItem() instanceof S686Item) {
             renderS686(mc, pose, buffer, light, action, progress);
         } else {
@@ -246,6 +262,7 @@ public final class WeaponArms {
         AWMGeoModel.frame.invalidate();
         UziGeoModel.frame.invalidate();
         S686GeoModel.frame.invalidate();
+        Colt1878GeoModel.frame.invalidate();
     }
 
     private static void render(Minecraft mc, PoseStack pose, MultiBufferSource buffer, int light,

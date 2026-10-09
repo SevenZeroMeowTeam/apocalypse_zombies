@@ -240,6 +240,16 @@ public class S686Item extends Item implements GeoItem, GunItem {
             ResourceKey.create(Registries.DAMAGE_TYPE,
                     new ResourceLocation(ApocalypseZombies.MOD_ID, "s686_bullet"));
 
+    /**
+     * 这发弹丸按哪种伤害结算。
+     *
+     * <p>子类（短管喷 / 教练枪）有自己的伤害类型，覆盖这一个方法就够 —— 弹道、散布、命中判定
+     * 都与枪的型号无关，不该跟着抄一遍。</p>
+     */
+    protected ResourceKey<DamageType> damageType() {
+        return DAMAGE_TYPE;
+    }
+
     // ------------------------------------------------------------------ tracer
 
     /** Wider spacing than the Uzi's: eight tracers at once must not become a wall of light. */
@@ -498,7 +508,7 @@ public class S686Item extends Item implements GeoItem, GunItem {
                     ModSounds.AWM_RECHAMBER_OUT.get(), SoundSource.PLAYERS, 0.5F, 0.9F);
             trigger(player, stack, level, TRIGGER_BOLT);
             startAction(stack, ACTION_BOLT, now);
-            put(stack, TAG_LOCKED_UNTIL, now + BOLT_TICKS);
+            put(stack, TAG_LOCKED_UNTIL, now + actionLength(ACTION_BOLT));
             return;
         }
 
@@ -680,10 +690,10 @@ public class S686Item extends Item implements GeoItem, GunItem {
         return List.of(AmmoType.STANDARD, AmmoType.SLUG, AmmoType.THERMITE, AmmoType.EXPLOSIVE);
     }
 
-    private DamageSource bulletSource(ServerLevel level, ServerPlayer player) {
+    protected DamageSource bulletSource(ServerLevel level, ServerPlayer player) {
         Holder<DamageType> holder = level.registryAccess()
                 .registryOrThrow(Registries.DAMAGE_TYPE)
-                .getHolderOrThrow(DAMAGE_TYPE);
+                .getHolderOrThrow(damageType());
         return new DamageSource(holder, player, player);
     }
 
@@ -719,7 +729,7 @@ public class S686Item extends Item implements GeoItem, GunItem {
             return;
         }
         boolean chambered = getAmmo(stack) > 0;
-        int ticks = chambered ? RELOAD_TACTICAL_TICKS : RELOAD_EMPTY_TICKS;
+        int ticks = actionLength(chambered ? ACTION_RELOAD_TACTICAL : ACTION_RELOAD_EMPTY);
 
         // Started on the spot, so the clip's own first sound cue (t=2 / t=3) lands where the file puts it.
         clearPending(stack);
@@ -743,7 +753,7 @@ public class S686Item extends Item implements GeoItem, GunItem {
                 if (!isLocked(stack, now)) {
                     trigger(player, stack, serverLevel, TRIGGER_DRAW);
                     startAction(stack, ACTION_DRAW, now);
-                    put(stack, TAG_LOCKED_UNTIL, now + DRAW_TICKS);
+                    put(stack, TAG_LOCKED_UNTIL, now + actionLength(ACTION_DRAW));
                     return;
                 }
             } else if (!selected && drawn) {
@@ -897,8 +907,14 @@ public class S686Item extends Item implements GeoItem, GunItem {
         };
     }
 
-    /** Ticks the action's clip runs for, from s686.animation.json. */
-    private static int actionLength(String action) {
+    /**
+     * Ticks the action's clip runs for, read off the gun's own animation file.
+     *
+     * <p>{@code protected} 且非 static：子类的动画是自己的文件、自己的时长，覆盖这一个方法就把
+     * "动作锁多久、什么时候结算换弹、手什么时候动"整条链改成本枪的节奏 ——
+     * {@link #tryFire}、{@link #beginReload}、{@link #inventoryTick} 都从这里取数，不直接读常量。</p>
+     */
+    protected int actionLength(String action) {
         return switch (action) {
             case ACTION_DRAW -> DRAW_TICKS;
             case ACTION_SHOOT -> SHOOT_TICKS;
@@ -909,7 +925,13 @@ public class S686Item extends Item implements GeoItem, GunItem {
         };
     }
 
-    private static Map<Integer, RegistryObject<SoundEvent>> soundCuesFor(String action) {
+    /**
+     * 每个动作在哪些 tick 上出哪个机械音，按该动作**这一段胶片自己的关键帧**排。
+     *
+     * <p>子类的胶片时长与关键帧都不一样，音效时刻表必须跟着重排 —— 覆盖本方法即可，
+     * 而不用把整套开火 / 换弹逻辑再写一遍。</p>
+     */
+    protected Map<Integer, RegistryObject<SoundEvent>> soundCuesFor(String action) {
         return switch (action) {
             case ACTION_SHOOT -> SHOOT_SOUNDS;
             case ACTION_BOLT -> BOLT_SOUNDS;

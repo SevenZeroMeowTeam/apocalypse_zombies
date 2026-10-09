@@ -68,6 +68,7 @@
   "item.apocalypse_zombies.crossbow": "Compound Crossbow",
   "item.apocalypse_zombies.uzi": "Uzi",
   "item.apocalypse_zombies.s686": "Gold Plate - S686",
+  "item.apocalypse_zombies.colt_1878": "Colt 1878 Coach Gun",
 
   "entity.apocalypse_zombies.screamer_zombie": "Screamer Zombie",
   "entity.apocalypse_zombies.crusher_zombie": "Crusher Zombie",
@@ -102,6 +103,8 @@
   "death.attack.uzi_bullet.player": "%1$s was stitched up by %2$s",
   "death.attack.s686_bullet": "%1$s was turned into a colander",
   "death.attack.s686_bullet.player": "%1$s was turned into a colander by %2$s",
+  "death.attack.colt_1878_bullet": "%1$s met both barrels of a coach gun",
+  "death.attack.colt_1878_bullet.player": "%1$s was dropped by %2$s with a Colt 1878",
 
   "key.categories.apocalypse_zombies": "Apocalypse Zombies",
   "key.apocalypse_zombies.reload": "Reload / Ammo wheel",

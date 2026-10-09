@@ -68,6 +68,7 @@
   "item.apocalypse_zombies.crossbow": "复合十字弩",
   "item.apocalypse_zombies.uzi": "乌兹冲锋枪",
   "item.apocalypse_zombies.s686": "金板 S686",
+  "item.apocalypse_zombies.colt_1878": "柯尔特 1878 教练枪",
 
   "entity.apocalypse_zombies.screamer_zombie": "尖啸者",
   "entity.apocalypse_zombies.crusher_zombie": "碎颅者",
@@ -102,6 +103,8 @@
   "death.attack.uzi_bullet.player": "%1$s 被 %2$s 用乌兹扫倒",
   "death.attack.s686_bullet": "%1$s 被一喷子打成了漏勺",
   "death.attack.s686_bullet.player": "%1$s 被 %2$s 用金板 S686 一喷带走",
+  "death.attack.colt_1878_bullet": "%1$s 被一根短管喷成了筛子",
+  "death.attack.colt_1878_bullet.player": "%1$s 被 %2$s 用柯尔特 1878 两管齐喷带走",
 
   "key.categories.apocalypse_zombies": "末日僵尸",
   "key.apocalypse_zombies.reload": "换弹 / 弹种轮盘",

@@ -129,11 +129,11 @@ public final class ZombieLoot {
         return new ItemEntity(level, entity.getX(), entity.getY() + 0.5D, entity.getZ(), stack);
     }
 
-    /** 本模组六把枪之一 —— 极低概率的那一档。 */
+    /** 本模组七把枪之一 —— 极低概率的那一档。 */
     private static Item pickGun(RandomSource random) {
         List<Item> guns = List.of(
                 ModItems.AWM.get(), ModItems.M1_GARAND.get(), ModItems.MOSIN_NAGANT.get(),
-                ModItems.UZI.get(), ModItems.S686.get(), ModItems.CROSSBOW.get());
+                ModItems.UZI.get(), ModItems.S686.get(), ModItems.COLT_1878.get(), ModItems.CROSSBOW.get());
         return guns.get(random.nextInt(guns.size()));
     }
 }
