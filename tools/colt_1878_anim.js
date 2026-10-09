@@ -35,6 +35,14 @@
  *   3. 左手 hand_l 挂在 body 下 —— 它是握前托的，必须挂 barrel 下，否则枪管一折开
  *      手就留在原地、脱离前托飘着。（待装弹 bolt_loaded 同理。）
  *
+ * 折开的**表现方式**（第二版，按用户要求改的）：不再是"枪管向下折"，而是
+ *   **机匣+枪托绕铰链向上翻、枪管在世界坐标里纹丝不动**。
+ *   相对角同样是 62°（弹膛照样露出来），但第一人称里枪管不会甩出画面中心。
+ *   实现是 body 转 −OPEN、barrel 转 +OPEN —— 两个骨绕**同一个 pivot**（铰链）
+ *   反向转，正好抵消。符号与"枪管真的没动"由 tools/colt_1878_fold_probe.js 量过。
+ *   连带约束：**shoot / static_idle / ADS_* 都不许再给 barrel 或 body 转角**，
+ *   后坐与呼吸一律用 move 的位移表达，否则枪管又会相对机匣动。
+ *
  * 外露击锤（hammer_l）是本枪与 S686 最显眼的分野，所以必须动起来：折开时被机构顶回待击位
  * （rotation.x = +26°，与 S686 的 hammer 通道同一套符号：正 = 向后倒 = 待击），
  * 合膛后落回 0°；射击瞬间弹到 +30° 再落回。
@@ -92,12 +100,32 @@ function reloadBones(t) {
       { time: t.unlock, position: [-0.13, 0, 0] },
       { time: t.leverBack, position: [0, 0, 0] },
     ],
-    barrel: [
+    /* 折开 —— **机匣+枪托绕铰链向上翻，枪管在世界坐标里纹丝不动**。
+     *
+     * 做法：body 转 −OPEN、barrel 转 +OPEN。两者绕的是**同一个 pivot**（铰链，见
+     * tools/colt_1878_geo.js 里 body 的 pivot），反向角恰好抵消 ⇒ 枪管链
+     * （barrel / forend / shell_upper / hand_l / bolt_loaded）在世界上完全不动。
+     * 符号由 tools/colt_1878_fold_probe.js 量过：body −62 / barrel +62 那一行，
+     * 枪管 cube 的世界坐标与 rest **逐位相同**（[-0.306, 0.276, -9.044]）。
+     *
+     * 为什么不是"枪管向下折"（真枪的样子）：第一人称里枪管一垂就甩出画面中心，
+     * 观感像枪塌了。用户要的是枪管稳在画面里、机匣和托往上翻开 —— 相对角一样是 62°，
+     * 弹膛照样露出来，但视线的落点不跑。 */
+    body: [
       { time: t.openStart, rotation: [0, 0, 0] },
       { time: t.openMid, rotation: [-OPEN * 0.45, 0, 0] },
       { time: t.openFull, rotation: [-OPEN, 0, 0] },
       { time: t.closeStart, rotation: [-OPEN, 0, 0] },
       { time: t.closeBump, rotation: [7, 0, 0] },
+      { time: t.closeSettle, rotation: [0, 0, 0] },
+      { time: t.end, rotation: [0, 0, 0] },
+    ],
+    barrel: [
+      { time: t.openStart, rotation: [0, 0, 0] },
+      { time: t.openMid, rotation: [OPEN * 0.45, 0, 0] },
+      { time: t.openFull, rotation: [OPEN, 0, 0] },
+      { time: t.closeStart, rotation: [OPEN, 0, 0] },
+      { time: t.closeBump, rotation: [-7, 0, 0] },
       { time: t.closeSettle, rotation: [0, 0, 0] },
       { time: t.end, rotation: [0, 0, 0] },
     ],
@@ -167,10 +195,13 @@ const ANIMS = [
     loop: true,
     animation_length: 2.0,
     bones: {
-      move: [{ time: 0.0, position: [0, 0, 0] }, { time: 1.0, position: [0, -0.06, 0] }, { time: 2.0, position: [0, 0, 0] }],
-      body: [{ time: 0.0, rotation: [0, 0, 0] }, { time: 1.0, rotation: [1.2, 0, 0] }, { time: 2.0, rotation: [0, 0, 0] }],
-      // 双管的重量让枪口有一丝下垂（绕 X 的负值才是"枪口向下"）
-      barrel: [{ time: 0.0, rotation: [0, 0, 0] }, { time: 1.0, rotation: [-0.6, 0, 0] }, { time: 2.0, rotation: [0, 0, 0] }],
+      /* 待机只让**整枪**在手里微微起伏，枪管一动不动（body / barrel 都不写通道）。
+         原来那两条 body 1.2° 与 barrel −0.6° 会让枪管相对机匣轻微摇摆，与"枪管不动"冲突。 */
+      move: [
+        { time: 0.0, position: [0, 0, 0] },
+        { time: 1.0, position: [0, -0.055, 0.03] },
+        { time: 2.0, position: [0, 0, 0] },
+      ],
     },
   },
   {
@@ -187,14 +218,13 @@ const ANIMS = [
     loop: false,
     animation_length: 0.6,
     bones: {
-      /* 后坐：枪口上跳是绕 **X** 的正角度（不是绕 Z 滚转 —— 见 OPEN 的注） */
-      barrel: [
-        { time: 0.0, rotation: [0, 0, 0] }, { time: 0.08, rotation: [8, 0, 0] },
-        { time: 0.30, rotation: [-2.5, 0, 0] }, { time: 0.45, rotation: [1, 0, 0] }, { time: 0.60, rotation: [0, 0, 0] },
-      ],
+      /* 后坐 = **整枪向上微抬 + 向后推**，枪管自己不做任何转动（用户点名要的）。
+         让 barrel 单独转的话，枪管相对机匣动 —— 第一人称里看着像枪管在抖；
+         而后坐上跳本来就是整把枪的事，用 move 的位移表达才对。 */
       move: [
-        { time: 0.0, position: [0, 0, 0] }, { time: 0.08, position: [0, -0.05, 0.18] },
-        { time: 0.30, position: [0, -0.02, -0.03] }, { time: 0.60, position: [0, 0, 0] },
+        { time: 0.0, position: [0, 0, 0] }, { time: 0.08, position: [0, 0.075, 0.20] },
+        { time: 0.30, position: [0, 0.015, -0.03] }, { time: 0.45, position: [0, -0.005, 0.01] },
+        { time: 0.60, position: [0, 0, 0] },
       ],
       /* 击锤：扣扳机瞬间弹开，停在后坐里，再落回 —— 与 S686 的 hammer 同一条曲线
          （符号见 reloadBones 里 hammer_l 的注：编辑器坐标要写负的） */
@@ -215,9 +245,15 @@ const ANIMS = [
         { time: 0.00, position: [0, 0, 0] }, { time: 0.12, position: [-0.13, 0, 0] },
         { time: 0.30, position: [-0.13, 0, 0] }, { time: 0.44, position: [0, 0, 0] },
       ],
-      barrel: [
+      /* 折开：机匣+枪托上翻、barrel 反向补偿 —— 与 reloadBones 同一套（见那里的注） */
+      body: [
         { time: 0.28, rotation: [0, 0, 0] }, { time: 0.70, rotation: [-OPEN, 0, 0] },
         { time: 1.06, rotation: [-OPEN, 0, 0] }, { time: 1.26, rotation: [7, 0, 0] },
+        { time: 1.38, rotation: [0, 0, 0] },
+      ],
+      barrel: [
+        { time: 0.28, rotation: [0, 0, 0] }, { time: 0.70, rotation: [OPEN, 0, 0] },
+        { time: 1.06, rotation: [OPEN, 0, 0] }, { time: 1.26, rotation: [-7, 0, 0] },
         { time: 1.38, rotation: [0, 0, 0] },
       ],
       move: [
@@ -276,8 +312,8 @@ const ANIMS = [
     loop: false,
     animation_length: 0.22,
     bones: {
+      /* 只走整枪位移，不给 body 转角 —— 一给 body 转角，枪管就相对机匣动了 */
       move: [{ time: 0.0, position: [0, 0, 0] }, { time: 0.22, position: [0, 0.06, -0.05] }],
-      body: [{ time: 0.0, rotation: [0, 0, 0] }, { time: 0.22, rotation: [-1.5, 0, 0] }],
     },
   },
   {
@@ -286,7 +322,6 @@ const ANIMS = [
     animation_length: 0.18,
     bones: {
       move: [{ time: 0.0, position: [0, 0.06, -0.05] }, { time: 0.18, position: [0, 0, 0] }],
-      body: [{ time: 0.0, rotation: [-1.5, 0, 0] }, { time: 0.18, rotation: [0, 0, 0] }],
     },
   },
 ];

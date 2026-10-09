@@ -27,6 +27,12 @@ const TEX_SIZE = 512;
 const UV_MIN = 5;
 const UV_MAX = 13;
 
+/* 每个方块往各方向外扩这一点点（0.003 u = 0.19 mm），让相邻方块**轻微重叠**。
+ * 目的：消灭方块之间那条亚像素级的缝 —— 相邻块的边界本来是同一个数，
+ * 但经过 toFixed 取整 / 浮点相加之后未必逐位相等，MC 里就会透出一道细缝。
+ * 代价是整枪外轮廓胖 0.19 mm、贴图被拉伸 0.6%，都看不出来。 */
+const GAP_FIX = 0.003;
+
 const FACES = ['north', 'east', 'south', 'west', 'up', 'down'];
 
 /* ---------------- 1. 展开逐面清单并打包 UV 图集 ---------------- */
@@ -69,9 +75,13 @@ function paint(faces, MAT, SHADE, W, H) {
     const r = o.rect;
     for (let y = r[1]; y < r[3]; y++) {
       for (let x = r[0]; x < r[2]; x++) {
-        const edge = (x === r[0] || x === r[2] - 1 || y === r[1] || y === r[3] - 1);
+        /* ⚠️ 这里原本还有一层 `edge ? 0.76 : 1`（每个面的**四边都压暗 24%**）。
+         * 后果是每块方块的边缘都带一条深色描边，两块拼在一起就成了一道**黑缝** ——
+         * 用户一眼就看出来了（"不要有任何间隙，需要连贯"）。
+         * 删掉它：相邻方块若材质相同、朝向相同，颜色就完全一致，看不出接缝。
+         * 立体感交给 MC 自己的逐面光照（up 亮 / down 暗），贴图里不必再烘一遍。 */
         const grain = 0.93 + 0.14 * hash(x + i * 7, y - i * 3);
-        const f = s * grain * (edge ? 0.76 : 1);
+        const f = s * grain;
         const p = (y * W + x) * 4;
         px[p] = Math.min(255, Math.round(base[0] * f));
         px[p + 1] = Math.min(255, Math.round(base[1] * f));
@@ -156,9 +166,10 @@ async function main() {
      * 枪托就退化成一摞水平方块 → 用户截图里那串"台阶"就是这么来的。 */
     const elements = slice.map((c, k) => ({
       name: `${c.bone}_${i + k}`,
-      from: c.origin.map((v) => +v.toFixed(3)),
-      to: [c.origin[0] + c.size[0], c.origin[1] + c.size[1], c.origin[2] + c.size[2]].map((v) => +v.toFixed(3)),
-      origin: (c.pivot || c.origin).map((v) => +v.toFixed(3)),
+      from: [c.origin[0] - GAP_FIX, c.origin[1] - GAP_FIX, c.origin[2] - GAP_FIX].map((v) => +v.toFixed(5)),
+      to: [c.origin[0] + c.size[0] + GAP_FIX, c.origin[1] + c.size[1] + GAP_FIX,
+        c.origin[2] + c.size[2] + GAP_FIX].map((v) => +v.toFixed(5)),
+      origin: (c.pivot || c.origin).map((v) => +v.toFixed(5)),
       rotation: (c.rot || [0, 0, 0]).map((v) => +v.toFixed(4)),
     }));
     const faceArgs = slice.map((c) => FACES.map((f) => {
