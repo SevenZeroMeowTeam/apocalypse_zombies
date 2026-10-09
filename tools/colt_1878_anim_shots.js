@@ -4,9 +4,12 @@
  * 用法: node tools/colt_1878_anim_shots.js [outDir]
  *
  * 为什么要专门拍这个：几何截图看不出"骨头动没动"。本枪最显眼的两处机械动作是
- *   ① 外露双锤被折开机构顶回待击位（`bolt` / 两条 reload 的 hammer_l 通道）
- *   ② 管组绕铰链折下 52°（`bolt` / 两条 reload 的 barrel 通道）
- * 这张表把这两条曲线的起、中、末各拍一张，能不能对上真枪的机构一眼就看得出来。
+ *   ① 管组绕铰链向下折开 62°（`bolt` / 两条 reload 的 barrel 通道）—— 绕的是 **X** 轴
+ *   ② 空壳被 extractor 顶起、甩腕抖出（`shell_upper` 通道）
+ * 这张表把这些曲线的起、中、末都拍下来，能不能对上真枪的机构一眼就看得出来。
+ *
+ * ⚠️ 时间点必须跟着 tools/colt_1878_anim.js 的时间表改，而且要取在**关键帧所在秒数**上 ——
+ * 取插值中间值的话拍到的姿势既不是开始也不是结束，看着像动画坏了。
  */
 const fs = require('fs');
 const path = require('path');
@@ -17,11 +20,13 @@ const ROOT = path.resolve(__dirname, '..');
 /** [clip, 秒数, 说明] —— 秒数取在关键帧上，别取在插值中间 */
 const PHASES = [
   ['bolt', 0.0, '合膛待击位（起始）'],
-  ['bolt', 0.8, '折开到底：管 -52°、双锤被顶回'],
-  ['bolt', 1.4, '合膛归位（收束）'],
-  ['reload_tactical', 1.35, '折开退壳：膛口朝上、左手到位'],
-  ['reload_tactical', 2.3, '两发新弹入膛（bolt_loaded 显示）'],
-  ['reload_tactical', 3.0, '合膛归位（收束）'],
+  ['bolt', 0.7, '折开到底：管绕铰链垂下 62°、双锤被顶回待击位'],
+  ['bolt', 0.86, 'extractor 顶起两发空壳（膛口朝上后方）'],
+  ['bolt', 1.3, '合膛归位（收束）'],
+  ['reload_tactical', 0.67, '折开到底，弹膛口朝上后方'],
+  ['reload_tactical', 1.04, '甩腕退壳：两发空壳飞出'],
+  ['reload_tactical', 1.92, '两发新弹推入弹膛'],
+  ['reload_tactical', 2.25, '合膛到位（带过冲）'],
 ];
 
 async function main() {

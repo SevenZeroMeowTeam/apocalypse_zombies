@@ -151,12 +151,15 @@ async function main() {
   let placed = 0;
   for (let i = 0; i < cubes.length; i += BATCH) {
     const slice = cubes.slice(i, i + BATCH);
+    /* ⚠️ cube 级的 rotation/pivot 必须一起下发 —— 这里原本硬编码成 rotation:[0,0,0]，
+     * 于是 geo 脚本里给枪托算好的 droop（每段绕自身顶部 pivot 的坡度）**从来没生效过**，
+     * 枪托就退化成一摞水平方块 → 用户截图里那串"台阶"就是这么来的。 */
     const elements = slice.map((c, k) => ({
       name: `${c.bone}_${i + k}`,
       from: c.origin.map((v) => +v.toFixed(3)),
       to: [c.origin[0] + c.size[0], c.origin[1] + c.size[1], c.origin[2] + c.size[2]].map((v) => +v.toFixed(3)),
-      origin: c.origin.map((v) => +v.toFixed(3)),
-      rotation: [0, 0, 0],
+      origin: (c.pivot || c.origin).map((v) => +v.toFixed(3)),
+      rotation: (c.rot || [0, 0, 0]).map((v) => +v.toFixed(4)),
     }));
     const faceArgs = slice.map((c) => FACES.map((f) => {
       const o = faces.find((q) => q.c === c && q.f === f);

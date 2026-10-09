@@ -23,8 +23,17 @@
  *     reload_empty     3.60 s = 72 tick   （S686 是 2.475 s / 50 tick）
  *   tools/colt_1878_install.js 里有门禁锁住这两条。
  *
- * 换弹动作链（照真枪折开式霰弹枪的顺序）：
- *   拨开膛杆 → 折开 52° → 退壳 → 左手探腰间弹袋 → 夹回两发 → 推入弹膛 → 合膛（带回弹）
+ * 换弹动作链 —— 照**真枪**（原型 Colt Model 1878 / 侧并排折开式 + extractor）来：
+ *   拇指横向拨顶杆 → 枪管绕铰链向下折开 → extractor 顶起空壳 → 甩腕抖掉壳
+ *   → 右手从弹带取两发 → 两发同时塞进两个弹膛 → 枪管上抬合膛，顶杆自动回中
+ *   研究来源与量到的尺寸记在 art/colt_1878/README.md。
+ *
+ * ⚠️ v1 的三处硬伤（用户指出"换弹不对"之后逐个量出来的，别再犯）：
+ *   1. 折开写成了绕 **Z** 轴（[0,0,-52]）。Z 是枪管长轴，绕它转只是**枪身滚转**，
+ *      看着根本不像折开。正确的是绕 **X**（铰链那根横轴），方向用 tools/colt_1878_hinge_probe.js 量过。
+ *   2. 顶杆写成沿枪轴前后推（position z）。真枪的 top lever 是**横向**拨的。
+ *   3. 左手 hand_l 挂在 body 下 —— 它是握前托的，必须挂 barrel 下，否则枪管一折开
+ *      手就留在原地、脱离前托飘着。（待装弹 bolt_loaded 同理。）
  *
  * 外露击锤（hammer_l）是本枪与 S686 最显眼的分野，所以必须动起来：折开时被机构顶回待击位
  * （rotation.x = +26°，与 S686 的 hammer 通道同一套符号：正 = 向后倒 = 待击），
@@ -45,40 +54,87 @@ const { Bb } = require('./bbmcp_lib.js');
 const HIDDEN = [0, 0, 0];
 const SHOWN = [1, 1, 1];
 
-/** 折开角（度）。真枪要 50° 以上才露得出弹膛给手指让位。 */
-const OPEN = 52;
+/* 折开角（度）—— 绕 **X 轴**，负值 = 枪口向下折。
+ *
+ * ⚠️ 这里原本是 v1 最大的一个错：写的 rotation [0, 0, -52]，也就是绕 **Z**。
+ * 而 Z 是枪管长轴，绕它转是**枪身滚转**，跟"折开"毫无关系。
+ * 方向不要靠推理，用 tools/colt_1878_hinge_probe.js 量（读枪管 cube 的世界矩阵平移）：
+ *     X −62°  → 枪口端 y 从 +0.276 掉到 −7.105   ← 真的是朝下折
+ *     X +62°  → y 涨到 +6.825                    ← 朝上翘
+ *     Z −52°  → y 几乎不动、x 从 −0.306 跑到 +0.429  ← 只是滚转
+ * 真枪要 50° 以上才露得出弹膛给手指让位，62° 是折开式霰弹枪常见的停位。 */
+const OPEN = 62;
 
-/** 换弹里"折开—退壳—装弹—合膛"这套骨架，按给定时间表生成；t 是各阶段时刻。 */
+/* 甩腕（退壳）时整枪向下一顿的幅度。extractor 只能把壳顶起几毫米，
+ * 壳是**靠这一下甩出去**的 —— 真枪退壳从来不是"自动抛出"。 */
+const FLICK = -0.15;
+
+/** 换弹里"推顶杆—折开—退壳—装弹—合膛"这套骨架，按给定时间表生成；t 是各阶段时刻。
+ *
+ * 真实流程（原型 Colt Model 1878 / 侧并排折开式 + extractor）：
+ *   1. 拇指把顶杆（top lever）**横向**拨到射手右侧，解除闭锁
+ *   2. 左手压住前托、右手抬托颈，枪管绕铰链向下折开 —— 枪口朝下，弹膛口朝上后方
+ *   3. extractor 把两发空壳顶起几毫米（它**不抛壳**，会抛壳的是 ejector）；再甩腕把壳抖掉
+ *   4. 右手从弹带取两发
+ *   5. 两发**同时**塞进两个弹膛，拇指推到底
+ *   6. 枪管上抬合膛，顶杆自动回中，"咔"一下到位
+ *
+ * 三处照真枪改掉的关键点（v1 全错）：
+ *   · latch（顶杆）走 **x 轴** —— 真枪是横向拨，不是沿枪轴前后推
+ *   · 折开绕 **X 轴**（理由见 OPEN 的注）
+ *   · 退壳方向是枪管**局部 +Z**（弹膛口那一侧），不是在世界坐标里拍脑袋定的"后上方"
+ */
 function reloadBones(t) {
   return {
     latch: [
-      { time: t.latch0, position: [0, 0, 0] },
-      { time: t.latch1, position: [0, 0, 0.14] },
-      { time: t.openStart, position: [0, 0, 0.14] },
-      { time: t.eject, position: [0, 0, 0] },
+      { time: t.t0, position: [0, 0, 0] },
+      { time: t.lever, position: [-0.13, 0, 0] },
+      { time: t.unlock, position: [-0.13, 0, 0] },
+      { time: t.leverBack, position: [0, 0, 0] },
     ],
     barrel: [
       { time: t.openStart, rotation: [0, 0, 0] },
-      { time: t.openMid, rotation: [0, 0, -18] },
-      { time: t.openFull, rotation: [0, 0, -OPEN] },
-      { time: t.closeStart, rotation: [0, 0, -OPEN] },
-      { time: t.closeBump, rotation: [0, 0, 6] },
+      { time: t.openMid, rotation: [-OPEN * 0.45, 0, 0] },
+      { time: t.openFull, rotation: [-OPEN, 0, 0] },
+      { time: t.closeStart, rotation: [-OPEN, 0, 0] },
+      { time: t.closeBump, rotation: [7, 0, 0] },
+      { time: t.closeSettle, rotation: [0, 0, 0] },
       { time: t.end, rotation: [0, 0, 0] },
     ],
-    shell_upper: [
-      { time: t.openFull, position: [0, 0, 0], rotation: [0, 0, 0] },
-      { time: t.shellMid, position: [0, 0.26, 0.62], rotation: [0, 0, 40] },
-      { time: t.eject, position: [0, 0.06, 1.10], rotation: [0, 0, 110] },
-      { time: t.closeStart, position: [0, 0, 0.30], rotation: [0, 0, 160] },
+    /* 甩腕 + 合膛冲击：都是整枪的小幅位移 */
+    move: [
+      { time: t.openFull, position: [0, 0, 0] },
+      { time: t.flick, position: [0, FLICK, 0.05] },
+      { time: t.shellOut, position: [0, 0.03, -0.01] },
+      { time: t.ammoUp, position: [0, 0, 0] },
+      { time: t.closeStart, position: [0, 0, 0] },
+      { time: t.closeBump, position: [0, FLICK * 0.4, 0.04] },
+      { time: t.closeSettle, position: [0, 0, 0] },
+      { time: t.end, position: [0, 0, 0] },
     ],
+    /* 空壳（shell_upper 挂在 barrel 下）：沿**局部 +Z** 出膛 —— 那正是弹膛口的方向，
+       折开后它在世界上朝上后方，与真枪退壳方向一致。
+       0.16 u ≈ 10 mm，和真枪 extractor 的几毫米行程同一量级。
+       注意每个关键帧都必须带 scale：只给两头的话 GeckoLib 会拿第一个 scale 往回外推，
+       整个折开段都会是隐藏的。 */
+    shell_upper: [
+      { time: t.openStart, position: [0, 0, 0], rotation: [0, 0, 0], scale: SHOWN },
+      { time: t.openFull, position: [0, 0, 0], rotation: [0, 0, 0], scale: SHOWN },
+      { time: t.extract, position: [0, 0.02, 0.16], rotation: [0, 0, 0], scale: SHOWN },
+      { time: t.flick, position: [0, 0.07, 0.36], rotation: [-14, 0, 0], scale: SHOWN },
+      { time: t.shellOut, position: [0, 0.26, 1.10], rotation: [-56, 0, 22], scale: SHOWN },
+      { time: t.shellGone, position: [0, 0.54, 2.30], rotation: [-100, 0, 40], scale: HIDDEN },
+      { time: t.end, position: [0, 0.54, 2.30], rotation: [-100, 0, 40], scale: HIDDEN },
+    ],
+    /* 左手握在前托上 —— 而前托和 hand_l 自己都挂在 barrel 下，所以折开时手**自动**
+       跟着枪管走，不需要任何补偿。（v1 把 hand_l 挂在 body 下，枪管一折手就留在原地、
+       脱离前托飘在半空。）这里只留合膛那一下的反作用微动。 */
     hand_l: [
       { time: t.openFull, position: [0, 0, 0] },
-      { time: t.handOut, position: [-0.52, 0.18, 0.48] },
-      { time: t.handGrab, position: [-0.46, 0.10, 0.40] },
-      { time: t.handBack, position: [0.06, -0.04, -0.24] },
-      { time: t.round1, position: [0.14, 0.02, -0.38] },
-      { time: t.round2, position: [0.10, 0.06, -0.46] },
       { time: t.closeStart, position: [0, 0, 0] },
+      { time: t.closeBump, position: [0, -0.04, 0.03] },
+      { time: t.closeSettle, position: [0, 0, 0] },
+      { time: t.end, position: [0, 0, 0] },
     ],
     /* 外露双锤（一个骨骼带左右两个锤，绕中轴一起动）：折开时被机构顶回待击位，合膛后落回。
        ⚠️ 符号是**负**的：本文件写的是 Blockbench 编辑器坐标，导出插件会把它沿 X 取反，
@@ -87,16 +143,20 @@ function reloadBones(t) {
     hammer_l: [
       { time: t.openStart, rotation: [0, 0, 0] },
       { time: t.openFull, rotation: [-26, 0, 0] },
-      { time: t.round2, rotation: [-26, 0, 0] },
+      { time: t.seated, rotation: [-26, 0, 0] },
       { time: t.closeBump, rotation: [4, 0, 0] },
+      { time: t.hammerSettle, rotation: [0, 0, 0] },
       { time: t.end, rotation: [0, 0, 0] },
     ],
+    /* 待装的两发（同样挂 barrel 下，所以"推入弹膛"就是把位置推回 0）。
+       手从枪下方把弹送到弹膛口，再沿膛轴推到底 —— 局部 +Z 是弹膛口方向。 */
     bolt_loaded: [
-      { time: t.openFull, scale: HIDDEN, position: [0, 0, 0] },
-      { time: t.handBack, scale: SHOWN, position: [0, 0, 0] },
-      { time: t.round1, scale: SHOWN, position: [0, 0, -0.16] },
-      { time: t.round2, scale: SHOWN, position: [0, 0, -0.30] },
-      { time: t.closeStart, scale: HIDDEN, position: [0, 0, -0.30] },
+      { time: t.ammoUp, scale: HIDDEN, position: [0, -0.55, 0.55] },
+      { time: t.ammoVis, scale: SHOWN, position: [0, -0.50, 0.50] },
+      { time: t.ammoIn, scale: SHOWN, position: [0, -0.34, 0.34] },
+      { time: t.seat, scale: SHOWN, position: [0, -0.05, 0.05] },
+      { time: t.seated, scale: SHOWN, position: [0, 0, 0] },
+      { time: t.end, scale: SHOWN, position: [0, 0, 0] },
     ],
   };
 }
@@ -109,8 +169,8 @@ const ANIMS = [
     bones: {
       move: [{ time: 0.0, position: [0, 0, 0] }, { time: 1.0, position: [0, -0.06, 0] }, { time: 2.0, position: [0, 0, 0] }],
       body: [{ time: 0.0, rotation: [0, 0, 0] }, { time: 1.0, rotation: [1.2, 0, 0] }, { time: 2.0, rotation: [0, 0, 0] }],
-      // 双管的重量让枪口有一丝下垂
-      barrel: [{ time: 0.0, rotation: [0, 0, 0] }, { time: 1.0, rotation: [0.6, 0, 0] }, { time: 2.0, rotation: [0, 0, 0] }],
+      // 双管的重量让枪口有一丝下垂（绕 X 的负值才是"枪口向下"）
+      barrel: [{ time: 0.0, rotation: [0, 0, 0] }, { time: 1.0, rotation: [-0.6, 0, 0] }, { time: 2.0, rotation: [0, 0, 0] }],
     },
   },
   {
@@ -127,9 +187,10 @@ const ANIMS = [
     loop: false,
     animation_length: 0.6,
     bones: {
+      /* 后坐：枪口上跳是绕 **X** 的正角度（不是绕 Z 滚转 —— 见 OPEN 的注） */
       barrel: [
-        { time: 0.0, rotation: [0, 0, 0] }, { time: 0.08, rotation: [0, 0, 8] },
-        { time: 0.30, rotation: [0, 0, -2.5] }, { time: 0.45, rotation: [0, 0, 1] }, { time: 0.60, rotation: [0, 0, 0] },
+        { time: 0.0, rotation: [0, 0, 0] }, { time: 0.08, rotation: [8, 0, 0] },
+        { time: 0.30, rotation: [-2.5, 0, 0] }, { time: 0.45, rotation: [1, 0, 0] }, { time: 0.60, rotation: [0, 0, 0] },
       ],
       move: [
         { time: 0.0, position: [0, 0, 0] }, { time: 0.08, position: [0, -0.05, 0.18] },
@@ -151,24 +212,32 @@ const ANIMS = [
     animation_length: 1.4,
     bones: {
       latch: [
-        { time: 0.00, position: [0, 0, 0] }, { time: 0.20, position: [0, 0, 0.14] },
-        { time: 0.40, position: [0, 0, 0.14] }, { time: 0.90, position: [0, 0, 0] },
+        { time: 0.00, position: [0, 0, 0] }, { time: 0.12, position: [-0.13, 0, 0] },
+        { time: 0.30, position: [-0.13, 0, 0] }, { time: 0.44, position: [0, 0, 0] },
       ],
       barrel: [
-        { time: 0.20, rotation: [0, 0, 0] }, { time: 0.60, rotation: [0, 0, -OPEN] },
-        { time: 1.05, rotation: [0, 0, -OPEN] }, { time: 1.28, rotation: [0, 0, 6] },
-        { time: 1.40, rotation: [0, 0, 0] },
+        { time: 0.28, rotation: [0, 0, 0] }, { time: 0.70, rotation: [-OPEN, 0, 0] },
+        { time: 1.06, rotation: [-OPEN, 0, 0] }, { time: 1.26, rotation: [7, 0, 0] },
+        { time: 1.38, rotation: [0, 0, 0] },
+      ],
+      move: [
+        { time: 0.70, position: [0, 0, 0] }, { time: 0.88, position: [0, FLICK, 0.05] },
+        { time: 1.00, position: [0, 0.03, -0.01] }, { time: 1.14, position: [0, 0, 0] },
+        { time: 1.26, position: [0, FLICK * 0.4, 0.04] }, { time: 1.38, position: [0, 0, 0] },
       ],
       shell_upper: [
-        { time: 0.60, position: [0, 0, 0], rotation: [0, 0, 0] },
-        { time: 0.82, position: [0, 0.26, 0.62], rotation: [0, 0, 40] },
-        { time: 1.05, position: [0, 0.06, 1.10], rotation: [0, 0, 110] },
+        { time: 0.28, position: [0, 0, 0], rotation: [0, 0, 0], scale: SHOWN },
+        { time: 0.70, position: [0, 0, 0], rotation: [0, 0, 0], scale: SHOWN },
+        { time: 0.84, position: [0, 0.02, 0.16], rotation: [0, 0, 0], scale: SHOWN },
+        { time: 0.92, position: [0, 0.07, 0.36], rotation: [-14, 0, 0], scale: SHOWN },
+        { time: 1.06, position: [0, 0.26, 1.10], rotation: [-56, 0, 22], scale: SHOWN },
+        { time: 1.24, position: [0, 0.54, 2.30], rotation: [-100, 0, 40], scale: HIDDEN },
       ],
       /* 折开把两个锤顶回待击位，合膛后落回（符号同 reloadBones 的注） */
       hammer_l: [
-        { time: 0.20, rotation: [0, 0, 0] }, { time: 0.60, rotation: [-26, 0, 0] },
-        { time: 1.05, rotation: [-26, 0, 0] }, { time: 1.20, rotation: [4, 0, 0] },
-        { time: 1.36, rotation: [0, 0, 0] },
+        { time: 0.28, rotation: [0, 0, 0] }, { time: 0.70, rotation: [-26, 0, 0] },
+        { time: 1.06, rotation: [-26, 0, 0] }, { time: 1.26, rotation: [4, 0, 0] },
+        { time: 1.38, rotation: [0, 0, 0] },
       ],
     },
   },
@@ -178,21 +247,27 @@ const ANIMS = [
     loop: false,
     animation_length: 3.0,
     bones: reloadBones({
-      latch0: 0.00, latch1: 0.18, openStart: 0.30, openMid: 0.54, openFull: 0.90,
-      shellMid: 1.15, eject: 1.35, handOut: 1.35, handGrab: 1.60, handBack: 1.88,
-      round1: 2.20, round2: 2.42, closeStart: 2.60, closeBump: 2.86, end: 3.00,
+      t0: 0.00, lever: 0.10, unlock: 0.26, leverBack: 0.40,
+      openStart: 0.26, openMid: 0.46, openFull: 0.68,
+      extract: 0.80, flick: 0.92, shellOut: 1.06, shellGone: 1.26,
+      ammoUp: 1.32, ammoVis: 1.40, ammoIn: 1.54, seat: 1.76, seated: 1.90,
+      closeStart: 1.96, closeBump: 2.24, closeSettle: 2.40, hammerSettle: 2.48,
+      end: 3.00,
     }),
   },
   {
     /* 空仓换弹：3.60 s = 72 tick（S686 是 2.475 s / 50 tick）。
-     * 比有弹版多的是"退壳更彻底 + 手在弹袋里多摸一下" —— 这一段刻意拉长。 */
+     * 比有弹版多的是"两发壳都得退、壳胀了要抠一下、手在弹带里多摸一趟" —— 各段整体放慢。 */
     name: 'reload_empty',
     loop: false,
     animation_length: 3.6,
     bones: reloadBones({
-      latch0: 0.00, latch1: 0.22, openStart: 0.38, openMid: 0.66, openFull: 1.08,
-      shellMid: 1.38, eject: 1.62, handOut: 1.70, handGrab: 2.02, handBack: 2.34,
-      round1: 2.68, round2: 2.94, closeStart: 3.14, closeBump: 3.42, end: 3.60,
+      t0: 0.00, lever: 0.12, unlock: 0.32, leverBack: 0.50,
+      openStart: 0.32, openMid: 0.58, openFull: 0.86,
+      extract: 1.06, flick: 1.24, shellOut: 1.42, shellGone: 1.66,
+      ammoUp: 1.78, ammoVis: 1.90, ammoIn: 2.14, seat: 2.48, seated: 2.68,
+      closeStart: 2.80, closeBump: 3.14, closeSettle: 3.32, hammerSettle: 3.42,
+      end: 3.60,
     }),
   },
   {

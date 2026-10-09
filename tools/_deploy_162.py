@@ -1,14 +1,14 @@
-"""1.1.61 出货：新增柯尔特 1878 教练枪（短管并排双管霰弹枪）。
+"""1.1.62 出货：修好柯尔特 1878 的折开动作（绕错轴）与枪托台阶。
 
 跑法（**游戏须完全关闭**）：
-    python tools/_deploy_161.py                 # 用 build/libs 里已构建好的包
-    python tools/_deploy_161.py --build         # 先 ./gradlew build 再出货
+    python tools/_deploy_162.py                 # 用 build/libs 里已构建好的包
+    python tools/_deploy_162.py --build         # 先 ./gradlew build 再出货
 
 判据（任一条不过就退出，不动 mods/）：
-  1. 构建产物存在，且 jar 内 mods.toml 的 version == 1.1.61；
-  2. 包内容是 1.1.61 该有的东西：
+  1. 构建产物存在，且 jar 内 mods.toml 的 version == 1.1.62；
+  2. 包内容是 1.1.62 该有的东西：
      · geo/colt_1878.geo.json —— identifier geometry.colt_1878、512² 贴图基准、
-       12 骨 / 83 方块、rest 姿态无旋转（骨骼一根都不许带 rotation）；
+       12 骨 / 87 方块、rest 姿态无旋转（骨骼一根都不许带 rotation）；
      · animations/colt_1878.animation.json —— 8 条片段且**长度逐条等于 Java 常量**
        （draw 0.8 / shoot 0.6 / bolt 1.4 / reload_tactical 3.0 / reload_empty 3.6 /
         static_idle 2.0 / ADS_up 0.22 / ADS_down 0.18）；
@@ -34,10 +34,10 @@ import subprocess
 import sys
 import zipfile
 
-VER = '1.1.61'
-PREV = '1.1.60'
+VER = '1.1.62'
+PREV = '1.1.61'
 SRC = 'F:/mcmod/build/libs/apocalypse_zombies-%s.jar' % VER
-DEV = 'C:/Users/Administrator/Desktop/.minecraft/versions/1.20.1-Forge_47.4.23-2'
+DEV = 'F:/.minecraft/versions/1.20.1-Forge_47.4.26'
 MODS, BACKUP = DEV + '/mods', DEV + '/mods_backup'
 PREFIX = 'apocalypse_zombies-'
 KEEP_BACKUPS = 3
@@ -65,10 +65,10 @@ HAMMER = {
     'reload_tactical': [0.0, 26.0, 26.0, -4.0, 0.0],
     'reload_empty': [0.0, 26.0, 26.0, -4.0, 0.0],
 }
-BONES, CUBES = 12, 83
+BONES, CUBES = 12, 87
 
 ok = True
-_ap = argparse.ArgumentParser(description='1.1.61 出货：柯尔特 1878 教练枪')
+_ap = argparse.ArgumentParser(description='1.1.62 出货：柯尔特 1878 折开动作修复')
 _ap.add_argument('--build', action='store_true', help='先跑 ./gradlew build 再出货')
 _ap.add_argument('--allow-dev-server', action='store_true',
                  help='放行"无头开发服（runServer/gameTest）在跑"这一种情况；'
@@ -143,12 +143,12 @@ if args.build or not os.path.exists(SRC):
             print('  ★ 构建失败（exit %d）' % rc)
             raise SystemExit(1)
 if not os.path.exists(SRC):
-    print('  没有 %s —— 先跑 python tools/_deploy_161.py --build' % SRC)
+    print('  没有 %s —— 先跑 python tools/_deploy_162.py --build' % SRC)
     raise SystemExit(1)
 src_md5, src_size = md5(SRC), os.path.getsize(SRC)
 print('  %s\n  md5=%s  %d 字节' % (SRC, src_md5, src_size))
 
-print('=== 2/5 包内自检（1.1.61 该有的内容） ===')
+print('=== 2/5 包内自检（1.1.62 该有的内容） ===')
 with zipfile.ZipFile(SRC) as z:
     names = z.namelist()
     toml = z.read('META-INF/mods.toml').decode('utf-8', 'replace')
@@ -269,5 +269,5 @@ print('     · 打空后按 R：折开换弹 3.6 s（比 S686 慢），合膛后
 print('     · 空膛时扣扳机 = 折开检查（bolt 1.4 s），左上角不会卡动作')
 print('  3) 僵尸 0.2% 那个枪械档现在有七把枪（含教练枪）')
 print()
-print('结果：%s' % ('1.1.61 出货完成 ✓' if ok else '★ 存在失败项，mods/ 可能已被改动，请检查上面 [FAIL] 行'))
+print('结果：%s' % ('1.1.62 出货完成 ✓' if ok else '★ 存在失败项，mods/ 可能已被改动，请检查上面 [FAIL] 行'))
 raise SystemExit(0 if ok else 1)

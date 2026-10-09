@@ -195,7 +195,12 @@ for (let i = 0; i < SEGS; i++) {
   // 托的上下缘：真枪托腹在下垂的同时略微收窄
   const yTop = RECV_Y1 - 0.20 - d0;
   const yBot = RECV_Y0 + 0.30 - d0 - t0 * 0.10;
-  const droop = -Math.atan2(d1 - d0, z1 - z0) * 180 / Math.PI;
+  /* 符号是**正**的：下垂方向是 +Z（托尾），绕 X 的正角度才把远端压下去。
+   * 写成负号的话每段会相对整体下降**上翘** 13.3°，8 段互相错开 → 枪托变成一串台阶
+   * （实测踩过：用户截图里那串"棕色阶梯"就是这么来的）。改对之后每段端点正好对接：
+   *   sin(13.3°) × 段长 0.5075 = 0.1167 ≈ DROP/SEGS = 0.12        —— 缝隙约 0.003 u，看不见
+   */
+  const droop = Math.atan2(d1 - d0, z1 - z0) * 180 / Math.PI;
   box('body', [-RECV_W / 2 - 0.02, yBot, z0], [RECV_W / 2 + 0.02, yTop, z1], 'wood', [droop, 0, 0], [0, yTop, z0]);
   box('body', [-RECV_W / 2 - 0.03, yBot, z0], [RECV_W / 2 + 0.03, yBot + 0.075, z1], 'woodd', [droop, 0, 0], [0, yTop, z0]);
 }
@@ -218,11 +223,24 @@ box('trigger_rear', [-0.022, RECV_Y0 - 0.150, RECV_Z0 + 0.72], [0.022, RECV_Y0 -
 box('body', [-0.038, RECV_Y0 - 0.205, RECV_Z0 + 0.57], [0.038, RECV_Y0 - 0.165, RECV_Z0 + 0.84], 'blued');
 box('body', [-0.038, RECV_Y0 - 0.165, RECV_Z0 + 0.79], [0.038, RECV_Y0 - 0.09, RECV_Z0 + 0.84], 'blued');
 
-/* ================================================================ 8. 左手 / 待装子弹（平时隐藏） */
+/* ================================================================ 8. 左手 / 弹壳（膛内，平时被枪管遮住） */
 box('hand_l', [-0.14, TUBE_Y - 0.62, FORE_Z1 - 0.70], [0.14, TUBE_Y - 0.30, FORE_Z1 - 0.28], 'woodd');
+
+/* 弹壳朝向：黄铜底缘朝 **+Z**（机匣/射手那侧），壳身朝 −Z（枪口那侧）——
+ * 真枪的弹就是这么躺的，从弹膛口看进去先看到黄铜底。
+ *
+ * 两种壳同位置同尺寸：
+ *   bolt_loaded  「膛里已装填的两发」，静止时随枪可见（在枪管实心芯内部，实际看不见）
+ *   shell_upper  「打过的两发空壳」，换弹动画里退出来的就是它
+ * 两者不会同时可见 —— 空壳平时被动画按 scale 收掉，退壳时才放出来。
+ *
+ * ⚠️ shell_upper 原本是个**一个 cube 都没有的空骨**：退壳动画一直在驱动一个不存在的东西，
+ * 游戏里"掉壳"完全不可见。这个坑是查"换弹为什么不对"时才发现的。 */
 for (const dx of [-BORE_GAP, BORE_GAP]) {
-  box('bolt_loaded', [dx - 0.055, TUBE_Y - 0.055, RECV_Z0 + 0.14], [dx + 0.055, TUBE_Y + 0.055, RECV_Z0 + 0.30], 'red');
-  box('bolt_loaded', [dx - 0.062, TUBE_Y - 0.062, RECV_Z0 + 0.06], [dx + 0.062, TUBE_Y + 0.062, RECV_Z0 + 0.14], 'brass');
+  box('bolt_loaded', [dx - 0.056, TUBE_Y - 0.056, TUBE_Z1 - 0.30], [dx + 0.056, TUBE_Y + 0.056, TUBE_Z1 - 0.09], 'red');
+  box('bolt_loaded', [dx - 0.063, TUBE_Y - 0.063, TUBE_Z1 - 0.09], [dx + 0.063, TUBE_Y + 0.063, TUBE_Z1], 'brass');
+  box('shell_upper', [dx - 0.058, TUBE_Y - 0.058, TUBE_Z1 - 0.30], [dx + 0.058, TUBE_Y + 0.058, TUBE_Z1 - 0.09], 'dk');
+  box('shell_upper', [dx - 0.065, TUBE_Y - 0.065, TUBE_Z1 - 0.09], [dx + 0.065, TUBE_Y + 0.065, TUBE_Z1], 'brass');
 }
 
 /* ================================================================ 骨骼 */
@@ -237,8 +255,13 @@ const bones = [
   { name: 'hammer_l', parent: 'body', pivot: [0, RECV_Y1 + 0.10, RECV_Z1 - 0.33] },
   { name: 'trigger_front', parent: 'body', pivot: [0, RECV_Y0, RECV_Z0 + 0.65] },
   { name: 'trigger_rear', parent: 'body', pivot: [0, RECV_Y0, RECV_Z0 + 0.75] },
-  { name: 'hand_l', parent: 'body', pivot: [0, TUBE_Y - 0.46, FORE_Z1 - 0.49] },
-  { name: 'bolt_loaded', parent: 'body', pivot: [0, TUBE_Y, RECV_Z0 + 0.22] },
+  /* 这两个挂 **barrel** 而不是 body —— 物理层级本来就是这样的，挂错了动作就穿帮：
+   *   hand_l      左手握在前托上，而前托是 barrel 的子件。挂在 body 下的话，
+   *               枪管一折开手就留在原地、脱离前托飘在半空。
+   *   bolt_loaded 弹膛里的两发待装弹。弹膛在枪管后段，折开时必须随枪管一起走，
+   *               否则合膛时装好的弹会停在原来机匣的位置。 */
+  { name: 'hand_l', parent: 'barrel', pivot: [0, TUBE_Y - 0.46, FORE_Z1 - 0.49] },
+  { name: 'bolt_loaded', parent: 'barrel', pivot: [0, TUBE_Y, RECV_Z0 + 0.22] },
 ];
 
 /* ================================================================ 自检 */

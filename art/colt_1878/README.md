@@ -2,7 +2,9 @@
 
 **并排**双管、折开式（break-action）霰弹枪，12 号。真实原型是 **Colt Model 1878 双管霰弹枪的
 20 英寸「教练枪」（coach gun）**构型 —— 西部时代的马路护卫 / 驿站车夫用枪：管短好带、
-折开装两发。参考尺寸（Cimarron 复刻件）：全长 **940 mm**、枪管 **610 mm**、约 **3.4 kg**。
+折开装两发。参考尺寸（Cimarron 复刻件）：全长 **940 mm**、枪管 **508 mm（20″，占全长 54%）**、
+机匣 **152 mm**、枪托 **280 mm**、约 **3.4 kg**。**是 extractor（抽壳器）而不是 ejector（抛壳器）**，
+退壳动画照这个做 —— 见第 8 节。
 
 本目录里：
 
@@ -22,7 +24,7 @@
 | 新建 GeckoLib 项目、UV 基准对齐 512² | `create_project` / `risky_eval` | `tools/colt_1878_build.js` |
 | 上传 512×512 逐面 UV 图集（本地生成 PNG） | `create_texture` | 同上 |
 | 建 12 根骨骼 | `add_group` × 12 | 同上 |
-| 放 83 个方块（逐面 UV，8 路并发） | `place_cube` × 83 | 同上 |
+| 放 87 个方块（逐面 UV，8 路并发） | `place_cube` × 87 | 同上 |
 | 校验 + 导出 geo | `geckolib_validate_model` / `geckolib_export_model` | 同上 |
 | 建 8 条动画 | `create_animation`（跑前先 `risky_eval` 清同名片段） | `tools/colt_1878_anim.js` |
 | 校验 + 导出 anim | `geckolib_validate_model` / `geckolib_export_animations` | 同上 |
@@ -39,24 +41,28 @@
   高 2.276 u = 142 mm（含托颈下垂）；宽 0.912 u = 57 mm。
 * 并排双管中距 0.38 u ≈ 24 mm（真枪两管中心距约 24–26 mm），管外径 0.35 u ≈ 22 mm。
   两管之间是**焊接肋条**（0.11 u 宽）+ 前珠。
-* 贴图 **512×512 逐面 UV 图集**，83 个方块 = **498 个面**，全部落在涂绘区（`check_gun_resources.py` 报"空白 0 个"）。
+* 贴图 **512×512 逐面 UV 图集**，87 个方块 = **522 个面**，全部落在涂绘区（`check_gun_resources.py` 报"空白 0 个"）。
 
 ## 3. 骨架层级与 pivot（12 根，rest 姿态旋转全零）
 
 ```
 root        (0, −0.608,  5.296)   0 方块 —— 武器根
-move        (0, −0.608,  5.296)   0 方块 —— 整枪位移（后坐 / 抬枪 / 跑步姿态）
+move        (0, −0.608,  5.296)   0 方块 —— 整枪位移（后坐 / 甩腕 / 抬枪）
 └ body      (0, 0, 0)            38 方块  机匣 / 托颈 / 枪托 / 双扳机座
   ├ barrel  (0, −0.508, −1.156)  24 方块  管组（并排双管 + 肋条 + 前珠 + 管口黄铜圈）
   │ ├ forend(0,  0.092, −6.280)   9 方块  前托（纺锤形，随管一起折）
-  │ └ shell_upper (0, 0.392, −0.916)  0 方块  ┐ 空骨：与 S686 的骨骼名对齐，
-  ├ latch   (0,  0.708,  0.916)    1 方块  折开拨杆（沿 +Z 推 0.14 u）  │ 实际壳体走 bolt_loaded
+  │ ├ shell_upper  (0, 0.392, −0.916)  4 方块  两发**打完的空壳**（退壳动画驱动的就是它）
+  │ ├ hand_l  (0, −0.068, −1.466)  1 方块  左手：握在前托上，所以必须挂 barrel
+  │ └ bolt_loaded  (0, 0.392, −0.996)  4 方块  两发**待装弹**（左右各一，`scale` 0↔1 显隐）
+  ├ latch   (0,  0.708,  0.916)    1 方块  顶杆（沿 **+X 横向拨** 0.13 u，不是沿枪轴前后推）
   ├ hammer_l(0,  0.708,  0.886)    4 方块  **左右两个外露击锤**（一根骨带两个锤，绕中轴同步）
   ├ trigger_front (0, −0.608, −0.566)  1 方块 前扳机
-  ├ trigger_rear  (0, −0.608, −0.466)  1 方块 后扳机
-  ├ hand_l  (0, −0.068, −1.466)    1 方块  左手落点标记（换弹时手臂目标）
-  └ bolt_loaded (0, 0.392, −0.996) 4 方块  两发新弹（左右各一，`scale` 0↔1 显隐）
+  └ trigger_rear  (0, −0.608, −0.466)  1 方块 后扳机
 ```
+
+⚠️ **`hand_l` 与 `bolt_loaded` 必须在 `barrel` 下，不能挂 `body`**：左手握的是前托、
+待装弹进的是枪管上的弹膛，两者都随管组一起折。挂错的话枪管一折开，手就留在原地脱离前托、
+弹则停在机匣原来那格。`GunFrame.partChain` 是运行时沿 `getParent()` 走的，所以换父级**不用改 Java**。
 
 ## 4. 动画清单（8 条，`colt_1878.animation.json`）
 
@@ -65,13 +71,20 @@ move        (0, −0.608,  5.296)   0 方块 —— 整枪位移（后坐 / 抬�
 | `static_idle` | 2.0 s 循环 | move / body / barrel | 呼吸浮动 + 双管重量造成的枪口微垂 |
 | `draw` | 0.8 s | move / body | 从下方向上抬起入位（比 S686 的 1.0 s 快） |
 | `shoot` | 0.6 s | move / barrel / **hammer_l** | 后坐 + 击锤弹开再落回 |
-| `bolt` | 1.4 s | latch / barrel / shell_upper / **hammer_l** | 折开检查：拨杆 → 管折下 52° → 退壳 → 合膛（带回弹） |
-| `reload_tactical` | **3.0 s = 60 tick** | latch / barrel / shell_upper / hand_l / **hammer_l** / bolt_loaded | 有弹换弹 |
-| `reload_empty` | **3.6 s = 72 tick** | 同上 | 空仓换弹（多退一遍壳、手在弹袋里多摸一下） |
+| `bolt` | 1.4 s | latch / barrel / **shell_upper** / move / **hammer_l** | 折开检查：拨顶杆 → 管绕铰链折下 **62°** → extractor 顶壳 + 甩腕退壳 → 合膛（带回弹） |
+| `reload_tactical` | **3.0 s = 60 tick** | latch / barrel / **shell_upper** / move / hand_l / **hammer_l** / bolt_loaded | 有弹换弹 |
+| `reload_empty` | **3.6 s = 72 tick** | 同上 | 空仓换弹（两发壳都得退、壳胀了要抠一下、手在弹带里多摸一趟） |
 | `ADS_up` / `ADS_down` | 0.22 / 0.18 s | move / body | 抬镜 / 落镜（铁瞄） |
 
-换弹动作链（照真枪折开式顺序）：**拨开膛杆 → 管组折下 52° → 退壳 → 左手探腰间弹袋 →
-夹回两发 → 推入弹膛 → 合膛（带回弹）**。
+换弹动作链**照真枪**（原型是折开式 + **extractor 抽壳器**，不是 ejector 抛壳器）：
+**拇指横向拨顶杆 → 管组绕铰链向下折 62° → extractor 顶起两发空壳 → 甩腕抖掉壳 →
+右手取两发 → 两发同时塞进两弹膛 → 管组上抬合膛、顶杆自动回中**。
+依据与研究来源见本目录第 8 节。
+
+⚠️ **折开绕的是 X 轴（铰链那根横轴），不是 Z**。Z 是枪管长轴，绕它转只是**枪身滚转** ——
+枪仍水平伸着、仅换了个面，跟"折开"毫无关系。轴与符号由
+`node tools/colt_1878_hinge_probe.js` 量出来（X −62° 让枪口端世界 y 从 +0.28 掉到 −7.1），
+不要靠推理改。
 
 **外露双锤是本枪与 S686 最显眼的分野**，所以 `hammer_l` 是真动的：折开时被机构顶回待击位
 （`rotation.x = +26°`）、合膛后落回 0°、射击瞬间弹到 +30° 再落回 —— 与 S686 的 `hammer` 通道
@@ -110,6 +123,56 @@ move        (0, −0.608,  5.296)   0 方块 —— 整枪位移（后坐 / 抬�
   与其它六把枪同一条链；`renderType`、动画控制器名无需新注册。
 * ⚠️ **`ADS_X` / `ADS_Y` 目前沿用 S686 的量算值**（−0.4749 / 0.3533）。本枪肋条顶面比 S686 略低，
   实测跑过 `tools/pose_measure.py` 那条链后应按本枪几何重算。
-* `shell_upper` 是 0 方块的**空骨**（与 S686 骨骼名对齐留的），实际壳体走 `bolt_loaded`。
+* `shell_upper` 原本是 0 方块的**空骨**（当初为了和 S686 的骨骼名对齐留的），
+  退壳动画一直在驱动一个不存在的东西 —— 已补上两发空壳方块，见第 8 节。
 * 未做（本模组用 GeckoLib 自研渲染，TaCZ 那套 LOD / 32×32 背包贴图 / 枪包命名空间不适用）：
   LOD 低模、HUD 侧视图、LabPBR。
+
+## 8. 真枪依据：它是怎么换弹的（动画照这个做）
+
+原型 **Colt Model 1878**，这里按 Cimarron 复刻的 20″ 教练枪建模：
+<https://www.cimarron-firearms.com/1878-coach-gun-12-ga-20-barrel-standard-blue.html>
+
+**extractor ≠ ejector** —— 这一点决定了"退壳"该长什么样：
+
+- **extractor（本枪）**：开膛时只把弹壳**顶起几毫米**，壳还得用手指抠、或把枪口朝下**甩**出来。
+- **ejector**：开膛时自动把壳**弹飞**。
+
+参考：[Ejectors vs Extractors](https://forum.nosler.com/threads/ejectors-vs-extractors.45729/)、
+[Remington Premier OU 手册](https://www.remarms.com/sites/default/files/PremierOU.pdf)（那句
+"the ejectors automatically eject any fired rounds … when the action is opened" 说的是 ejector 枪）、
+[侧并排使用手册](http://www.mackspw.com/PDF/Side%20By%20Side%20User%20Manual.pdf)、
+[Stoeger CoachGun Drills](https://www.shotgunworld.com/threads/stoeger-coachgun-drills.335727/)、
+[Speed reload Coach Gun](https://www.glocktalk.com/threads/speed-reload-coach-gun.1353308/)、
+[SASS Cowboy Chronicle 2018-04](https://sassnet.com/uploads/downloads/cowboychronicle/2018/18aprchron.pdf)。
+
+七步：① 拇指把顶杆**横向拨**到射手右侧解锁 ② 左手压前托、右手抬托颈，管组绕铰链**向下**折开，
+枪口朝下、弹膛口朝上后方 ③ extractor 顶起两发空壳 ④ **甩腕**把壳抖出去 ⑤ 右手取两发
+⑥ **两发同时**塞进两个弹膛 ⑦ 管组上抬合膛、顶杆自动回中（"咔"）。
+
+### 这一轮修掉的四个硬伤（都是"一眼就不像"级别）
+
+1. **折开写成了绕 Z**（`[0,0,-52]`）。Z 是枪管长轴，绕它转是**枪身滚转** ——
+   枪仍水平伸着、只是换了个面。改成绕 **X**、折 62°。
+2. **`shell_upper` 是空骨** → 退壳在游戏里根本不可见。已补两发空壳方块
+   （黄铜底缘朝 +Z，也就是弹膛口那一侧）。
+3. **`hand_l` / `bolt_loaded` 挂在 `body` 下** → 枪管一折开，左手就脱离前托飘着、
+   待装弹停在一个不存在的膛位上。改挂 `barrel`（Java 侧不用动，见第 3 节）。
+4. **`colt_1878_build.js` 没下发 cube 级 rotation**（`place_cube` 的 `rotation` 写死成
+   `[0,0,0]`）→ geo 里给枪托算好的下垂角从没生效；且下垂角**符号反了**
+   （每段相对整体下降上翘 13.3°，8 段互相错开）→ 枪托是一串台阶。
+   改对之后 `sin(13.3°) × 0.5075 = 0.1167 ≈ DROP/SEGS = 0.12`，相邻段端点正好对接。
+
+### 复跑与验收
+
+```
+node tools/colt_1878_hinge_probe.js      # 折开轴/符号的几何量测（改动画前先跑一遍）
+node tools/colt_1878_build.js --reset    # 重建 geo + 贴图（87 方块）
+node tools/colt_1878_anim.js             # 重建 8 条动画
+node tools/colt_1878_install.js          # 规范化落位 + 门禁
+node tools/colt_1878_anim_shots.js       # 动画相位验收图
+```
+
+`anim/` 里就是这轮拍的验收图；其中 `reload_tactical_t0p67.png`（折开到底）和
+`reload_tactical_t1p04.png`（甩腕退壳、两发空壳已飞出）最能说明问题。
+改了 `tools/colt_1878_anim.js` 的时间表，记得同步改 `tools/colt_1878_anim_shots.js` 的 `PHASES`。
