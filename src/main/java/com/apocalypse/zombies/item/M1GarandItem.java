@@ -160,7 +160,7 @@ public class M1GarandItem extends Item implements GeoItem, GunItem {
      * the dominant term is the hand base itself, scaled by {@link #FIRST_PERSON_SCALE} (0.56 / 1.25 = 0.448).
      */
     private static final float ADS_X = -0.475F;
-    private static final float ADS_Y = 0.346F;
+    private static final float ADS_Y = 0.32F;
     /**
      * The item model's first-person {@code display} rotation (degrees), cancelled while aiming so the sight
      * line ends up parallel to the view axis — see {@link GunItem#adsPitch()}.
@@ -363,7 +363,7 @@ public class M1GarandItem extends Item implements GeoItem, GunItem {
 
     @Override
     public float adsZ() {
-        return 0.0F;
+        return 0.21F;
     }
 
     @Override

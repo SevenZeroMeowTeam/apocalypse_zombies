@@ -332,9 +332,13 @@ public class CrossbowItem extends Item implements GeoItem, GunItem {
         return ADS_Y;
     }
 
+    /**
+     * 瞄准时沿 +Z 往玩家身边靠多少（格）—— 相机看向 −Z，正值就是把枪往怀里收。
+     * 全枪族原来都是 0，实测瞄准后枪离眼太远。见 {@code S686Item#adsZ()} 的详注。
+     */
     @Override
     public float adsZ() {
-        return 0.0F;
+        return 0.18F;
     }
 
     @Override

@@ -36,6 +36,9 @@ public final class GunAimState {
     private static boolean sprinting;
     private static float sprintProgress;
 
+    /** 诊断节流（DIAG_AIM 打开时每 2 秒一行）。定位完可以连上面的日志一起删。 */
+    private static long lastDiag;
+
     private GunAimState() {
     }
 
@@ -114,6 +117,22 @@ public final class GunAimState {
                 && !com.apocalypse.zombies.client.weapon.AmmoWheel.isOpen();
 
         aiming = holding && minecraft.options.keyUse.isDown();
+
+        /* 诊断（DIAG_AIM 打开时，每 2 秒一行）：aiming 有三个前置条件，任一个为假就永远不瞄准。
+         * 只打"aim=0"看不出卡在哪一环，这里把三环逐个打出来。 */
+        if (com.apocalypse.zombies.client.ClientEvents.DIAG_AIM) {
+            long now = System.currentTimeMillis();
+            if (now - lastDiag > 2000L) {
+                lastDiag = now;
+                com.apocalypse.zombies.ApocalypseZombies.LOGGER.info(
+                        "[瞄准调试·输入] held={} screen={} wheelOpen={} keyUseDown={} → aiming={} progress={}",
+                        held != null ? held : "无",
+                        minecraft.screen == null ? "null(无界面)" : minecraft.screen.getClass().getSimpleName(),
+                        com.apocalypse.zombies.client.weapon.AmmoWheel.isOpen(),
+                        minecraft.options.keyUse.isDown(), aiming,
+                        String.format("%.2f", aimProgress));
+            }
+        }
 
         float step = 1.0F / (aimTime() * 20.0F);
         aimProgress = Mth.clamp(aiming ? aimProgress + step : aimProgress - step, 0.0F, 1.0F);

@@ -167,7 +167,7 @@ public class S686Item extends Item implements GeoItem, GunItem {
      * over a pair of barrels that straddle the model's own origin — see {@code models/item/s686.json}.</p>
      */
     private static final float ADS_X = -0.4749F;
-    private static final float ADS_Y = 0.3533F;
+    private static final float ADS_Y = 0.30F;
     /**
      * The item model's first-person {@code display} rotation (degrees), cancelled while aiming so the sight
      * line ends up parallel to the view axis — see {@link GunItem#adsPitch()}.
@@ -410,9 +410,17 @@ public class S686Item extends Item implements GeoItem, GunItem {
         return ADS_Y;
     }
 
+    /**
+     * 瞄准时沿 +Z 往玩家身边靠多少（格）。
+     *
+     * <p>相机看向 −Z，所以**正值就是把枪往玩家怀里收**。全枪族原来都是 {@code 0}，实测瞄准后枪离眼太远、
+     * 像是被推出去半臂。S686 比别的枪收得更多（0.25），因为它是双管霰弹枪：枪托又厚又靠后，
+     * 收到 0.25 时枪托正好退到近裁剪面之后（near ≈ 0.05），不再糊在视野里挡视线。
+     * 该值会被 {@link #FIRST_PERSON_SCALE} 放大，屏幕上实际移动约 {@code 值 × 1.25} 格。</p>
+     */
     @Override
     public float adsZ() {
-        return 0.0F;
+        return 0.06F;
     }
 
     @Override

@@ -303,7 +303,8 @@ public final class WeaponArms {
     private static long dbgTick = -1L;
 
     private static void dbg(Minecraft mc, String msg) {
-        if (DEBUG_ARMS) System.out.println("[ARMSDBG] " + msg);
+        // 走 LOGGER 而不是 System.out：println 的 stdout 被启动器吞掉，latest.log 里根本看不到。
+        if (DEBUG_ARMS) com.apocalypse.zombies.ApocalypseZombies.LOGGER.info("[ARMSDBG] {}", msg);
     }
 
     private static void dbgFull(Minecraft mc, GunFrame frame, int light, float[] rightPx, float[] leftPx,
@@ -315,7 +316,7 @@ public final class WeaponArms {
         dbgTick = t;
         float[] handL = frame.toCamera(leftPx[0], leftPx[1], leftPx[2], new float[3]);
         float[] origin = frame.toCamera(0.0F, 0.0F, 0.0F, new float[3]);
-        System.out.println("[ARMSDBG] t=" + t
+        com.apocalypse.zombies.ApocalypseZombies.LOGGER.info("[ARMSDBG] t=" + t
                 + " gun=" + (p == null ? "?" : p.getMainHandItem().getItem())
                 + " valid=" + frame.isValid()
                 + String.format(Locale.ROOT, " aim=%.2f fov=%d light=%d", frame.aim(), mc.options.fov().get(), light)

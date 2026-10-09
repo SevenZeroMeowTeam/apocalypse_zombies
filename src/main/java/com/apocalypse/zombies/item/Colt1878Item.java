@@ -70,8 +70,8 @@ public class Colt1878Item extends S686Item {
      * 实测走 {@code tools/pose_measure.py} 的同一条链。两把枪都是折开式双管、准线都压在管上方，
      * 数值同量级，所以先沿用；等实测跑过，这三个数（ADS_X / ADS_Y / adsZ）应按本枪几何重算。</p>
      */
-    private static final float ADS_X = -0.4749F;
-    private static final float ADS_Y = 0.3533F;
+    private static final float ADS_X = -0.465F;
+    private static final float ADS_Y = 0.27F;
     /**
      * 物品模型第一人称 {@code display} 的旋转（度），瞄准时由 {@code GunPose} 精确抵消 ——
      * 必须等于 {@code models/item/colt_1878.json} 里 {@code firstperson_righthand.rotation} 的前两项
@@ -197,6 +197,18 @@ public class Colt1878Item extends S686Item {
     @Override
     public float adsY() {
         return ADS_Y;
+    }
+
+    /**
+     * 瞄准时沿 +Z 往玩家身边靠多少（格）—— 相机看向 −Z，正值就是把枪往怀里收。
+     *
+     * <p><b>必须覆盖</b>：本枪是 {@code S686Item} 的子类，不覆盖就会连 S686 的 0.25 一起继承。
+     * S686 收 0.25 是为了让厚枪托退到近裁剪面之后（它挡视野），教练枪没有那个问题，
+     * 用全枪族统一的 0.15 就够。见 {@code S686Item#adsZ()} 的详注。</p>
+     */
+    @Override
+    public float adsZ() {
+        return 0.18F;
     }
 
     @Override

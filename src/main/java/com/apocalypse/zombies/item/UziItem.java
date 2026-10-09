@@ -354,7 +354,7 @@ public class UziItem extends Item implements GeoItem, GunItem {
 
     @Override
     public float adsZ() {
-        return 0.0F;
+        return 0.18F;
     }
 
     @Override

@@ -141,7 +141,7 @@ public class MosinNagantItem extends Item implements GeoItem, GunItem {
      * rotation that has to be cancelled <em>first</em> — left standing, no pair of offsets can align it.
      */
     private static final float ADS_X = -0.475F;
-    private static final float ADS_Y = 0.346F;
+    private static final float ADS_Y = 0.37F;
     /**
      * The item model's first-person {@code display} rotation (degrees), cancelled while aiming so the sight
      * line ends up parallel to the view axis — see {@link GunItem#adsPitch()}.
@@ -317,7 +317,7 @@ public class MosinNagantItem extends Item implements GeoItem, GunItem {
 
     @Override
     public float adsZ() {
-        return 0.0F;
+        return 0.18F;
     }
 
     @Override
