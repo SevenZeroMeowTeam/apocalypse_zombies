@@ -247,12 +247,10 @@ for (const dx of [-BORE_GAP, BORE_GAP]) {
 const bones = [
   { name: 'root', pivot: [0, RECV_Y0, STOCK_Z1 - 0.4] },
   { name: 'move', parent: 'root', pivot: [0, RECV_Y0, STOCK_Z1 - 0.4] },
-  /* body 的 pivot 放在**铰链**上，而不是机匣中心。
-   * 这样"折开"可以做成：机匣+枪托绕铰链向上翻、barrel 反向转同样的角度 ——
-   * 两个骨绕**同一个点**转，反向角度正好抵消，于是**枪管在世界坐标里纹丝不动**
-   * （用户要的第一人称观感：枪管稳在画面里，机匣和托向上翻开）。
-   * 若 body 的 pivot 留在机匣中心，就没法用 position 精确补偿成"绕铰链"。 */
-  { name: 'body', parent: 'move', pivot: HINGE },
+  /* body 的 pivot 在**机匣中心**（原点）。折开完全由 barrel 绕铰链下折完成，body 不参与。
+   * （曾经为了做"机匣上翻、枪管不动"把这里改成过铰链 —— 那一版枪托会翻到斜上方像折叠托，
+   * 已经回退。别再改回去，除非真的要那种动作。） */
+  { name: 'body', parent: 'move', pivot: [0, 0, 0] },
   { name: 'barrel', parent: 'body', pivot: HINGE },
   { name: 'forend', parent: 'barrel', pivot: [0, TUBE_Y - 0.3, FORE_Z0] },
   { name: 'shell_upper', parent: 'barrel', pivot: [0, TUBE_Y, TUBE_Z1] },

@@ -62,16 +62,22 @@ const { Bb } = require('./bbmcp_lib.js');
 const HIDDEN = [0, 0, 0];
 const SHOWN = [1, 1, 1];
 
-/* 折开角（度）—— 绕 **X 轴**，负值 = 枪口向下折。
+/* 折开角（度）—— **枪管组绕铰链向下折**多少。body 不动，机匣与枪托保持原姿态。
  *
- * ⚠️ 这里原本是 v1 最大的一个错：写的 rotation [0, 0, -52]，也就是绕 **Z**。
- * 而 Z 是枪管长轴，绕它转是**枪身滚转**，跟"折开"毫无关系。
- * 方向不要靠推理，用 tools/colt_1878_hinge_probe.js 量（读枪管 cube 的世界矩阵平移）：
- *     X −62°  → 枪口端 y 从 +0.276 掉到 −7.105   ← 真的是朝下折
+ * 轴是 **X**（铰链那根横轴），不是 Z —— 绕 Z 只是枪身滚转，枪还水平伸着、只换了个面。
+ * 符号用 tools/colt_1878_hinge_probe.js 量（读枪管 cube 的世界矩阵平移）：
+ *     X −62°  → 枪口端 y 从 +0.276 掉到 −7.105   ← 真的朝下折
  *     X +62°  → y 涨到 +6.825                    ← 朝上翘
  *     Z −52°  → y 几乎不动、x 从 −0.306 跑到 +0.429  ← 只是滚转
- * 真枪要 50° 以上才露得出弹膛给手指让位，62° 是折开式霰弹枪常见的停位。 */
+ * 62° 是折开式霰弹枪折到底的常见停位，真枪要 50° 以上才露得出弹膛给手指让位。
+ *
+ * ⚠️ 别改成"机匣上翻、枪管不动"（试过一版，已回退）：那样枪托会绕铰链翻到斜上方，
+ * 整把枪看着像一支折叠托武器 —— 用户明确指出"枪托折叠"是问题。 */
 const OPEN = 62;
+
+/* 换弹全程整枪往上抬、往回收多少（用户要的"整体向上微抬"）。
+ * 0.25 u ≈ 16 mm —— 在画面里看得出来，但不至于把枪推出视野。 */
+const LIFT = 0.25;
 
 /* 甩腕（退壳）时整枪向下一顿的幅度。extractor 只能把壳顶起几毫米，
  * 壳是**靠这一下甩出去**的 —— 真枪退壳从来不是"自动抛出"。 */
@@ -100,43 +106,35 @@ function reloadBones(t) {
       { time: t.unlock, position: [-0.13, 0, 0] },
       { time: t.leverBack, position: [0, 0, 0] },
     ],
-    /* 折开 —— **机匣+枪托绕铰链向上翻，枪管在世界坐标里纹丝不动**。
+    /* 折开 = **枪管组绕铰链向下折**（真枪的样子）—— body 一动不动，机匣与枪托保持原姿态。
      *
-     * 做法：body 转 −OPEN、barrel 转 +OPEN。两者绕的是**同一个 pivot**（铰链，见
-     * tools/colt_1878_geo.js 里 body 的 pivot），反向角恰好抵消 ⇒ 枪管链
-     * （barrel / forend / shell_upper / hand_l / bolt_loaded）在世界上完全不动。
-     * 符号由 tools/colt_1878_fold_probe.js 量过：body −62 / barrel +62 那一行，
-     * 枪管 cube 的世界坐标与 rest **逐位相同**（[-0.306, 0.276, -9.044]）。
+     * 轴是 **X**（铰链那根左右横轴），符号用 tools/colt_1878_hinge_probe.js 量过：
+     * X −62° 让枪口端的世界 y 从 +0.276 掉到 −7.105（真的朝下折）。绕 Z 只是枪身滚转。
+     * 角度 OPEN = 62°：真枪要 50° 以上才露得出弹膛给手指让位。
      *
-     * 为什么不是"枪管向下折"（真枪的样子）：第一人称里枪管一垂就甩出画面中心，
-     * 观感像枪塌了。用户要的是枪管稳在画面里、机匣和托往上翻开 —— 相对角一样是 62°，
-     * 弹膛照样露出来，但视线的落点不跑。 */
-    body: [
+     * ⚠️ 别再改回"机匣向上翻、枪管不动"那一版 —— 那版枪托会绕铰链翻到斜上方，
+     * 整把枪看着像一支折叠托武器，用户明确指出"枪托折叠"是问题。
+     * 换弹的观感就该是枪管垂下去。 */
+    barrel: [
       { time: t.openStart, rotation: [0, 0, 0] },
       { time: t.openMid, rotation: [-OPEN * 0.45, 0, 0] },
       { time: t.openFull, rotation: [-OPEN, 0, 0] },
       { time: t.closeStart, rotation: [-OPEN, 0, 0] },
-      { time: t.closeBump, rotation: [7, 0, 0] },
+      { time: t.closeBump, rotation: [5, 0, 0] },
       { time: t.closeSettle, rotation: [0, 0, 0] },
       { time: t.end, rotation: [0, 0, 0] },
     ],
-    barrel: [
-      { time: t.openStart, rotation: [0, 0, 0] },
-      { time: t.openMid, rotation: [OPEN * 0.45, 0, 0] },
-      { time: t.openFull, rotation: [OPEN, 0, 0] },
-      { time: t.closeStart, rotation: [OPEN, 0, 0] },
-      { time: t.closeBump, rotation: [-7, 0, 0] },
-      { time: t.closeSettle, rotation: [0, 0, 0] },
-      { time: t.end, rotation: [0, 0, 0] },
-    ],
-    /* 甩腕 + 合膛冲击：都是整枪的小幅位移 */
+    /* 折开的同时把整枪**微微抬起并收回来**（用户说的"整体向上微抬"）——
+       枪管垂下去换弹时，手感上会把枪往回收一点。幅度刻意小，别把枪推出视野；
+       甩腕那一下仍然是向下一顿。 */
     move: [
-      { time: t.openFull, position: [0, 0, 0] },
-      { time: t.flick, position: [0, FLICK, 0.05] },
-      { time: t.shellOut, position: [0, 0.03, -0.01] },
-      { time: t.ammoUp, position: [0, 0, 0] },
-      { time: t.closeStart, position: [0, 0, 0] },
-      { time: t.closeBump, position: [0, FLICK * 0.4, 0.04] },
+      { time: t.openStart, position: [0, 0, 0] },
+      { time: t.openFull, position: [0, LIFT, 0.05] },
+      { time: t.flick, position: [0, LIFT + FLICK, 0.10] },
+      { time: t.shellOut, position: [0, LIFT + 0.03, 0.04] },
+      { time: t.ammoUp, position: [0, LIFT, 0.05] },
+      { time: t.closeStart, position: [0, LIFT, 0.05] },
+      { time: t.closeBump, position: [0, LIFT * 0.3, 0.02] },
       { time: t.closeSettle, position: [0, 0, 0] },
       { time: t.end, position: [0, 0, 0] },
     ],
@@ -245,21 +243,18 @@ const ANIMS = [
         { time: 0.00, position: [0, 0, 0] }, { time: 0.12, position: [-0.13, 0, 0] },
         { time: 0.30, position: [-0.13, 0, 0] }, { time: 0.44, position: [0, 0, 0] },
       ],
-      /* 折开：机匣+枪托上翻、barrel 反向补偿 —— 与 reloadBones 同一套（见那里的注） */
-      body: [
-        { time: 0.28, rotation: [0, 0, 0] }, { time: 0.70, rotation: [-OPEN, 0, 0] },
-        { time: 1.06, rotation: [-OPEN, 0, 0] }, { time: 1.26, rotation: [7, 0, 0] },
-        { time: 1.38, rotation: [0, 0, 0] },
-      ],
+      /* 折开：枪管组绕铰链**向下折**，body 不动 —— 与 reloadBones 同一套（见那里的注） */
       barrel: [
-        { time: 0.28, rotation: [0, 0, 0] }, { time: 0.70, rotation: [OPEN, 0, 0] },
-        { time: 1.06, rotation: [OPEN, 0, 0] }, { time: 1.26, rotation: [-7, 0, 0] },
+        { time: 0.28, rotation: [0, 0, 0] }, { time: 0.70, rotation: [-OPEN, 0, 0] },
+        { time: 1.06, rotation: [-OPEN, 0, 0] }, { time: 1.26, rotation: [5, 0, 0] },
         { time: 1.38, rotation: [0, 0, 0] },
       ],
+      /* 折开时整枪微微抬起收回；甩腕那一下仍向下一顿 */
       move: [
-        { time: 0.70, position: [0, 0, 0] }, { time: 0.88, position: [0, FLICK, 0.05] },
-        { time: 1.00, position: [0, 0.03, -0.01] }, { time: 1.14, position: [0, 0, 0] },
-        { time: 1.26, position: [0, FLICK * 0.4, 0.04] }, { time: 1.38, position: [0, 0, 0] },
+        { time: 0.28, position: [0, 0, 0] }, { time: 0.70, position: [0, LIFT, 0.05] },
+        { time: 0.88, position: [0, LIFT + FLICK, 0.10] }, { time: 1.00, position: [0, LIFT + 0.03, 0.04] },
+        { time: 1.20, position: [0, LIFT, 0.05] }, { time: 1.28, position: [0, LIFT * 0.3, 0.02] },
+        { time: 1.38, position: [0, 0, 0] },
       ],
       shell_upper: [
         { time: 0.28, position: [0, 0, 0], rotation: [0, 0, 0], scale: SHOWN },
