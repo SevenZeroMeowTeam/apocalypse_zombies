@@ -1,6 +1,7 @@
 package com.apocalypse.zombies.entity;
 
 import com.apocalypse.zombies.entity.ai.AllySafeHurtByTargetGoal;
+import com.apocalypse.zombies.entity.ai.SightFiring;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -82,7 +83,7 @@ import java.util.EnumSet;
  * <p>动画剪辑名与 {@code assets/apocalypse_zombies/animations/soldier_zombie.animation.json}
  * 双向对应：改名字必须两边一起改，否则渲染时静默退回 rest 姿态。</p>
  */
-public class SoldierZombie extends Zombie implements GeoEntity, RangedAttackMob {
+public class SoldierZombie extends Zombie implements GeoEntity, RangedAttackMob, SightFiring {
 
     // ------------------------------------------------------------ 动画剪辑名（与动画 JSON 一一对应）
     public static final String ANIM_IDLE = "idle";
@@ -108,6 +109,22 @@ public class SoldierZombie extends Zombie implements GeoEntity, RangedAttackMob 
     /** 投掷射程带：近了砸自己、远了白扔。 */
     public static final double THROW_MIN_RANGE = 4.0D;
     public static final double THROW_MAX_RANGE = 14.0D;
+
+    /**
+     * 弓的射程（格）—— {@code RangedBowAttackGoal} 的 {@code attackRadiusSqr} 入参。
+     *
+     * <p>写成常量而不是把 {@code 15.0F} 散在调用处：{@link #sightFiringRange()} 必须与它
+     * <b>同源</b>，两处各写一个字面量迟早会漂开（那是「看得见却报不出射程、又退回走不到就不打」的老病）。</p>
+     */
+    private static final double BOW_RANGE = 15.0D;
+
+    /**
+     * 弓手贴到这个距离以内就把 MOVE/LOOK 交给近战出口（格）。
+     *
+     * <p>弓 Goal 的「站定 + strafe」区间下限是 {@code sqrt(0.25) * 15 ≈ 7.5} 格，那时 MOVE 归它，
+     * 近战出口根本抢不到旗子；贴脸的目标它又只能原地乱射。所以在这个距离上主动交旗。</p>
+     */
+    private static final double BOW_MELEE_HANDOFF = 3.5D;
     /** MC 里抛体的有效重力（0.04 是标称值，加一点补偿空气阻力）。 */
     private static final double THROW_GRAVITY = 0.05D;
 
@@ -146,10 +163,32 @@ public class SoldierZombie extends Zombie implements GeoEntity, RangedAttackMob 
         // 两个远程 Goal 各自只对一种兵生效 —— 原来它们不判变种，于是弓手也在丢 TNT、
         // 爆破兵也在射箭，和设计里的两种兵完全对不上。
         this.goalSelector.addGoal(1, new ThrowTntGoal());
-        this.goalSelector.addGoal(2, new RangedBowAttackGoal<SoldierZombie>(this, 1.0D, 20, 15.0F) {
+        // 弓手也必须是 1 号位，理由和投掷同源，但更隐蔽：{@code Zombie.registerGoals()} 已经在
+        // 2 号位挂了一个原版近战 {@code ZombieAttackGoal}，而 GoalSelector 里「同优先级不能抢占」
+        // （WrappedGoal.canBeReplacedBy 要求 challenger 的号更小），所以弓 Goal 挂 2 就等于
+        // 和原版近战抢 MOVE/LOOK：近战的 navigation 一空就把旗子让出去、弓一开火近战又抢回来。
+        // 实测就是这样：弓手在 7.5~13 格之间以恒定速度来回踱步（弓 Goal 的 strafe 阈值
+        // 0.25/0.75 × 15² 正好是 7.5 / 13），16 秒只放 7 箭、靶子掉 0 血 —— 「走路不对 + 不打人」。
+        // 放到 1 号位后弓 Goal 能压住原版近战，离开 3.5 格才交旗给近战出口。
+        this.goalSelector.addGoal(1, new RangedBowAttackGoal<SoldierZombie>(this, 1.0D, 20, (float) BOW_RANGE) {
             @Override
             public boolean canUse() {
-                return SoldierZombie.this.getVariant() == VARIANT_ARCHER && super.canUse();
+                LivingEntity target = SoldierZombie.this.getTarget();
+                return SoldierZombie.this.getVariant() == VARIANT_ARCHER
+                        && target != null
+                        && SoldierZombie.this.distanceToSqr(target) > BOW_MELEE_HANDOFF * BOW_MELEE_HANDOFF
+                        && super.canUse();
+            }
+
+            // 必须一起写：原版 canContinueToUse 是 (canUse() || !navigation.isDone()) && 手持弓，
+            // 只看「目标还在」就返回 true —— 贴脸之后 MOVE 会被它钉死，近战出口永远等不到旗子。
+            @Override
+            public boolean canContinueToUse() {
+                LivingEntity target = SoldierZombie.this.getTarget();
+                return SoldierZombie.this.getVariant() == VARIANT_ARCHER
+                        && target != null
+                        && SoldierZombie.this.distanceToSqr(target) > BOW_MELEE_HANDOFF * BOW_MELEE_HANDOFF
+                        && super.canContinueToUse();
             }
         });
         this.goalSelector.addGoal(3, new MeleeAttackGoal(this, 1.0D, false));
@@ -158,6 +197,23 @@ public class SoldierZombie extends Zombie implements GeoEntity, RangedAttackMob 
         this.goalSelector.addGoal(8, new RandomLookAroundGoal(this));
         this.targetSelector.addGoal(1, new AllySafeHurtByTargetGoal(this));
         this.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(this, Player.class, true));
+    }
+
+    /**
+     * 「看得见就能打」的射程上限（格）—— 见 {@link SightFiring}。
+     *
+     * <p>残兵是远程兵种（弓 / TNT），但这一条一直只有 {@code MarksmanSkeleton} 实现了，
+     * 于是 {@link com.apocalypse.zombies.entity.ai.PreyJudge} 对残兵退回默认判据「走得到」：
+     * 玩家躲到塔顶、船上、柱顶、栏杆后面这类<b>看得见却走不到</b>的地方，残兵就锁不上、
+     * 站着发呆 —— 玩家那边看到的就是「怪物不会攻击」（死过一次躲起来之后尤其明显）。</p>
+     *
+     * <p>取最远那件武器，即弓的 {@link #BOW_RANGE}（15 格 &gt; TNT 的 {@link #THROW_MAX_RANGE} 14）。
+     * 报小了会对着够得着的目标发呆，报大了会锁上一个真打不到的目标 —— 两件武器的射程入参都从
+     * 常量来，改武器射程时这一条自动跟随。</p>
+     */
+    @Override
+    public double sightFiringRange() {
+        return Math.max(BOW_RANGE, THROW_MAX_RANGE);
     }
 
     /** 参考图里这三位大白天站在院子里 ⇒ 不烧。 */
