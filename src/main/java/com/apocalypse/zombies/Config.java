@@ -258,6 +258,12 @@ public final class Config {
     public static final ForgeConfigSpec.BooleanValue CAT_GIRL_BRIDGE;
     /** 她的跟随速度（原版跟班 1.15；主人冲刺时会被甩掉）。 */
     public static final ForgeConfigSpec.DoubleValue CAT_GIRL_FOLLOW_SPEED;
+    /** 自主模式：她自己按需求挑活干（玩家手动切过工种就关掉）。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_AUTO_JOB;
+    /** 用容器：把多余成品放进主人给她绑定的储物点，缺矿时从那里取。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_CHEST;
+    /** 护卫：主人挨打时贴过去站位。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_ESCORT;
     /** 破坏一根原木的基础耗时（tick），拿着斧头打折。 */
     public static final ForgeConfigSpec.IntValue CAT_GIRL_CHOP_TICKS;
     /** 破坏一块矿石的基础耗时（tick），拿着镐打折。 */
@@ -644,6 +650,14 @@ public final class Config {
                 .define("bridge", true);
         CAT_GIRL_FOLLOW_SPEED = b.comment("她的跟随速度（原版跟班是 1.15，主人冲刺时会被甩掉）。注册期读一次，改完要重进世界。")
                 .defineInRange("follow_speed", 1.3D, 0.5D, 2.0D);
+        CAT_GIRL_AUTO_JOB = b.comment("自主模式：她自己按需求挑活干（缺木→伐木、缺矿→挖矿、有敌人在主人身边→打）。",
+                        "你一旦手动给她切过工种，自动模式对这个个体就关掉了；/apocalypse catgirl auto 可以再打开。")
+                .define("auto_job", true);
+        CAT_GIRL_CHEST = b.comment("用容器：把多余成品（工具/武器/盔甲，每种留一件）放进你给她绑定的储物点，",
+                        "背包里缺矿石时再从那里取一组。储物点用 /apocalypse catgirl chest 绑定；没绑她一个箱子都不碰。")
+                .define("chest", true);
+        CAT_GIRL_ESCORT = b.comment("护卫：主人被攻击时她会贴到主人与攻击者之间站住（打谁仍由目标选择器决定）。")
+                .define("escort", true);
         CAT_GIRL_CHOP_TICKS = b.comment("破坏一根原木的基础耗时（tick，20 = 1 秒）。")
                 .defineInRange("chop_ticks", 40, 4, 400);
         CAT_GIRL_MINE_TICKS = b.comment("破坏一块矿石的基础耗时（tick）。")

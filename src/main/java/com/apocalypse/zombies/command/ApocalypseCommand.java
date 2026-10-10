@@ -128,7 +128,13 @@ public final class ApocalypseCommand {
                         .executes(context -> recipeReport(context.getSource(), null))
                         .then(Commands.argument("namespace", StringArgumentType.string())
                                 .executes(context -> recipeReport(context.getSource(),
-                                        StringArgumentType.getString(context, "namespace"))))));
+                                        StringArgumentType.getString(context, "namespace")))))
+                .then(Commands.literal("auto")
+                        .executes(context -> catgirlAuto(context.getSource())))
+                .then(Commands.literal("chest")
+                        .executes(context -> catgirlChest(context.getSource(), false))
+                        .then(Commands.literal("clear")
+                                .executes(context -> catgirlChest(context.getSource(), true)))));
 
         dispatcher.register(root);
     }
@@ -242,6 +248,85 @@ public final class ApocalypseCommand {
             default -> source.sendFailure(Component.literal("她不会做 " + name + "（没有对应配方）。"));
         }
         return result.status == CatGirlCrafting.Status.OK ? result.made : 0;
+    }
+
+    /**
+     * {@code /apocalypse catgirl auto} —— 开关她的自主模式。
+     *
+     * <p>开着时她自己按需求挑活干（缺木→伐木、缺矿→挖矿、有敌人在主人身边→打）；
+     * 你一旦手动给她切过工种（给工具 / 空手右键）这个个体就自动关了，用这条再打开。</p>
+     */
+    private static int catgirlAuto(CommandSourceStack source) {
+        CatGirlEntity girl = nearestOwned(source);
+        if (girl == null) {
+            return 0;
+        }
+        boolean next = !girl.isAutoJob();
+        girl.setAutoJob(next);
+        if (next) {
+            source.sendSuccess(() -> Component.literal(
+                    "自动模式：开 —— 她自己按需求挑活干（缺木伐木 / 缺矿挖矿 / 有敌人在你身边就上）。"), false);
+        } else {
+            source.sendSuccess(() -> Component.literal(
+                    "自动模式：关 —— 她只干你指定的活（给工具或空手右键切工种；命令切不会关自动模式）。"), false);
+        }
+        return 1;
+    }
+
+    /**
+     * {@code /apocalypse catgirl chest [clear]} —— 绑定 / 解绑她的储物点。
+     *
+     * <p>她的「储物点」只能这么绑（原版分不出哪个箱子是玩家的）：绑定后她会把多余的成品
+     * 收进去、背包里缺矿石时从那里取一组；<b>没绑她一个容器都不碰</b>。</p>
+     */
+    private static int catgirlChest(CommandSourceStack source, boolean clear) {
+        CatGirlEntity girl = nearestOwned(source);
+        if (girl == null) {
+            return 0;
+        }
+        if (clear) {
+            girl.setStorage(null);
+            source.sendSuccess(() -> Component.literal("储物点已解绑 —— 她不会再碰任何容器。"), false);
+            return 1;
+        }
+        net.minecraft.core.BlockPos found = null;
+        for (net.minecraft.core.BlockPos pos : net.minecraft.core.BlockPos.betweenClosed(
+                girl.blockPosition().offset(-6, -2, -6), girl.blockPosition().offset(6, 2, 6))) {
+            if (girl.level().getBlockEntity(pos) instanceof net.minecraft.world.Container) {
+                found = pos.immutable();
+                break;
+            }
+        }
+        if (found == null) {
+            source.sendFailure(Component.literal(
+                    "她附近 6 格内没有容器（箱子 / 木桶 / 潜影盒……）—— 先把她带到箱子旁边。"));
+            return 0;
+        }
+        girl.setStorage(found);
+        String at = found.getX() + ", " + found.getY() + ", " + found.getZ();
+        source.sendSuccess(() -> Component.literal("储物点已绑定到 " + at
+                + " —— 她会把多余成品收进去，缺矿石时从那里取；换绑定就再跑一次。"), false);
+        return 1;
+    }
+
+    /** 16 格内最近的、属于命令发起者的猫耳娘；没有就发失败消息并返回 null。 */
+    private static CatGirlEntity nearestOwned(CommandSourceStack source) {
+        ServerPlayer player;
+        try {
+            player = source.getPlayerOrException();
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("这个命令要玩家来跑（得认得出哪只是你的）。"));
+            return null;
+        }
+        CatGirlEntity girl = player.level().getEntitiesOfClass(CatGirlEntity.class,
+                        player.getBoundingBox().inflate(16.0D), cat -> cat.isOwnedBy(player))
+                .stream()
+                .min(java.util.Comparator.comparingDouble(cat -> cat.distanceToSqr(player)))
+                .orElse(null);
+        if (girl == null) {
+            source.sendFailure(Component.literal("16 格内没有你的猫耳娘。"));
+        }
+        return girl;
     }
 
     private static int recipeReport(CommandSourceStack source, String namespace) {

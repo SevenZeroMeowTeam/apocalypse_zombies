@@ -31,6 +31,9 @@ import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import com.apocalypse.zombies.entity.ai.CatGirlBowGoal;
 import com.apocalypse.zombies.entity.ai.CatGirlBridgeGoal;
+import com.apocalypse.zombies.entity.ai.CatGirlContainerGoal;
+import com.apocalypse.zombies.entity.ai.CatGirlEscortGoal;
+import com.apocalypse.zombies.entity.ai.CatGirlNeedGoal;
 import com.apocalypse.zombies.entity.ai.CatGirlClearWayGoal;
 import com.apocalypse.zombies.entity.ai.CatGirlNavigation;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
@@ -152,6 +155,12 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
                 .add(Attributes.FOLLOW_RANGE, 32.0D);
     }
 
+    /** 自主模式：她按背包与周围环境自己挑活干（CatGirlNeedGoal）。玩家手动切过就关。 */
+    private boolean autoJob = true;
+
+    /** 她的储物点（主人绑定的容器）；null = 没绑，她一个容器都不碰。 */
+    private BlockPos storage;
+
     // ------------------------------------------------------------ 任务模式
 
     /** 玩家下达的任务。空手右键循环切换。 */
@@ -179,6 +188,36 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
 
     public void setJob(Job job) {
         this.entityData.set(DATA_JOB, job.ordinal());
+    }
+
+    // ------------------------------------------------------------ 自主 / 储物点
+
+    /** 自主模式开着时，CatGirlNeedGoal 会按需求替她挑工种。 */
+    public boolean isAutoJob() {
+        return this.autoJob;
+    }
+
+    public void setAutoJob(boolean auto) {
+        this.autoJob = auto;
+    }
+
+    /**
+     * 玩家自己切工种（给工具 / 空手右键 / 命令）：自动决策立刻让位。
+     *
+     * <p>不这么做的话，你刚让它去砍树，两秒后它自己又跑去挖矿了。</p>
+     */
+    public void applyPlayerJob(Job job) {
+        this.autoJob = false;
+        this.setJob(job);
+    }
+
+    /** 她的储物点（/apocalypse catgirl chest 绑定）；没绑返回 null。 */
+    public BlockPos getStorage() {
+        return this.storage;
+    }
+
+    public void setStorage(BlockPos pos) {
+        this.storage = pos == null ? null : pos.immutable();
     }
 
     // ------------------------------------------------------------ action 通道
@@ -219,6 +258,8 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
     @Override
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
+        // 只做决策、不占执行权：按需求给她挑工种（可以关，关了就只听玩家的）
+        this.goalSelector.addGoal(0, new CatGirlNeedGoal(this));
         // 走路优先级放在劳作之上：主人走出去十格，她会先跟上再继续干活
         // 速度走 Config.CAT_GIRL_FOLLOW_SPEED（默认 1.3）：原版跟班的 1.15 在主人冲刺时会被稳稳甩掉。
         // 注册期读一次，所以改完这个值要重进世界。
@@ -228,11 +269,15 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
         // 贴脸（<=3 格）弓的 canUse 不成立，自动轮到下面的近战 —— 不需要另设优先级数字。
         this.goalSelector.addGoal(2, new CatGirlBowGoal(this));
         this.goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.2D, true));
+        // 护卫排在近战之后：手里有仇人先打，站位的活等它打完再说
+        this.goalSelector.addGoal(2, new CatGirlEscortGoal(this));
         // 开路 / 搭桥：只在「正在导航且卡住」时接管，所以排在战斗之后、劳作之前。
         this.goalSelector.addGoal(3, new CatGirlClearWayGoal(this));
         this.goalSelector.addGoal(3, new CatGirlBridgeGoal(this));
         this.goalSelector.addGoal(4, new WorkBlockGoal(this, Job.LUMBER, CatGirlEntity::isLog, ACTION_CHOP));
         this.goalSelector.addGoal(5, new WorkBlockGoal(this, Job.MINE, CatGirlEntity::isOre, ACTION_MINE));
+        // 用容器排在劳作之后：先干活，多余的成品才收进箱子
+        this.goalSelector.addGoal(6, new CatGirlContainerGoal(this));
         this.goalSelector.addGoal(6, new WaterAvoidingRandomStrollGoal(this, 1.0D));
         this.goalSelector.addGoal(7, new LookAtPlayerGoal(this, Player.class, 8.0F));
         this.goalSelector.addGoal(8, new RandomLookAroundGoal(this));
@@ -284,6 +329,10 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
         super.addAdditionalSaveData(tag);
         tag.putInt("CatGirlJob", this.getJob().ordinal());
         tag.put("CatGirlGoods", this.goods.createTag());
+        tag.putBoolean("CatGirlAutoJob", this.autoJob);
+        if (this.storage != null) {
+            tag.putLong("CatGirlChest", this.storage.asLong());
+        }
     }
 
     @Override
@@ -297,6 +346,10 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
         if (tag.contains("CatGirlGoods")) {
             this.goods.fromTag(tag.getList("CatGirlGoods", 10));
         }
+        // 老存档没有这两个键：默认「自动 + 没绑储物点」，正好是安全的那一侧
+        this.autoJob = !tag.contains("CatGirlAutoJob") || tag.getBoolean("CatGirlAutoJob");
+        this.storage = tag.contains("CatGirlChest")
+                ? BlockPos.of(tag.getLong("CatGirlChest")) : null;
     }
 
     // ------------------------------------------------------------ tick
@@ -748,7 +801,7 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
 
             Job toolJob = jobForTool(this.getMainHandItem());
             if (toolJob != null && toolJob != this.getJob()) {
-                this.setJob(toolJob);
+                this.applyPlayerJob(toolJob);
                 player.displayClientMessage(Component.translatable("cat_girl.job.from_tool",
                         this.getDisplayName(),
                         this.getMainHandItem().getHoverName(),
@@ -766,7 +819,7 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
         if (stack.isEmpty()) {
             // 空手右键：循环切换任务模式
             Job next = this.getJob().next();
-            this.setJob(next);
+            this.applyPlayerJob(next);
             player.displayClientMessage(Component.translatable("cat_girl.job.switched",
                     this.getDisplayName(),
                     Component.translatable(next.langKey())), true);
