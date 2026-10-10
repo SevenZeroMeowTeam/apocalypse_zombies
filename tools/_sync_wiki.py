@@ -45,7 +45,7 @@ for name in ("_Sidebar.md", "_Footer.md"):
         print("  !! Wiki 缺 %s" % name)
 
 subprocess.run(["git", "-C", str(DST), "add", "-A"], check=True)
-msg = "同步仓库 docs/wiki：补 1.1.76（崩溃修复 + 本地 AI 助理：台账两行 + 新类与脚本 + Config ai.* + 新命令），清过期版本号（1.1.75 → 1.1.76）"
+msg = "同步仓库 docs/wiki：补 1.1.77（她自己做材料：台账两行 + 补料记账三处 + 成品装备不进炉 + 实机探针），清过期版本号（1.1.76 → 1.1.77）"
 subprocess.run(["git", "-C", str(DST), "commit", "-q", "-m", msg], check=True)
 subprocess.run(["git", "-C", str(DST), "push", "-q", "origin", "HEAD:master"], check=True)
 head = subprocess.run(["git", "-C", str(DST), "rev-parse", "--short", "HEAD"],
