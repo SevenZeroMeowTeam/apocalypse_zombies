@@ -243,6 +243,9 @@ public final class Config {
     /** 追加保护名单（与 cat_girl.mine_protected 合并生效）。 */
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> PLAYER_MINE_PROTECTED;
 
+    /** 瞄准会连带的方块时，在客户端把它们描边画出来（纯本地观感，不影响判定）。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_MINE_HIGHLIGHT;
+
     // ---- 持枪怪的贴身行为 + 死亡标记 ----
     /**
      * 枪手与目标贴到这么近时，把移动通道交还出去，由原版近战接手。
@@ -728,6 +731,9 @@ public final class Config {
                         "挖矿那份 cat_girl.mine_protected 同样生效，两份合并。")
                 .defineList("protected", List.of(),
                         o -> o instanceof String);
+        PLAYER_MINE_HIGHLIGHT = b.comment("瞄准会连带的方块时，把它们描边画出来（只会画真的会砸的那些）。",
+                        "纯客户端观感，改它不影响服务端判定；联机时以你自己这份配置为准。")
+                .define("highlight", true);
         b.pop();
 
         b.comment("Gun-armed mobs up close, and the mark they leave on you.")

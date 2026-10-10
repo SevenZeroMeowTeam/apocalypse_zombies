@@ -15,6 +15,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -71,27 +72,19 @@ public final class PlayerVeinMine {
             return;
         }
         BlockPos originPos = event.getPos();
-        BlockState origin = event.getState();
-        Set<Block> extra = protectedExtra();
-        if (!isTarget(level, originPos, origin, extra)) {
-            return;
-        }
         ItemStack tool = player.getMainHandItem();
-        if (Config.PLAYER_MINE_REQUIRE_TOOL.get() && !tool.isCorrectToolForDrops(origin)) {
-            return;
+        List<BlockPos> found = preview(level, originPos, tool);
+        if (found.size() <= 1) {
+            return;   // 就那一格 —— 原版自己会处理，别插手
         }
 
-        int max = clampMax(Config.PLAYER_MINE_MAX_BLOCKS.get());
-        int radius = Math.max(1, Config.PLAYER_MINE_RADIUS.get());
+        Set<Block> extra = protectedExtra();
+        BlockState origin = event.getState();
         Block originBlock = origin.getBlock();
         Block twin = deepslateTwin(originBlock);
-        List<BlockPos> found = Config.PLAYER_MINE_VEIN_ONLY.get()
-                ? floodFill(level, originPos, originBlock, twin, radius, max, extra)
-                : scan(level, originPos, originBlock, twin, radius, max, extra);
-
         boolean toInventory = Config.PLAYER_MINE_TO_INVENTORY.get();
         boolean durability = Config.PLAYER_MINE_DURABILITY.get();
-        int budget = max - 1;   // 你砸的那一格算在 max 里，原版替我们处理
+        int budget = clampMax(Config.PLAYER_MINE_MAX_BLOCKS.get()) - 1;   // 你砸的那一格算在 max 里
         int done = 0;
         for (BlockPos pos : found) {
             if (done >= budget) {
@@ -100,7 +93,7 @@ public final class PlayerVeinMine {
             if (pos.equals(originPos)) {
                 continue;
             }
-            if (!breakOne(level, player, pos, origin, originBlock, twin, extra, tool, toInventory)) {
+            if (!breakOne(level, player, pos, originBlock, twin, extra, tool, toInventory)) {
                 continue;
             }
             done++;
@@ -113,10 +106,35 @@ public final class PlayerVeinMine {
         }
     }
 
+    /**
+     * 「以 {@code origin} 为种子，左键会连带下来哪些方块」—— 含 {@code origin} 自己，由近及远。
+     *
+     * <p><b>服务端与客户端共用这一份：</b>服务端据此决定砸哪些（{@link #onBreak}），
+     * 客户端据此画高亮（{@code client/renderer/VeinMineHighlighter}）。于是「画出来的框」与
+     * 「实际会砸的方块」永远一致 —— 不会画了不砸，也不会砸了没画。</p>
+     */
+    public static List<BlockPos> preview(LevelReader level, BlockPos origin, ItemStack tool) {
+        BlockPos seed = origin.immutable();
+        BlockState originState = level.getBlockState(seed);
+        Set<Block> extra = protectedExtra();
+        if (!isTarget(level, seed, originState, extra)) {
+            return List.of();
+        }
+        if (Config.PLAYER_MINE_REQUIRE_TOOL.get() && !tool.isCorrectToolForDrops(originState)) {
+            return List.of();
+        }
+        int max = clampMax(Config.PLAYER_MINE_MAX_BLOCKS.get());
+        int radius = Math.max(1, Config.PLAYER_MINE_RADIUS.get());
+        Block originBlock = originState.getBlock();
+        Block twin = deepslateTwin(originBlock);
+        return Config.PLAYER_MINE_VEIN_ONLY.get()
+                ? floodFill(level, seed, originBlock, twin, radius, max, extra)
+                : scan(level, seed, originBlock, twin, radius, max, extra);
+    }
+
     /** 一格：取原版该给的掉落 → 销毁 → 产物进背包（塞不下掉在脚下）或留在原地。 */
-    private static boolean breakOne(ServerLevel level, ServerPlayer player, BlockPos pos, BlockState origin,
-                                    Block originBlock, Block twin, Set<Block> extra, ItemStack tool,
-                                    boolean toInventory) {
+    private static boolean breakOne(ServerLevel level, ServerPlayer player, BlockPos pos, Block originBlock,
+                                    Block twin, Set<Block> extra, ItemStack tool, boolean toInventory) {
         BlockState state = level.getBlockState(pos);
         if (!sameKind(state.getBlock(), originBlock, twin)) {
             return false;
@@ -144,7 +162,7 @@ public final class PlayerVeinMine {
     }
 
     /** 连通矿脉：6 面 flood fill，BFS 天然由近及远，拿满上限就停。 */
-    private static List<BlockPos> floodFill(ServerLevel level, BlockPos origin, Block originBlock, Block twin,
+    private static List<BlockPos> floodFill(LevelReader level, BlockPos origin, Block originBlock, Block twin,
                                             int radius, int max, Set<Block> extra) {
         List<BlockPos> out = new ArrayList<>();
         Set<BlockPos> seen = new HashSet<>();
@@ -177,7 +195,7 @@ public final class PlayerVeinMine {
     }
 
     /** 半径内所有同类方块（不要求连通），由近及远取到上限。 */
-    private static List<BlockPos> scan(ServerLevel level, BlockPos origin, Block originBlock, Block twin,
+    private static List<BlockPos> scan(LevelReader level, BlockPos origin, Block originBlock, Block twin,
                                        int radius, int max, Set<Block> extra) {
         List<BlockPos> out = new ArrayList<>();
         for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-radius, -radius, -radius),
@@ -208,7 +226,7 @@ public final class PlayerVeinMine {
     }
 
     /** 这一格算不算「一键挖掘的目标」：先过 targets 档位，再过那套共用安全判定。 */
-    private static boolean isTarget(ServerLevel level, BlockPos pos, BlockState state, Set<Block> extra) {
+    private static boolean isTarget(LevelReader level, BlockPos pos, BlockState state, Set<Block> extra) {
         if (!CatGirlHarvest.isMineable(level, pos, state, extra)) {
             return false;
         }

@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.81` |
+| **当前版本** | `1.1.82` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.26） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -262,10 +262,10 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 | `specials` | 特殊敌对生物：`elite_natural_spawn` / `elite_spawn_weight` / `elite_horde_from_wave` / `elite_horde_max_per_wave` |
 | `cat_girl` | 猫耳娘：`auto`（自主模式）、`mine_radius` / `mine_max_blocks`（一键挖掘的范围 / 上限）、`universal_tool`（全功能工具）、`mine_all` / `mine_protected`（挖什么 / 绝不挖什么）、`station_use` / `station_radius` / `station_self_craft`（工作方块） |
 | `ai` | 本机 Ollama 助理：`enabled` / `model` / `endpoint` / `timeout_ms` 等 |
-| `player_mine` | **玩家一键挖掘**（1.1.81 起）：`enabled`（默认开）、`targets`（连带哪些方块：0 只矿石 / 1 矿石+自然方块 / 2 任何可挖方块）、`radius` / `max_blocks`（范围 / 上限 64）、`vein_only`（只连带连通矿脉）、`require_correct_tool`（工具不对口不连带）、`consume_durability`（扣耐久）、`sneak_disables`（潜行只挖一格）、`to_inventory`（产物进背包）、`protected`（追加保护名单） |
+| `player_mine` | **玩家一键挖掘**（1.1.81 起）：`enabled`（默认开）、`targets`（连带哪些方块：0 只矿石 / 1 矿石+自然方块 / 2 任何可挖方块）、`radius` / `max_blocks`（范围 / 上限 64）、`vein_only`（只连带连通矿脉）、`require_correct_tool`（工具不对口不连带）、`consume_durability`（扣耐久）、`sneak_disables`（潜行只挖一格）、`to_inventory`（产物进背包）、`protected`（追加保护名单）、`highlight`（瞄准时把会连带的方块描边画出来，默认开） |
 
 > **图形界面**：`模组列表 → 选中 Apocalypse Zombies → 配置`（1.1.79 起真能用了）——
-> 列出**全部 167 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
+> 列出**全部 168 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
 > 也就是说：界面和手改是**同一份配置**，不存在两套。
 
 > `specials.elite_spawn_weight` 改完要**重进世界**才生效 —— biome modifier 在加载时烘焙。
@@ -273,6 +273,21 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 1.1.82 — 2026-10-10
+
+**挖矿看得见了：瞄着矿脉时，左键会一起下来的那些方块会被描上青色的边 —— 画的一定是真会砸的。**
+
+- **高亮由客户端画**（`client/renderer/VeinMineHighlighter`，挂在 `RenderLevelStageEvent` 的
+  `AFTER_TRANSLUCENT_BLOCKS` 阶段）：瞄准的那一格原版已经画了黑框，我们只给**会连带下来的那些**描边，
+  一眼就能看出「这一镐下去会带走多少」。
+- **「画出来的框」=「实际会砸的」**：选块用的是服务端同一个 `PlayerVeinMine.preview(...)`
+  —— 同一份配置 + 同一套安全判定。不会出现画了不砸，也不会砸了没画。
+- **纯观感，不影响判定**：关掉（`player_mine.highlight = false`）照样能一键挖掘；
+  联机时高亮按**你自己**客户端那份配置算，服务端该砸多少还是它说了算。
+- **不卡**：瞄准格没变就不重算（缓存键含半径 / 上限 / 目标集合等），配置一改立刻重算。
+- **配置**：`[player_mine]` 新增 `highlight`（默认 **true**），该段共 **11 项**、图形界面共 **168 项**。
+- 不回归：1.1.81 的连带规则 / 1.1.80 的 36 格库存与手持方向照旧，猫耳娘 v4 与柯尔特 1878 原样。
 
 ### 1.1.81 — 2026-10-10
 
