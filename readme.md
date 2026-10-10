@@ -5,9 +5,9 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.78` |
+| **当前版本** | `1.1.79` |
 | **Minecraft** | 1.20.1 |
-| **Forge** | 47.4.0+（开发机运行实例 47.4.23） |
+| **Forge** | 47.4.0+（开发机运行实例 47.4.26） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
 | **JDK** | 17 |
 | **许可** | 代码 GPL-3.0-or-later；含 TaCZ 借用内容的开发包另受 CC BY-NC-ND 4.0 约束 |
@@ -239,17 +239,20 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 /apocalypse catgirl chest [clear]      # 绑定 / 解绑储物点
 /apocalypse catgirl craft <物品id> [数量]   # 订做：她掏自己的料做，手续费从你的爱心币扣
 /apocalypse catgirl mine <方块id> [数量]    # 一键挖掘订单：她自己走过去就近砸，产物进她库存
+                                          # 方块id 两种写法都行：minecraft:diamond_ore 或 diamond_ore
 /apocalypse catgirl mine stop              # 中止挖掘订单
 /apocalypse catgirl ai <一句话>             # 本机模型听懂人话（/apocalypse catgirl ai status 自检）
 /apocalypse catgirl recipes [命名空间]      # 她会做的配方（调试用）
 ```
 
-挖掘订单的数量上限走配置 `cat_girl.mine_max_blocks`（默认 256）；搜索范围走 `cat_girl.mine_radius`
-（默认 24 格）；不走 `mine_protected` 名单的方块（基岩那一类）会被直接拒单。详见「更新日志 1.1.78」。
+挖掘订单的数量上限走配置 `cat_girl.mine_max_blocks`（**默认 64，范围 1~64**，这也是「一键挖掘对应物品」的硬上限 ——
+命令里写多大都会被夹住）；搜索范围走 `cat_girl.mine_radius`（默认 24 格，4~64）。**这两项都能在
+「模组列表 → 选中 Apocalypse Zombies → 配置」的图形界面里直接改**（1.1.79 起，见下），也能手改 TOML。
+不走 `mine_protected` 名单的方块（基岩那一类）会被直接拒单。详见「更新日志 1.1.78 / 1.1.79」。
 
 ### 配置
 
-`config/apocalypse_zombies-common.toml`，分四段，每项都带注释：
+`config/apocalypse_zombies-common.toml`，按段组织，每项都带注释：
 
 | 段 | 管什么 |
 |---|---|
@@ -257,12 +260,48 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 | `evolution` | 进化速度、生成带阶概率、各阶数值 |
 | `hordes` | 尸潮波次规模、触发条件 |
 | `specials` | 特殊敌对生物：`elite_natural_spawn` / `elite_spawn_weight` / `elite_horde_from_wave` / `elite_horde_max_per_wave` |
+| `cat_girl` | 猫耳娘：`auto`（自主模式）、`mine_radius` / `mine_max_blocks`（一键挖掘的范围 / 上限）、`universal_tool`（全功能工具）、`mine_all` / `mine_protected`（挖什么 / 绝不挖什么）、`station_use` / `station_radius` / `station_self_craft`（工作方块） |
+| `ai` | 本机 Ollama 助理：`enabled` / `model` / `endpoint` / `timeout_ms` 等 |
+
+> **图形界面**：`模组列表 → 选中 Apocalypse Zombies → 配置`（1.1.79 起真能用了）——
+> 列出**全部配置项**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
+> 也就是说：界面和手改是**同一份配置**，不存在两套。
 
 > `specials.elite_spawn_weight` 改完要**重进世界**才生效 —— biome modifier 在加载时烘焙。
 
 ---
 
 ## 更新日志
+
+### 1.1.79 — 2026-10-10
+
+**一键挖掘的数量上限收到 64；「模组列表 → 配置」这个按钮现在真能按了 —— 图形界面直接改配置
+（范围就在里面改），和手改 TOML 是同一份。**
+
+- **数量上限 = 64**：`cat_girl.mine_max_blocks` 默认 **64**、范围 **1~64**；
+  `/apocalypse catgirl mine <方块id> [数量]` 里 `[数量]` 写超过 64 会被**夹到 64**
+  （配置是唯一的口子：改配置才能改上限，命令越不过去）。
+- **新增图形配置界面**（1.1.79）：Forge 从 1.19 起删掉了内置配置编辑器，本模组自带一张 ——
+  `模组列表 → 选中 Apocalypse Zombies → 配置` 打开：
+  - 列出**全部 151 项**配置，按段分组（`cat_girl` / `ai` / 月相 / 进化 / 尸潮 …），滚轮翻页，右上角显示进度；
+  - 布尔 → **开/关**按钮；整数/小数 → 数字输入框；列表（如 `mine_protected`）→ 逗号分隔输入框；
+  - 点「完成」**立刻写回** `config/apocalypse_zombies-common.toml`，另有「恢复默认」；
+  - 填了非数字会就地提示（`「cat_girl.mine_radius」这一项要填数字。`），**整屏不会半途写坏**；
+  - **范围就改这里**：`cat_girl.mine_radius`（默认 24，4~64）。**填了越界的数不会把游戏搞坏**：
+    启动时 Forge 会把它改回默认值并在日志里写明
+    （`Incorrect key cat_girl.mine_max_blocks was corrected from 256 to its default, 64.`），
+    顺手把文件也改回来 —— 从 1.1.78 带着 `256` 升上来的老配置就是这么被收成 64 的（实机验过）。
+- 实现：`client/ModConfigScreens`（注册扩展点）+ `client/gui/ApocalypseConfigScreen`（界面本体，
+  直接读 `Config.values()` 的声明顺序）；注册走 `DistExecutor.unsafeRunWhenOn(Dist.CLIENT, ...)`，
+  这几个纯客户端类在**专用服务器上不会被加载**（`_deploy_179.py` 有断言钉着）。
+- **修了个真 bug（实机撞出来的）**：`mine` 的方块参数原来是 `StringArgumentType.word()`，它（以及
+  `string()`）的**不带引号**形式只认 `[A-Za-z0-9_.+-]` —— 也就是说**文档里让你写的
+  `minecraft:diamond_ore` 其实解析不过去**（Brigadier 直接报
+  `Expected whitespace to end one argument, but found trailing data`）。
+  改用原版 `/setblock` 那套 `ResourceLocationArgument.id()` 后两种写法都收：
+  `minecraft:diamond_ore` 与 `diamond_ore`（不带命名空间按 `minecraft:` 补前缀），还白拿一份 id 补全；
+  控制台上两种写法都验过能解析。
+- 三处不回归：1.1.78 的镐子 / 一键挖掘 / 工作方块、猫耳娘 v4 皮肤与几何、柯尔特 1878。
 
 ### 1.1.78 — 2026-10-10
 
