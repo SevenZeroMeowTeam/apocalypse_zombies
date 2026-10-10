@@ -68,14 +68,13 @@ public final class PlayerVeinMine {
         if (!(event.getPlayer() instanceof ServerPlayer player)) {
             return;
         }
-        if (Config.PLAYER_MINE_SNEAK_DISABLES.get() && player.isShiftKeyDown()) {
-            return;
-        }
         BlockPos originPos = event.getPos();
         ItemStack tool = player.getMainHandItem();
-        List<BlockPos> found = preview(level, originPos, tool);
+        // 潜行不连带这条判定收在 preview 里（单一出口）—— 客户端画高亮/数字时读的是同一份，
+        // 所以蹲下的时候框和数字会跟着一起没有，不会「画了却不砸」。
+        List<BlockPos> found = preview(level, originPos, tool, player.isShiftKeyDown());
         if (found.size() <= 1) {
-            return;   // 就那一格 —— 原版自己会处理，别插手
+            return;   // 就那一格（或在潜行）—— 原版自己会处理，别插手
         }
 
         Set<Block> extra = protectedExtra();
@@ -110,10 +109,16 @@ public final class PlayerVeinMine {
      * 「以 {@code origin} 为种子，左键会连带下来哪些方块」—— 含 {@code origin} 自己，由近及远。
      *
      * <p><b>服务端与客户端共用这一份：</b>服务端据此决定砸哪些（{@link #onBreak}），
-     * 客户端据此画高亮（{@code client/renderer/VeinMineHighlighter}）。于是「画出来的框」与
+     * 客户端据此画高亮与数字（{@code client/renderer/VeinMineHighlighter}）。于是「画出来的框」与
      * 「实际会砸的方块」永远一致 —— 不会画了不砸，也不会砸了没画。</p>
+     *
+     * <p>凡是<b>会影响砸多少</b>的判断都收在这个方法里，包括「潜行只挖一格」—— 否则客户端那份算不出来，
+     * 就会出现「蹲着还给你画一整簇」的谎。所以它要 {@code sneaking} 这个参数。</p>
      */
-    public static List<BlockPos> preview(LevelReader level, BlockPos origin, ItemStack tool) {
+    public static List<BlockPos> preview(LevelReader level, BlockPos origin, ItemStack tool, boolean sneaking) {
+        if (Config.PLAYER_MINE_SNEAK_DISABLES.get() && sneaking) {
+            return List.of();
+        }
         BlockPos seed = origin.immutable();
         BlockState originState = level.getBlockState(seed);
         Set<Block> extra = protectedExtra();

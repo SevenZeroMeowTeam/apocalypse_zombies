@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.82` |
+| **当前版本** | `1.1.83` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.26） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -262,10 +262,10 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 | `specials` | 特殊敌对生物：`elite_natural_spawn` / `elite_spawn_weight` / `elite_horde_from_wave` / `elite_horde_max_per_wave` |
 | `cat_girl` | 猫耳娘：`auto`（自主模式）、`mine_radius` / `mine_max_blocks`（一键挖掘的范围 / 上限）、`universal_tool`（全功能工具）、`mine_all` / `mine_protected`（挖什么 / 绝不挖什么）、`station_use` / `station_radius` / `station_self_craft`（工作方块） |
 | `ai` | 本机 Ollama 助理：`enabled` / `model` / `endpoint` / `timeout_ms` 等 |
-| `player_mine` | **玩家一键挖掘**（1.1.81 起）：`enabled`（默认开）、`targets`（连带哪些方块：0 只矿石 / 1 矿石+自然方块 / 2 任何可挖方块）、`radius` / `max_blocks`（范围 / 上限 64）、`vein_only`（只连带连通矿脉）、`require_correct_tool`（工具不对口不连带）、`consume_durability`（扣耐久）、`sneak_disables`（潜行只挖一格）、`to_inventory`（产物进背包）、`protected`（追加保护名单）、`highlight`（瞄准时把会连带的方块描边画出来，默认开） |
+| `player_mine` | **玩家一键挖掘**（1.1.81 起）：`enabled`（默认开）、`targets`（连带哪些方块：0 只矿石 / 1 矿石+自然方块 / 2 任何可挖方块）、`radius` / `max_blocks`（范围 / 上限 64）、`vein_only`（只连带连通矿脉）、`require_correct_tool`（工具不对口不连带）、`consume_durability`（扣耐久）、`sneak_disables`（潜行只挖一格）、`to_inventory`（产物进背包）、`protected`（追加保护名单）、`highlight`（瞄准时把会连带的方块描边画出来，默认开）、`count`（瞄准时在准星下方显示「会连挖几格」，默认开） |
 
 > **图形界面**：`模组列表 → 选中 Apocalypse Zombies → 配置`（1.1.79 起真能用了）——
-> 列出**全部 168 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
+> 列出**全部 169 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
 > 也就是说：界面和手改是**同一份配置**，不存在两套。
 
 > `specials.elite_spawn_weight` 改完要**重进世界**才生效 —— biome modifier 在加载时烘焙。
@@ -274,6 +274,19 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 
 ## 更新日志
 
+### 1.1.83 — 2026-10-10
+
+**瞄准的时候准星下面会报数了：这一下左键会连挖几格 —— 跟画出来的框是同一份数字。**
+
+- 数字画在准星正下方（`client/renderer/VeinMineHighlighter.renderCount`），含你瞄的那一格 ——
+  那是这一下左键的总账；描边只画「连带下来的那些」，所以框会比数字少 1 个，两个都对。
+- **只报 2 格以上**：只砸一格的时候原版本来就是这样，没必要在准星底下常驻一行字。
+- **到上限会说明**：撞到 `max_blocks`（默认 64）时写成「会连挖 64 格（已到上限）」，
+  免得你以为眼前那一簇就这么大。
+- `player_mine.count = false` 可以只留框不要数字；两个开关各管各的（只要数字、不要框也行）。
+- **顺手补了个谎**：1.1.82 的高亮在你**潜行**时还会照画一整簇，可实际上潜行只砸一格。
+  现在「潜行不连带」这条判定收进了 `PlayerVeinMine.preview` 这个共用出口（服务端与客户端读的是同一份），
+  蹲下时框和数字会一起消失 —— 依旧是那条规矩：画的一定是真会砸的。
 ### 1.1.82 — 2026-10-10
 
 **挖矿看得见了：瞄着矿脉时，左键会一起下来的那些方块会被描上青色的边 —— 画的一定是真会砸的。**

@@ -49,6 +49,8 @@
   "command.apocalypse_zombies.horde.started": "已强制开始 %s 波尸潮",
   "command.apocalypse_zombies.horde.stopped": "已终止尸潮",
   "command.apocalypse_zombies.evolution.get": "当前进化等级：%s",
+  "hud.apocalypse_zombies.vein_count": "会连挖 %s 格",
+  "hud.apocalypse_zombies.vein_count_capped": "会连挖 %s 格（已到上限）",
   "command.apocalypse_zombies.evolution.set": "已将进化等级设置为 %s",
   "command.apocalypse_zombies.evolution.upgrade": "已将 %s 只僵尸提升到等级 %s",
   "command.apocalypse_zombies.boss.none": "附近 256 格内没有尸潮之主",

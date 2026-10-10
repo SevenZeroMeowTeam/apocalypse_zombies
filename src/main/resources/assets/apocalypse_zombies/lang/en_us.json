@@ -49,6 +49,8 @@
   "command.apocalypse_zombies.horde.started": "Started a %s-wave horde",
   "command.apocalypse_zombies.horde.stopped": "Horde stopped",
   "command.apocalypse_zombies.evolution.get": "Current evolution level: %s",
+  "hud.apocalypse_zombies.vein_count": "Vein: %s blocks",
+  "hud.apocalypse_zombies.vein_count_capped": "Vein: %s blocks (at cap)",
   "command.apocalypse_zombies.evolution.set": "Evolution level set to %s",
   "command.apocalypse_zombies.evolution.upgrade": "Upgraded %s zombies to tier %s",
   "command.apocalypse_zombies.boss.none": "No Horde Overlord within 256 blocks",

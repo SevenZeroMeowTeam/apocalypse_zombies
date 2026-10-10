@@ -246,6 +246,9 @@ public final class Config {
     /** 瞄准会连带的方块时，在客户端把它们描边画出来（纯本地观感，不影响判定）。 */
     public static final ForgeConfigSpec.BooleanValue PLAYER_MINE_HIGHLIGHT;
 
+    /** 瞄准时在准星下方显示「这次会连挖几格」（纯本地观感，与描边各管各的）。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_MINE_COUNT;
+
     // ---- 持枪怪的贴身行为 + 死亡标记 ----
     /**
      * 枪手与目标贴到这么近时，把移动通道交还出去，由原版近战接手。
@@ -734,6 +737,10 @@ public final class Config {
         PLAYER_MINE_HIGHLIGHT = b.comment("瞄准会连带的方块时，把它们描边画出来（只会画真的会砸的那些）。",
                         "纯客户端观感，改它不影响服务端判定；联机时以你自己这份配置为准。")
                 .define("highlight", true);
+        PLAYER_MINE_COUNT = b.comment("瞄准时在准星下方显示这次会连挖几格（含你瞄的那一格）。",
+                        "只显示 2 格以上 —— 只砸一格的时候原版本来就是这样，不啰嗦。",
+                        "与 highlight 各管各的：只想要数字就关 highlight，只想要框就关这个。")
+                .define("count", true);
         b.pop();
 
         b.comment("Gun-armed mobs up close, and the mark they leave on you.")

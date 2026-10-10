@@ -516,6 +516,9 @@ public final class ClientEvents {
         }
         GuiGraphics graphics = event.getGuiGraphics();
 
+        // 玩家一键挖掘的数字（准星下方那行「会连挖 N 格」）—— 自己判断开关与准星状态。
+        VeinMineHighlighter.renderCount(graphics, minecraft);
+
         float progress = GunAimState.getAimProgress(event.getPartialTick());
         if (progress > 0.0F && GunAimState.hasScopeOverlay()) {
             if (GunAimState.sightStyle() == GunItem.SightStyle.CLEAR_SIGHT) {
