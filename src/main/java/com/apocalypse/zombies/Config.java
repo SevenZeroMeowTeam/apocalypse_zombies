@@ -214,6 +214,24 @@ public final class Config {
 
     // ---- 猫耳娘随从 ----
     /** 伐木 / 挖矿的搜索半径（格）。 */
+    /** 订做一件成品的手续费（爱心币）。0 = 不收。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_CRAFT_FEE;
+
+    /** 她有个内部熔炉：有矿石 + 燃料就把矿石烧成锭。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_SMELT;
+
+    /** 她的盔甲在模型上画出来（关掉只影响画面，装备本身照样生效）。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_ARMOR_RENDER;
+
+    /** 血月期间主动在她/玩家附近刷怪。 */
+    public static final ForgeConfigSpec.BooleanValue BLOOD_MOON_SPAWN_ENABLED;
+
+    /** 血月刷怪间隔（tick）。 */
+    public static final ForgeConfigSpec.IntValue BLOOD_MOON_SPAWN_INTERVAL;
+
+    /** 血月每次刷怪数量（每名玩家）。 */
+    public static final ForgeConfigSpec.IntValue BLOOD_MOON_SPAWN_COUNT;
+
     /** 她会捡地上的东西塞进自己库存（捡到的东西就是她的货架）。 */
     public static final ForgeConfigSpec.BooleanValue CAT_GIRL_PICKUP;
 
@@ -583,6 +601,18 @@ public final class Config {
                         "Cat girl companion: tame with fish, right-click bare-handed to cycle jobs,",
                         "sneak-right-click to open the barter menu.")
                 .push("cat_girl");
+        CAT_GIRL_CRAFT_FEE = b.comment("订做一件成品的手续费（爱心币）。")
+                .defineInRange("craft_fee", 2, 0, 64);
+        CAT_GIRL_SMELT = b.comment("她有个内部熔炉：有矿石 + 燃料就把矿石烧成锭（矿石/生铁 → 锭）。")
+                .define("smelt", true);
+        CAT_GIRL_ARMOR_RENDER = b.comment("把她的盔甲画在模型上（只影响画面）。")
+                .define("armor_render", true);
+        BLOOD_MOON_SPAWN_ENABLED = b.comment("血月期间主动刷怪。")
+                .define("blood_moon_spawn", true);
+        BLOOD_MOON_SPAWN_INTERVAL = b.comment("血月刷怪间隔（tick）。")
+                .defineInRange("blood_moon_spawn_interval", 200, 20, 12000);
+        BLOOD_MOON_SPAWN_COUNT = b.comment("血月每次刷怪数量（每名玩家）。")
+                .defineInRange("blood_moon_spawn_count", 2, 1, 20);
         CAT_GIRL_PICKUP = b.comment("她会捡地上的东西收进自己库存（捡到的就是她的货架）。")
                 .define("pickup", true);
         CAT_GIRL_AUTO_EQUIP = b.comment("她按工种自己换装备：伐木拿斧、挖矿拿镐、战斗拿剑（没剑用弓弩），顺手穿库存里更好的盔甲。")

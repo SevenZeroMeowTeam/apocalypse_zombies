@@ -314,10 +314,8 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
             this.ensureMainHand(this.getJob());
             this.ensureArmor();
         }
-        if (Config.CAT_GIRL_AUTO_CRAFT.get() && this.level() instanceof ServerLevel server
-                && --this.craftTicks <= 0) {
-            this.craftTicks = 40;
-            CatGirlCrafting.craftOne(this, server);
+        if (this.level() instanceof ServerLevel server) {
+            CatGirlCrafting.tick(this, server);
         }
     }
 

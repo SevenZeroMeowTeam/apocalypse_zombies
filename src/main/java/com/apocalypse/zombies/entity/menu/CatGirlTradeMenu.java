@@ -20,6 +20,7 @@ import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.level.Level;
 
 import com.apocalypse.zombies.Config;
+import com.apocalypse.zombies.entity.CatGirlCrafting;
 import com.apocalypse.zombies.entity.CatGirlEntity;
 import com.apocalypse.zombies.registry.ModItems;
 import com.apocalypse.zombies.registry.ModMenus;
@@ -73,6 +74,11 @@ public class CatGirlTradeMenu extends AbstractContainerMenu {
     private final Container sellInput = new SimpleContainer(1);
     private final Container sellResult = new SimpleContainer(1);
     private final Container enchantInput = new SimpleContainer(1);
+    /** 下单：放一件样品，她照这个做（材料用她的、手续费扣你的爱心币）。 */
+    private final Container orderInput = new SimpleContainer(1);
+    private final Container orderResult = new SimpleContainer(1);
+    /** 上次给她报过的原因，避免每 tick 刷屏。 */
+    private String lastOrderHint = "";
     private final Container enchantResult = new SimpleContainer(1);
     private final TransientCraftingContainer craftSlots;
     private final ResultContainer craftResult = new ResultContainer();
@@ -141,6 +147,25 @@ public class CatGirlTradeMenu extends AbstractContainerMenu {
             }
         });
 
+        // ---- 下单区：左边放样品，右边出成品（材料她的、手续费你的爱心币）----
+        this.addSlot(new Slot(this.orderInput, 0, 128, 90) {
+            @Override
+            public boolean mayPlace(ItemStack stack) {
+                return !stack.is(ModItems.LOVE_COIN.get());
+            }
+        });
+        this.addSlot(new Slot(this.orderResult, 0, 152, 90) {
+            @Override
+            public boolean mayPlace(ItemStack stack) {
+                return false;
+            }
+
+            @Override
+            public boolean mayPickup(Player player) {
+                return !CatGirlTradeMenu.this.orderResult.getItem(0).isEmpty();
+            }
+        });
+
         // ---- 合成区（原版 3×3，模组配方一样走 RecipeManager）----
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 3; col++) {
@@ -184,6 +209,53 @@ public class CatGirlTradeMenu extends AbstractContainerMenu {
         return this.catGirl;
     }
 
+    /**
+     * 下单逻辑放在这里：{@code broadcastChanges} 由服务端每 tick 调一次，
+     * 不用挂网络包，槽位同步交给 {@code super} 照旧。
+     *
+     * <p>语义：<b>样品留在左边 = 一直做</b>；成品取走后材料 + 币还够就再做一件；
+     * 把样品拿回去 = 停单。</p>
+     */
+    private void updateOrder() {
+        ItemStack sample = this.orderInput.getItem(0);
+        if (sample.isEmpty()) {
+            this.orderResult.setItem(0, ItemStack.EMPTY);
+            this.lastOrderHint = "";
+            return;
+        }
+        if (!this.orderResult.getItem(0).isEmpty()) {
+            return; // 上一件还没拿走
+        }
+        if (!(this.player.level() instanceof net.minecraft.server.level.ServerLevel server)) {
+            return;
+        }
+        CatGirlCrafting.Result result = CatGirlCrafting.craftOrder(
+                this.catGirl, server, sample.copyWithCount(1), 1, this.player);
+        String hint;
+        switch (result.status) {
+            case OK -> {
+                this.orderResult.setItem(0, result.product.copy());
+                this.lastOrderHint = "";
+                return;
+            }
+            case NO_MATERIALS -> hint = "cat_girl.order.no_materials";
+            case NO_COINS -> hint = "cat_girl.order.no_coins";
+            case NO_RECIPE -> hint = "cat_girl.order.no_recipe";
+            default -> {
+                return;
+            }
+        }
+        if (!hint.equals(this.lastOrderHint)) {
+            this.lastOrderHint = hint;
+            this.player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                    hint, result.missing.isEmpty() ? "-" : result.missing), true);
+        }
+    }
+
+    public int getCraftFee() {
+        return Config.CAT_GIRL_CRAFT_FEE.get();
+    }
+
     public int getEnchantCost() {
         return Config.CAT_GIRL_ENCHANT_COST.get();
     }
@@ -193,6 +265,9 @@ public class CatGirlTradeMenu extends AbstractContainerMenu {
         if (!this.player.level().isClientSide) {
             this.updateSellResult();
             this.updateEnchantOffer();
+            if (this.catGirl != null) {
+                this.updateOrder();
+            }
         }
         super.broadcastChanges();
     }

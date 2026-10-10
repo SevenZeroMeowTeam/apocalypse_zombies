@@ -32,6 +32,7 @@ public class CatGirlGeoRenderer extends GeoEntityRenderer<CatGirlEntity> {
         super(context, new CatGirlGeoModel());
         this.shadowRadius = 0.45F;
         this.addRenderLayer(new HeldItemLayer(this));
+        this.addRenderLayer(new CatGirlArmorLayer(this));
     }
 
     /** 只认主手物品 + 挂点骨骼的物品层。 */

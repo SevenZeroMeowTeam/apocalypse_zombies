@@ -1,6 +1,8 @@
 package com.apocalypse.zombies.command;
 
 import com.apocalypse.zombies.Config;
+import com.apocalypse.zombies.entity.CatGirlCrafting;
+import com.apocalypse.zombies.entity.CatGirlEntity;
 import com.apocalypse.zombies.entity.CatGirlRecipeTable;
 import com.apocalypse.zombies.entity.HordeOverlord;
 import com.apocalypse.zombies.horde.HordeManager;
@@ -19,6 +21,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -113,6 +116,14 @@ public final class ApocalypseCommand {
         root.then(Commands.literal("boss").executes(context -> bossStatus(context.getSource())));
 
         root.then(Commands.literal("catgirl")
+                .then(Commands.literal("craft")
+                        .then(Commands.argument("item", StringArgumentType.word())
+                                .executes(context -> craftOrder(context.getSource(),
+                                        StringArgumentType.getString(context, "item"), 1))
+                                .then(Commands.argument("count", IntegerArgumentType.integer(1, 64))
+                                        .executes(context -> craftOrder(context.getSource(),
+                                                StringArgumentType.getString(context, "item"),
+                                                IntegerArgumentType.getInteger(context, "count"))))))
                 .then(Commands.literal("recipes")
                         .executes(context -> recipeReport(context.getSource(), null))
                         .then(Commands.argument("namespace", StringArgumentType.string())
@@ -188,6 +199,51 @@ public final class ApocalypseCommand {
     }
 
     /** 猫耳娘配方表：总数 / 来源 / 命名空间；给了命名空间就列出它名下的配方。 */
+    /**
+     * {@code /apocalypse catgirl craft <物品id> [数量]} —— 找最近的、属于你的猫耳娘订做：
+     * 材料用她的库存，手续费按 {@code CAT_GIRL_CRAFT_FEE} 从你的爱心币里扣，成品直接给你。
+     */
+    private static int craftOrder(CommandSourceStack source, String itemId, int count) {
+        ServerPlayer player;
+        try {
+            player = source.getPlayerOrException();
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("这个命令要玩家来跑（要用你的爱心币付款）。"));
+            return 0;
+        }
+        ItemStack wanted = CatGirlCrafting.itemById(itemId);
+        if (wanted.isEmpty()) {
+            source.sendFailure(Component.literal("没有这个物品：" + itemId
+                    + "（写 id，例如 minecraft:diamond_pickaxe 或 apocalypse_zombies:love_coin）"));
+            return 0;
+        }
+        CatGirlEntity girl = player.level().getEntitiesOfClass(CatGirlEntity.class,
+                        player.getBoundingBox().inflate(16.0D), cat -> cat.isOwnedBy(player))
+                .stream()
+                .min(java.util.Comparator.comparingDouble(cat -> cat.distanceToSqr(player)))
+                .orElse(null);
+        if (girl == null) {
+            source.sendFailure(Component.literal("16 格内没有你的猫耳娘。"));
+            return 0;
+        }
+        if (!(player.level() instanceof ServerLevel level)) {
+            return 0;
+        }
+        CatGirlCrafting.Result result = CatGirlCrafting.craftOrder(girl, level, wanted, count, player);
+        String name = wanted.getHoverName().getString();
+        switch (result.status) {
+            case OK -> source.sendSuccess(() -> Component.literal("她做出来了：" + name + " ×"
+                    + result.made + "（材料从她库存扣，手续费 " + result.feePaid + " 枚爱心币）"), false);
+            case NO_MATERIALS -> source.sendFailure(Component.literal(
+                    "她材料不够" + (result.missing.isEmpty() ? "" : "，缺：" + result.missing)
+                            + "（把材料丢给她捡，或拿材料右键她）"));
+            case NO_COINS -> source.sendFailure(Component.literal("你的爱心币不够（需要 "
+                    + Config.CAT_GIRL_CRAFT_FEE.get() + " 枚，你有 " + result.feePaid + " 枚）。"));
+            default -> source.sendFailure(Component.literal("她不会做 " + name + "（没有对应配方）。"));
+        }
+        return result.status == CatGirlCrafting.Status.OK ? result.made : 0;
+    }
+
     private static int recipeReport(CommandSourceStack source, String namespace) {
         CatGirlRecipeTable.ensureLoaded(source.getServer());
         if (!CatGirlRecipeTable.isPresent()) {

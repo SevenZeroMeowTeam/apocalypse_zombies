@@ -113,5 +113,10 @@
   "cat_girl.gave_arrows": "She stowed %s x%d in her quiver.",
   "cat_girl.arrows": "arrows",
   "cat_girl.bow.need_arrows": "She has the bow but her quiver is empty - hand her some arrows.",
+  "cat_girl.trade.order": "Order (put a sample)",
+  "cat_girl.trade.order_fee": "Fee %s per item",
+  "cat_girl.order.no_materials": "She is missing: %s",
+  "cat_girl.order.no_coins": "Not enough love coins",
+  "cat_girl.order.no_recipe": "She has no recipe for that",
   "cat_girl.trade.title": "Cat Girl's Shop"
 }

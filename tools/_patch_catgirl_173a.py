@@ -1,4 +1,12 @@
-package com.apocalypse.zombies.entity;
+# -*- coding: utf-8 -*-
+"""1.1.73 第一批：她按玩家那套 3x3 摆料自制 / 订做指定物品（命令 + 界面下单槽）/ 内部熔炉熔炼。"""
+from pathlib import Path
+
+J = 'src/main/java/com/apocalypse/zombies/'
+LANG = 'src/main/resources/assets/apocalypse_zombies/lang/'
+
+# ============================================================ ① CatGirlCrafting 重写
+Path(J + 'entity/CatGirlCrafting.java').write_text('''package com.apocalypse.zombies.entity;
 
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.resources.ResourceLocation;
@@ -455,3 +463,274 @@ public final class CatGirlCrafting {
         return Result.nothing();
     }
 }
+''', encoding='utf-8')
+print('(1) CatGirlCrafting 重写：3x3 精确摆放 / 自制 / 订做 / 爱心币 / 内部熔炉')
+
+# ============================================================ ② Config 开关
+p = Path(J + 'Config.java'); s = p.read_text(encoding='utf-8')
+old = '    /** 她会捡地上的东西塞进自己库存（捡到的东西就是她的货架）。 */'
+assert old in s, 'Config 锚点'
+s = s.replace(old, '''    /** 订做一件成品的手续费（爱心币）。0 = 不收。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_CRAFT_FEE;
+
+    /** 她有个内部熔炉：有矿石 + 燃料就把矿石烧成锭。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_SMELT;
+
+    /** 她的盔甲在模型上画出来（关掉只影响画面，装备本身照样生效）。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_ARMOR_RENDER;
+
+    /** 血月期间主动在她/玩家附近刷怪。 */
+    public static final ForgeConfigSpec.BooleanValue BLOOD_MOON_SPAWN_ENABLED;
+
+    /** 血月刷怪间隔（tick）。 */
+    public static final ForgeConfigSpec.IntValue BLOOD_MOON_SPAWN_INTERVAL;
+
+    /** 血月每次刷怪数量（每名玩家）。 */
+    public static final ForgeConfigSpec.IntValue BLOOD_MOON_SPAWN_COUNT;
+
+''' + old, 1)
+old = '''        CAT_GIRL_PICKUP = b.comment("她会捡地上的东西收进自己库存（捡到的就是她的货架）。")'''
+assert old in s, 'Config 定义锚点'
+s = s.replace(old, '''        CAT_GIRL_CRAFT_FEE = b.comment("订做一件成品的手续费（爱心币）。")
+                .defineInRange("craft_fee", 2, 0, 64);
+        CAT_GIRL_SMELT = b.comment("她有个内部熔炉：有矿石 + 燃料就把矿石烧成锭（矿石/生铁 → 锭）。")
+                .define("smelt", true);
+        CAT_GIRL_ARMOR_RENDER = b.comment("把她的盔甲画在模型上（只影响画面）。")
+                .define("armor_render", true);
+        BLOOD_MOON_SPAWN_ENABLED = b.comment("血月期间主动刷怪。")
+                .define("blood_moon_spawn", true);
+        BLOOD_MOON_SPAWN_INTERVAL = b.comment("血月刷怪间隔（tick）。")
+                .defineInRange("blood_moon_spawn_interval", 200, 20, 12000);
+        BLOOD_MOON_SPAWN_COUNT = b.comment("血月每次刷怪数量（每名玩家）。")
+                .defineInRange("blood_moon_spawn_count", 2, 1, 20);
+''' + old, 1)
+p.write_text(s, encoding='utf-8')
+print('(2) Config：+ craft_fee / smelt / armor_render / blood_moon_spawn*')
+
+# ============================================================ ③ 实体：改叫 tick()
+p = Path(J + 'entity/CatGirlEntity.java'); s = p.read_text(encoding='utf-8')
+old = '''        if (Config.CAT_GIRL_AUTO_CRAFT.get() && this.level() instanceof ServerLevel server
+                && --this.craftTicks <= 0) {
+            this.craftTicks = 40;
+            CatGirlCrafting.craftOne(this, server);
+        }'''
+assert old in s, 'aiStep 自制锚点'
+s = s.replace(old, '''        if (this.level() instanceof ServerLevel server) {
+            CatGirlCrafting.tick(this, server);
+        }''', 1)
+p.write_text(s, encoding='utf-8')
+print('(3) CatGirlEntity：自制/熔炼交给 CatGirlCrafting.tick')
+
+# ============================================================ ④ 菜单：下单槽
+p = Path(J + 'entity/menu/CatGirlTradeMenu.java'); s = p.read_text(encoding='utf-8')
+old = '    private final Container enchantInput = new SimpleContainer(1);'
+assert old in s, '菜单容器锚点'
+s = s.replace(old, '''    private final Container enchantInput = new SimpleContainer(1);
+    /** 下单：放一件样品，她照这个做（材料用她的、手续费扣你的爱心币）。 */
+    private final Container orderInput = new SimpleContainer(1);
+    private final Container orderResult = new SimpleContainer(1);
+    /** 上次给她报过的原因，避免每 tick 刷屏。 */
+    private String lastOrderHint = "";''', 1)
+
+old = '''        // ---- 合成区（原版 3×3，模组配方一样走 RecipeManager）----'''
+assert old in s, '合成区锚点'
+s = s.replace(old, '''        // ---- 下单区：左边放样品，右边出成品（材料她的、手续费你的爱心币）----
+        this.addSlot(new Slot(this.orderInput, 0, 128, 90) {
+            @Override
+            public boolean mayPlace(ItemStack stack) {
+                return !stack.is(ModItems.LOVE_COIN.get());
+            }
+        });
+        this.addSlot(new Slot(this.orderResult, 0, 152, 90) {
+            @Override
+            public boolean mayPlace(ItemStack stack) {
+                return false;
+            }
+
+            @Override
+            public boolean mayPickup(Player player) {
+                return !CatGirlTradeMenu.this.orderResult.getItem(0).isEmpty();
+            }
+        });
+
+''' + old, 1)
+
+old = '''    public CatGirlEntity getCatGirl() {
+        return this.catGirl;
+    }'''
+assert old in s, 'getCatGirl 锚点'
+s = s.replace(old, old + '''
+
+    /**
+     * 下单逻辑放在这里：{@code broadcastChanges} 由服务端每 tick 调一次，
+     * 不用挂网络包，槽位同步交给 {@code super} 照旧。
+     *
+     * <p>语义：<b>样品留在左边 = 一直做</b>；成品取走后材料 + 币还够就再做一件；
+     * 把样品拿回去 = 停单。</p>
+     */
+    @Override
+    public void broadcastChanges() {
+        if (this.catGirl != null && !this.player.level().isClientSide) {
+            this.updateOrder();
+        }
+        super.broadcastChanges();
+    }
+
+    private void updateOrder() {
+        ItemStack sample = this.orderInput.getItem(0);
+        if (sample.isEmpty()) {
+            this.orderResult.setItem(0, ItemStack.EMPTY);
+            this.lastOrderHint = "";
+            return;
+        }
+        if (!this.orderResult.getItem(0).isEmpty()) {
+            return; // 上一件还没拿走
+        }
+        if (!(this.player.level() instanceof net.minecraft.server.level.ServerLevel server)) {
+            return;
+        }
+        CatGirlCrafting.Result result = CatGirlCrafting.craftOrder(
+                this.catGirl, server, sample.copyWithCount(1), 1, this.player);
+        String hint;
+        switch (result.status) {
+            case OK -> {
+                this.orderResult.setItem(0, result.product.copy());
+                this.lastOrderHint = "";
+                return;
+            }
+            case NO_MATERIALS -> hint = "cat_girl.order.no_materials";
+            case NO_COINS -> hint = "cat_girl.order.no_coins";
+            case NO_RECIPE -> hint = "cat_girl.order.no_recipe";
+            default -> {
+                return;
+            }
+        }
+        if (!hint.equals(this.lastOrderHint)) {
+            this.lastOrderHint = hint;
+            this.player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                    hint, result.missing.isEmpty() ? "-" : result.missing), true);
+        }
+    }
+
+    public int getCraftFee() {
+        return Config.CAT_GIRL_CRAFT_FEE.get();
+    }''', 1)
+if 'import com.apocalypse.zombies.entity.CatGirlCrafting;' not in s:
+    s = s.replace('import com.apocalypse.zombies.entity.CatGirlEntity;',
+                  'import com.apocalypse.zombies.entity.CatGirlCrafting;' + chr(10)
+                  + 'import com.apocalypse.zombies.entity.CatGirlEntity;', 1)
+p.write_text(s, encoding='utf-8')
+print('(4) 菜单：下单槽 + broadcastChanges 自动接单')
+
+# ============================================================ ⑤ 界面：标签
+p = Path(J + 'client/gui/CatGirlTradeScreen.java'); s = p.read_text(encoding='utf-8')
+old = '''        guiGraphics.drawString(this.font, Component.translatable("cat_girl.trade.stock"), 8, 80, LABEL_DARK, false);'''
+assert old in s, '界面标签锚点'
+s = s.replace(old, old + '''
+        guiGraphics.drawString(this.font, Component.translatable("cat_girl.trade.order"), 128, 80, LABEL_DARK, false);
+        guiGraphics.drawString(this.font, Component.translatable("cat_girl.trade.order_fee",
+                this.menu.getCraftFee()), 128, 100, PRICE_GOLD, false);''', 1)
+p.write_text(s, encoding='utf-8')
+print('(5) 界面：下单标签 + 手续费')
+
+# ============================================================ ⑥ 命令：/apocalypse catgirl craft <物品id> [数量]
+p = Path(J + 'command/ApocalypseCommand.java'); s = p.read_text(encoding='utf-8')
+old = '''        root.then(Commands.literal("catgirl")
+                .then(Commands.literal("recipes")'''
+assert old in s, '命令锚点'
+s = s.replace(old, '''        root.then(Commands.literal("catgirl")
+                .then(Commands.literal("craft")
+                        .then(Commands.argument("item", StringArgumentType.word())
+                                .executes(context -> craftOrder(context.getSource(),
+                                        StringArgumentType.getString(context, "item"), 1))
+                                .then(Commands.argument("count", IntegerArgumentType.integer(1, 64))
+                                        .executes(context -> craftOrder(context.getSource(),
+                                                StringArgumentType.getString(context, "item"),
+                                                IntegerArgumentType.getInteger(context, "count"))))))
+                .then(Commands.literal("recipes")''', 1)
+
+old = '''    private static int recipeReport('''
+assert old in s, 'recipeReport 锚点'
+s = s.replace(old, '''    /**
+     * {@code /apocalypse catgirl craft <物品id> [数量]} —— 找最近的、属于你的猫耳娘订做：
+     * 材料用她的库存，手续费按 {@code CAT_GIRL_CRAFT_FEE} 从你的爱心币里扣，成品直接给你。
+     */
+    private static int craftOrder(CommandSourceStack source, String itemId, int count) {
+        ServerPlayer player;
+        try {
+            player = source.getPlayerOrException();
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("这个命令要玩家来跑（要用你的爱心币付款）。"));
+            return 0;
+        }
+        ItemStack wanted = CatGirlCrafting.itemById(itemId);
+        if (wanted.isEmpty()) {
+            source.sendFailure(Component.literal("没有这个物品：" + itemId
+                    + "（写 id，例如 minecraft:diamond_pickaxe 或 apocalypse_zombies:love_coin）"));
+            return 0;
+        }
+        CatGirlEntity girl = player.level().getEntitiesOfClass(CatGirlEntity.class,
+                        player.getBoundingBox().inflate(16.0D), cat -> cat.isOwnedBy(player))
+                .stream()
+                .min(java.util.Comparator.comparingDouble(cat -> cat.distanceToSqr(player)))
+                .orElse(null);
+        if (girl == null) {
+            source.sendFailure(Component.literal("16 格内没有你的猫耳娘。"));
+            return 0;
+        }
+        if (!(player.level() instanceof ServerLevel level)) {
+            return 0;
+        }
+        CatGirlCrafting.Result result = CatGirlCrafting.craftOrder(girl, level, wanted, count, player);
+        String name = wanted.getHoverName().getString();
+        switch (result.status) {
+            case OK -> source.sendSuccess(() -> Component.literal("她做出来了：" + name + " ×"
+                    + result.made + "（材料从她库存扣，手续费 " + result.feePaid + " 枚爱心币）"), false);
+            case NO_MATERIALS -> source.sendFailure(Component.literal(
+                    "她材料不够" + (result.missing.isEmpty() ? "" : "，缺：" + result.missing)
+                            + "（把材料丢给她捡，或拿材料右键她）"));
+            case NO_COINS -> source.sendFailure(Component.literal("你的爱心币不够（需要 "
+                    + Config.CAT_GIRL_CRAFT_FEE.get() + " 枚，你有 " + result.feePaid + " 枚）。"));
+            default -> source.sendFailure(Component.literal("她不会做 " + name + "（没有对应配方）。"));
+        }
+        return result.status == CatGirlCrafting.Status.OK ? result.made : 0;
+    }
+
+    private static int recipeReport(''', 1)
+s = s.replace('import com.apocalypse.zombies.entity.CatGirlRecipeTable;',
+              'import com.apocalypse.zombies.entity.CatGirlCrafting;\n'
+              'import com.apocalypse.zombies.entity.CatGirlEntity;\n'
+              'import com.apocalypse.zombies.entity.CatGirlRecipeTable;', 1)
+s = s.replace('import net.minecraft.world.entity.Mob;',
+              'import net.minecraft.world.entity.Mob;\nimport net.minecraft.world.item.ItemStack;', 1)
+p.write_text(s, encoding='utf-8')
+print('(6) 命令：/apocalypse catgirl craft <物品id> [数量]')
+
+# ============================================================ ⑦ lang
+for fname, add in {
+    'zh_cn.json': {
+        'cat_girl.trade.order': '下单（放样品，她照做）',
+        'cat_girl.trade.order_fee': '手续费 %s 枚/件',
+        'cat_girl.order.no_materials': '她材料不够，缺：%s',
+        'cat_girl.order.no_coins': '爱心币不够付手续费',
+        'cat_girl.order.no_recipe': '她不会做这个（没有配方）',
+    },
+    'en_us.json': {
+        'cat_girl.trade.order': 'Order (put a sample)',
+        'cat_girl.trade.order_fee': 'Fee %s per item',
+        'cat_girl.order.no_materials': 'She is missing: %s',
+        'cat_girl.order.no_coins': 'Not enough love coins',
+        'cat_girl.order.no_recipe': 'She has no recipe for that',
+    },
+}.items():
+    p = Path(LANG + fname); s = p.read_text(encoding='utf-8')
+    assert '"cat_girl.trade.title"' in s, fname + ' 锚点'
+    lines = ['  "%s": "%s",' % (k, v) for k, v in add.items()]
+    s = s.replace('  "cat_girl.trade.title"', '\n'.join(lines) + '\n  "cat_girl.trade.title"', 1)
+    p.write_text(s, encoding='utf-8')
+print('(7) lang：下单相关 5 键（中英）')
+
+# ============================================================ ⑧ 版本
+g = Path('gradle.properties'); t = g.read_text(encoding='utf-8')
+g.write_text(t.replace('mod_version=1.1.72', 'mod_version=1.1.73'), encoding='utf-8')
+print('(8) mod_version=1.1.73')

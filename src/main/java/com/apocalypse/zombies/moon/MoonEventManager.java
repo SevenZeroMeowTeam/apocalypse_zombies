@@ -115,6 +115,55 @@ public final class MoonEventManager {
                 default -> {
                 }
             }
+            if (active.isBloodMoon()) {
+                spawnBloodMoonWave(level);
+            }
+        }
+    }
+
+    /** 上一次血月刷怪的 tick（全局节流）。 */
+    private static long lastBloodSpawn;
+
+    /**
+     * 血月的「主动刷怪」：按 {@code blood_moon_spawn_interval} 节流，在每名玩家周围 20~40 格外
+     * 找能站人的位置放 {@code blood_moon_spawn_count} 只僵尸。
+     *
+     * <p>刷出来的是原版僵尸 —— 尸潮的进化系统本来就会给它们叠倍率，
+     * 所以血月夜里这些家伙自然比平时凶。</p>
+     */
+    private static void spawnBloodMoonWave(ServerLevel level) {
+        if (!Config.BLOOD_MOON_SPAWN_ENABLED.get()) {
+            return;
+        }
+        long now = level.getGameTime();
+        if (now - lastBloodSpawn < Config.BLOOD_MOON_SPAWN_INTERVAL.get()) {
+            return;
+        }
+        lastBloodSpawn = now;
+        int perPlayer = Config.BLOOD_MOON_SPAWN_COUNT.get();
+        for (ServerPlayer player : level.players()) {
+            for (int i = 0; i < perPlayer; i++) {
+                net.minecraft.util.RandomSource random = level.getRandom();
+                double angle = random.nextDouble() * Math.PI * 2.0D;
+                double dist = 20.0D + random.nextDouble() * 20.0D;
+                int x = net.minecraft.util.Mth.floor(player.getX() + Math.cos(angle) * dist);
+                int z = net.minecraft.util.Mth.floor(player.getZ() + Math.sin(angle) * dist);
+                int y = level.getHeight(
+                        net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+                net.minecraft.core.BlockPos pos = new net.minecraft.core.BlockPos(x, y, z);
+                if (!level.isEmptyBlock(pos) || !level.isEmptyBlock(pos.above()) || level.isEmptyBlock(pos.below())) {
+                    continue;
+                }
+                net.minecraft.world.entity.monster.Zombie zombie =
+                        net.minecraft.world.entity.EntityType.ZOMBIE.create(level);
+                if (zombie == null) {
+                    continue;
+                }
+                zombie.moveTo(x + 0.5D, y, z + 0.5D, random.nextFloat() * 360.0F, 0.0F);
+                zombie.finalizeSpawn(level, level.getCurrentDifficultyAt(pos),
+                        net.minecraft.world.entity.MobSpawnType.EVENT, null, null);
+                level.addFreshEntity(zombie);
+            }
         }
     }
 

@@ -72,6 +72,9 @@ public class CatGirlTradeScreen extends net.minecraft.client.gui.screens.invento
         guiGraphics.drawString(this.font, Component.translatable("cat_girl.trade.give"), 22, 42, LABEL_DARK, false);
         guiGraphics.drawString(this.font, Component.translatable("cat_girl.trade.reward"), 76, 42, LABEL_DARK, false);
         guiGraphics.drawString(this.font, Component.translatable("cat_girl.trade.stock"), 8, 80, LABEL_DARK, false);
+        guiGraphics.drawString(this.font, Component.translatable("cat_girl.trade.order"), 128, 80, LABEL_DARK, false);
+        guiGraphics.drawString(this.font, Component.translatable("cat_girl.trade.order_fee",
+                this.menu.getCraftFee()), 128, 100, PRICE_GOLD, false);
 
         // 库存价格：按价值 × 数量
         CatGirlEntity cat = this.menu.getCatGirl();

@@ -21,42 +21,42 @@ public enum MoonEvent {
 
     /** Blood moon: crimson moon, blood-washed sky, beds refuse to work. */
     BLOOD_MOON("blood_moon", false,
-            0xFF3A24, 1.0F,
+            0xFF5555, 1.0F,
             0x8C0F08, 0.42F,
             0x52100B,
             true, MoonEffect.NONE, 0),
 
     /** Super blood moon: larger, deeper red, same sleeping ban. */
     SUPER_BLOOD_MOON("super_blood_moon", true,
-            0xFF1E0E, 1.65F,
+            0xCC44FF, 1.65F,
             0x9E1206, 0.55F,
             0x5E0A05,
             true, MoonEffect.NONE, 0),
 
     /** Yellow moon: bright yellow moon, crops accelerate until dawn. */
     YELLOW_MOON("yellow_moon", false,
-            0xFFEE6B, 1.0F,
+            0xFFE055, 1.0F,
             0x9C8213, 0.30F,
             0x6B5A12,
             false, MoonEffect.CROP_GROWTH, 0),
 
     /** Super yellow moon: bigger and brighter, crops accelerate hard. */
     SUPER_YELLOW_MOON("super_yellow_moon", true,
-            0xFFE23A, 1.65F,
+            0xFFCC55, 1.65F,
             0xB39312, 0.42F,
             0x7C6610,
             false, MoonEffect.CROP_GROWTH, 1),
 
     /** Blue moon: pale blue moon, Luck until dawn. */
     BLUE_MOON("blue_moon", false,
-            0xCDE8FF, 1.0F,
+            0x55AAFF, 1.0F,
             0x2E5D8C, 0.30F,
             0x24486B,
             false, MoonEffect.LUCK, 1),
 
     /** Super blue moon: bigger pale blue moon, stronger Luck until dawn. */
     SUPER_BLUE_MOON("super_blue_moon", true,
-            0xB6DDFF, 1.65F,
+            0x88CCFF, 1.65F,
             0x2B6AA8, 0.42F,
             0x1F4C7C,
             false, MoonEffect.LUCK, 2);
