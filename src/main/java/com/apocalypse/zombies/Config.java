@@ -250,6 +250,14 @@ public final class Config {
     /** 全无敌：任何来源都不掉血、也不会死（敌对生物、玩家、爆炸、虚空都免）。 */
     public static final ForgeConfigSpec.BooleanValue CAT_GIRL_INVULNERABLE;
     public static final ForgeConfigSpec.IntValue CAT_GIRL_WORK_RADIUS;
+    /** 她能自己走出去找目标的半径（格）：比 work_radius 大，够她绕过一栋房子。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_AUTONOMY_RADIUS;
+    /** 开路：导航走不通时砸掉挡路的自然方块。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_CLEAR_WAY;
+    /** 搭桥：前方是坑时用她自己背包里的实心方块铺落脚点。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_BRIDGE;
+    /** 她的跟随速度（原版跟班 1.15；主人冲刺时会被甩掉）。 */
+    public static final ForgeConfigSpec.DoubleValue CAT_GIRL_FOLLOW_SPEED;
     /** 破坏一根原木的基础耗时（tick），拿着斧头打折。 */
     public static final ForgeConfigSpec.IntValue CAT_GIRL_CHOP_TICKS;
     /** 破坏一块矿石的基础耗时（tick），拿着镐打折。 */
@@ -627,6 +635,15 @@ public final class Config {
                 .define("invulnerable", true);
         CAT_GIRL_WORK_RADIUS = b.comment("伐木 / 挖矿时以她为中心的搜索半径（格）。")
                 .defineInRange("work_radius", 12, 4, 32);
+        CAT_GIRL_AUTONOMY_RADIUS = b.comment("她能自己走出去找目标的半径（格）—— 实际取它与 work_radius 的较大值，",
+                        "所以老存档里的 12 不会把她关在院子里。")
+                .defineInRange("autonomy_radius", 32, 8, 64);
+        CAT_GIRL_CLEAR_WAY = b.comment("开路：导航走不通时砸掉挡路的自然方块（原木/树叶/土/沙/圆石类，绝不碰箱子·熔炉·门）。")
+                .define("clear_way", true);
+        CAT_GIRL_BRIDGE = b.comment("搭桥：正前方是坑（深谷/水/岩浆）时，用她自己背包里的实心方块铺一格落脚点。")
+                .define("bridge", true);
+        CAT_GIRL_FOLLOW_SPEED = b.comment("她的跟随速度（原版跟班是 1.15，主人冲刺时会被甩掉）。注册期读一次，改完要重进世界。")
+                .defineInRange("follow_speed", 1.3D, 0.5D, 2.0D);
         CAT_GIRL_CHOP_TICKS = b.comment("破坏一根原木的基础耗时（tick，20 = 1 秒）。")
                 .defineInRange("chop_ticks", 40, 4, 400);
         CAT_GIRL_MINE_TICKS = b.comment("破坏一块矿石的基础耗时（tick）。")

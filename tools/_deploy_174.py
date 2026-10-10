@@ -1,13 +1,13 @@
 import sys
 import pathlib
-"""1.1.73 出货：订做指定物品 + 盔甲渲染层 + 内部熔炉 + 月亮三项（含 1.1.72 全部不回归）（猫耳娘 v4 内容不回退 —— 128² 皮肤 / 逐面 UV 装机 geo / 脸层 44×32）。
+"""1.1.74 出货：像玩家一样操作第一批 —— 开门/浮水导航 + 开路 + 搭桥 + 自己出门找目标 + 不跟丢（含 1.1.73 全部不回归）（猫耳娘 v4 内容不回退 —— 128² 皮肤 / 逐面 UV 装机 geo / 脸层 44×32）。
 
 跑法（**游戏须完全关闭**）：
-    py tools/_deploy_173.py --build        # 先 ./gradlew build 再出货
-    py tools/_deploy_173.py                # 用 build/libs 里已构建好的包
+    py tools/_deploy_174.py --build        # 先 ./gradlew build 再出货
+    py tools/_deploy_174.py                # 用 build/libs 里已构建好的包
 
 判据（任一条不过就退出，不动 mods/）：
-  1. 构建产物存在，且 jar 内 mods.toml 的 version == 1.1.73；
+  1. 构建产物存在，且 jar 内 mods.toml 的 version == 1.1.74；
   2. 猫耳娘该有的东西：
      · geo/cat_girl.geo.json —— identifier geometry.cat_girl、贴图基准 128×128、
        31 骨 / 126 方块，且**每个 cube 用逐面 uv/uv_size**（v4 的盒式 UV 表达不了
@@ -32,8 +32,8 @@ import struct
 import subprocess
 import zipfile
 
-VER = '1.1.73'
-PREV = '1.1.72'
+VER = '1.1.74'
+PREV = '1.1.73'
 SRC = 'F:/mcmod/build/libs/apocalypse_zombies-%s.jar' % VER
 DEV = 'F:/.minecraft/versions/1.20.1-Forge_47.4.26'
 MODS, BACKUP = DEV + '/mods', DEV + '/mods_backup'
@@ -56,7 +56,7 @@ CG_JAVA = ('com/apocalypse/zombies/entity/CatGirlEntity.class',
            'com/apocalypse/zombies/client/renderer/CatGirlGeoRenderer.class')
 
 ok = True
-_ap = argparse.ArgumentParser(description='1.1.73 出货：订做 / 盔甲层 / 熔炼 / 月亮')
+_ap = argparse.ArgumentParser(description='1.1.74 出货：玩家式操作（导航 / 开路 / 搭桥 / 找目标 / 跟随）')
 _ap.add_argument('--build', action='store_true', help='先跑 ./gradlew build 再出货')
 _ap.add_argument('--allow-dev-server', action='store_true', help='放行无头开发服在跑')
 args = _ap.parse_args()
@@ -106,7 +106,7 @@ def png_size(blob):
     return struct.unpack('>II', blob[16:24])
 
 
-print('=== 1/6 构建产物 ===')
+print('=== 1/7 构建产物 ===')
 if args.build or not os.path.exists(SRC):
     if args.build:
         print('  跑 ./gradlew build ...')
@@ -115,12 +115,12 @@ if args.build or not os.path.exists(SRC):
             print('  ★ 构建失败（exit %d）' % rc)
             raise SystemExit(1)
 if not os.path.exists(SRC):
-    print('  没有 %s —— 先跑 py tools/_deploy_173.py --build' % SRC)
+    print('  没有 %s —— 先跑 py tools/_deploy_174.py --build' % SRC)
     raise SystemExit(1)
 src_md5, src_size = md5(SRC), os.path.getsize(SRC)
 print('  %s\n  md5=%s  %d 字节' % (SRC, src_md5, src_size))
 
-print('=== 2/6 包内自检：猫耳娘 v4 ===')
+print('=== 2/7 包内自检：猫耳娘 v4 ===')
 with zipfile.ZipFile(SRC) as z:
     names = z.namelist()
     toml = z.read('META-INF/mods.toml').decode('utf-8', 'replace')
@@ -249,7 +249,7 @@ check('CAT_GIRL_ALWAYS_DROPS' in work and 'NETHERITE_PICKAXE' in work,
 mitsrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/registry/ModItems.java', encoding='utf-8').read()
 check('love_coin' in mitsrc, '货币（爱心币）仍在')
 
-print('=== 4/6 1.1.73：订做 / 盔甲层 / 熔炼 / 月亮三项 ===')
+print('=== 5/7 1.1.73：订做 / 盔甲层 / 熔炼 / 月亮三项 ===')
 cfgsrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/Config.java', encoding='utf-8').read()
 for _k in ('"craft_fee"', '"smelt"', '"armor_render"', '"blood_moon_spawn"',
            '"blood_moon_spawn_interval"', '"blood_moon_spawn_count"'):
@@ -300,7 +300,42 @@ check('spawnBloodMoonWave' in _mm and 'isBloodMoon()' in _mm,
 check('EntityType.ZOMBIE.create' in _mm and 'finalizeSpawn' in _mm,
       '刷的是原版僵尸并走 finalizeSpawn（吃尸潮倍率）')
 
-print('=== 3/6 不回归：柯尔特 1878（1.1.71 内容不许被冲掉） ===')
+print('=== 4/7 1.1.74：像玩家一样操作（第一批）===')
+_cw = pathlib.Path('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/ai/CatGirlClearWayGoal.java')
+_br = pathlib.Path('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/ai/CatGirlBridgeGoal.java')
+_nv = pathlib.Path('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/ai/CatGirlNavigation.java')
+check(_nv.is_file() and _cw.is_file() and _br.is_file(), '导航 / 开路 / 搭桥三个新类在源码里')
+for _c in ('entity/ai/CatGirlNavigation.class', 'entity/ai/CatGirlClearWayGoal.class',
+           'entity/ai/CatGirlBridgeGoal.class'):
+    check(any(n.endswith(_c) for n in names), '进包：%s' % _c.split('/')[-1])
+_ent2 = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/CatGirlEntity.java',
+             encoding='utf-8').read()
+check('createNavigation' in _ent2 and 'CatGirlNavigation(this, level)' in _ent2,
+      '实体已换成玩家式导航（开门 / 浮水）')
+check('CatGirlClearWayGoal(this)' in _ent2 and 'CatGirlBridgeGoal(this)' in _ent2,
+      '开路 / 搭桥已注册进 goalSelector')
+check('Config.CAT_GIRL_FOLLOW_SPEED.get()' in _ent2, '跟随速度走 Config.follow_speed')
+check('harvestBlockHard' in _ent2 and 'NETHERITE_PICKAXE' in _ent2,
+      '开路走她自己的掉落规则（always_drops 不被绕开）')
+_cws = _cw.read_text(encoding='utf-8') if _cw.is_file() else ''
+check('hasBlockEntity()' in _cws and 'MAX_HARDNESS' in _cws and 'defaultDestroyTime' in _cws,
+      '开路边界：无方块实体 + 硬度上限')
+check('BlockTags.LOGS' in _cws and 'BlockTags.DIRT' in _cws and 'Blocks.GRAVEL' in _cws,
+      '开路白名单是自然方块')
+check('Goal.Flag.MOVE' in _cws, '开路抢 MOVE 标记（拿不到就干不了活）')
+_brs = _br.read_text(encoding='utf-8') if _br.is_file() else ''
+check('BlockItem' in _brs and 'getGoods()' in _brs and 'shrink(1)' in _brs,
+      '搭桥只用她自己背包里的方块并扣掉')
+check('canBeReplaced' in _brs, '搭桥只在空格上落脚（不乱铺）')
+_cfg2 = open('F:/mcmod/src/main/java/com/apocalypse/zombies/Config.java', encoding='utf-8').read()
+for _k in ('"autonomy_radius"', '"clear_way"', '"bridge"', '"follow_speed"'):
+    check(_k in _cfg2, 'Config 有 1.1.74 开关 %s' % _k)
+_wbg = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/ai/WorkBlockGoal.java',
+            encoding='utf-8').read()
+check('CAT_GIRL_AUTONOMY_RADIUS' in _wbg, '找目标半径取 work_radius/autonomy_radius 的较大值')
+check('getOwner()' in _wbg and 'leash' in _wbg, '主人跑远先跟人（牵引闸门）')
+
+print('=== 3/7 不回归：柯尔特 1878（1.1.71 内容不许被冲掉） ===')
 cdesc = colt.get('description', {})
 cbones = colt.get('bones', [])
 ccubes = sum(len(b.get('cubes', [])) for b in cbones)
@@ -318,11 +353,11 @@ bad_len = {k: (got.get(k), w) for k, w in COLT_CLIPS.items() if abs((got.get(k) 
 check(sorted(colta.keys()) == sorted(COLT_CLIPS.keys()) and not bad_len,
       'colt 8 条片段长度逐条等于 Java 常量', bad_len or '8/8')
 
-print('=== 5/6 工程门禁（本机实跑） ===')
+print('=== 6/7 工程门禁（本机实跑） ===')
 rc = subprocess.call(['py', 'tools/check_gun_resources.py'], cwd='F:/mcmod')
 check(rc == 0, 'tools/check_gun_resources.py 全绿', 'exit %d' % rc)
 
-print('=== 6/6 基线校验 + 换包 ===')
+print('=== 7/7 基线校验 + 换包 ===')
 if not os.path.isdir(MODS):
     check(False, 'mods/ 存在', MODS)
     raise SystemExit(1)

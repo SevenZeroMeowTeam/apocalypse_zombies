@@ -30,6 +30,9 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import com.apocalypse.zombies.entity.ai.CatGirlBowGoal;
+import com.apocalypse.zombies.entity.ai.CatGirlBridgeGoal;
+import com.apocalypse.zombies.entity.ai.CatGirlClearWayGoal;
+import com.apocalypse.zombies.entity.ai.CatGirlNavigation;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.FollowOwnerGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
@@ -217,16 +220,22 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
     protected void registerGoals() {
         this.goalSelector.addGoal(0, new FloatGoal(this));
         // 走路优先级放在劳作之上：主人走出去十格，她会先跟上再继续干活
-        this.goalSelector.addGoal(1, new FollowOwnerGoal(this, 1.15D, 10.0F, 2.5F, false));
+        // 速度走 Config.CAT_GIRL_FOLLOW_SPEED（默认 1.3）：原版跟班的 1.15 在主人冲刺时会被稳稳甩掉。
+        // 注册期读一次，所以改完这个值要重进世界。
+        this.goalSelector.addGoal(1,
+                new FollowOwnerGoal(this, Config.CAT_GIRL_FOLLOW_SPEED.get(), 10.0F, 2.5F, false));
         // 弓排在近战之前（同优先级先注册者优先）：够远 + 有箭 + 有视线时她放箭，
         // 贴脸（<=3 格）弓的 canUse 不成立，自动轮到下面的近战 —— 不需要另设优先级数字。
         this.goalSelector.addGoal(2, new CatGirlBowGoal(this));
         this.goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.2D, true));
-        this.goalSelector.addGoal(3, new WorkBlockGoal(this, Job.LUMBER, CatGirlEntity::isLog, ACTION_CHOP));
-        this.goalSelector.addGoal(4, new WorkBlockGoal(this, Job.MINE, CatGirlEntity::isOre, ACTION_MINE));
-        this.goalSelector.addGoal(5, new WaterAvoidingRandomStrollGoal(this, 1.0D));
-        this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 8.0F));
-        this.goalSelector.addGoal(7, new RandomLookAroundGoal(this));
+        // 开路 / 搭桥：只在「正在导航且卡住」时接管，所以排在战斗之后、劳作之前。
+        this.goalSelector.addGoal(3, new CatGirlClearWayGoal(this));
+        this.goalSelector.addGoal(3, new CatGirlBridgeGoal(this));
+        this.goalSelector.addGoal(4, new WorkBlockGoal(this, Job.LUMBER, CatGirlEntity::isLog, ACTION_CHOP));
+        this.goalSelector.addGoal(5, new WorkBlockGoal(this, Job.MINE, CatGirlEntity::isOre, ACTION_MINE));
+        this.goalSelector.addGoal(6, new WaterAvoidingRandomStrollGoal(this, 1.0D));
+        this.goalSelector.addGoal(7, new LookAtPlayerGoal(this, Player.class, 8.0F));
+        this.goalSelector.addGoal(8, new RandomLookAroundGoal(this));
 
         // 保护主人：这两种目标不分模式都会接（被打了总得还手）
         this.targetSelector.addGoal(1, new OwnerHurtByTargetGoal(this));
@@ -247,6 +256,18 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
 
     private static boolean isOre(BlockState state) {
         return state.is(Tags.Blocks.ORES);
+    }
+
+    /**
+     * 换成会开门 / 会浮水的导航（{@link CatGirlNavigation}）。
+     *
+     * <p>原版 {@code Mob} 的默认导航把她当僵尸用：门就是墙、水就是死路，
+     * 于是「走过去砍那棵树」经常变成站在门口原地抽搐。</p>
+     */
+    @Override
+    protected net.minecraft.world.entity.ai.navigation.PathNavigation createNavigation(
+            net.minecraft.world.level.Level level) {
+        return new CatGirlNavigation(this, level);
     }
 
     // ------------------------------------------------------------ 数据同步
@@ -919,6 +940,30 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
                 net.minecraft.world.level.block.Block.popResource(this.level(), where, leftover);
             }
         }
+    }
+
+    /**
+     * 「砸开挡路的」通用实现：和伐木/挖矿同一套掉落规则（含 always_drops），
+     * 破坏后收进她的库存 —— 开路行为不能把「她砸什么都有产物」这条绕过去。
+     */
+    public void harvestBlockHard(BlockPos pos, boolean axeLike) {
+        if (!(this.level() instanceof ServerLevel server)) {
+            return;
+        }
+        BlockState state = server.getBlockState(pos);
+        net.minecraft.world.level.block.entity.BlockEntity be = server.getBlockEntity(pos);
+        List<ItemStack> drops = net.minecraft.world.level.block.Block.getDrops(
+                state, server, pos, be, this, this.getMainHandItem());
+        if (drops.isEmpty() && state.requiresCorrectToolForDrops()
+                && Config.CAT_GIRL_ALWAYS_DROPS.get()) {
+            ItemStack cheat = new ItemStack(axeLike
+                    ? net.minecraft.world.item.Items.NETHERITE_AXE
+                    : net.minecraft.world.item.Items.NETHERITE_PICKAXE);
+            drops = net.minecraft.world.level.block.Block.getDrops(state, server, pos, be, this, cheat);
+        }
+        server.destroyBlock(pos, false);
+        this.storeOrDrop(drops, pos);
+        this.playSound(SoundEvents.ITEM_PICKUP, 0.5F, 1.6F);
     }
 
     /** 交易菜单用的催肥粒子（钱不够时的反馈）。 */

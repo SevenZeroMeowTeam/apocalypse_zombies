@@ -74,6 +74,14 @@ public class WorkBlockGoal extends Goal {
         if (this.cat.getJob() != this.job) {
             return false;
         }
+        // 主人跑远了先跟人：她是随从，不该为了砍树把主人丢在地图另一头。
+        net.minecraft.world.entity.LivingEntity owner = this.cat.getOwner();
+        if (owner != null) {
+            double leash = Config.CAT_GIRL_AUTONOMY_RADIUS.get();
+            if (this.cat.distanceToSqr(owner) > leash * leash) {
+                return false;
+            }
+        }
         if (this.blacklistTicks > 0) {
             this.blacklistTicks--;
         }
@@ -194,7 +202,8 @@ public class WorkBlockGoal extends Goal {
 
     /** 在半径内找最近的匹配方块：以她所在位置为中心扫一个立方体，向下多扫一点（矿洞场景）。 */
     private BlockPos findBlock() {
-        int radius = Config.CAT_GIRL_WORK_RADIUS.get();
+        // 取两者较大的那个：老存档里 work_radius 还是 12，光靠它她走不出院子。
+        int radius = Math.max(Config.CAT_GIRL_WORK_RADIUS.get(), Config.CAT_GIRL_AUTONOMY_RADIUS.get());
         BlockPos origin = this.cat.blockPosition();
         BlockPos best = null;
         double bestDistance = Double.MAX_VALUE;
