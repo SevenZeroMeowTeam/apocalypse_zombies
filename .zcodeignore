@@ -1,0 +1,72 @@
+# ===== 构建与运行产物 =====
+/build/
+/.gradle/
+/run/
+/logs/
+/build.log
+
+# ===== 本机工具 / 会话残留 =====
+# hermes-update-fix：网关状态备份等本机会话残留
+# JJI54557149985_obj：与本模组构建无关的对象素材
+# x：抓取下来的中间文件
+/hermes-update-fix/
+/JJI54557149985_obj/
+/x/
+
+# ===== 美术工作素材 =====
+# 保留台账（*.md）、模型源（*.json / *.bbmodel）与脚本（*.py）；
+# 栅格图、贴图渲染、日志、中间产物不进仓库。
+/art/**/*.png
+/art/**/*.jpg
+/art/**/*.jpeg
+/art/**/*.psd
+/art/**/*.tga
+/art/**/*.ogg
+/art/**/*.wav
+/art/**/*.mp4
+/art/**/*.gif
+/art/**/*.class
+/art/**/*.log
+/art/**/*.zip
+
+# ===== Python =====
+__pycache__/
+*.pyc
+
+# ===== 本机音频源文件 =====
+# 《朋友的酒》的原始导入件放在工作区根目录即可，是随包分发那一份的来源；
+# 真正进仓库的成品在 src/main/resources/assets/apocalypse_zombies/sounds/music/friends_wine.ogg
+/朋友的酒.ogg
+
+# 注意：gradle/wrapper/gradle-wrapper.jar 必须进仓库 —— CI 靠它启动 Gradle。
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+node_modules/
+bower_components/
+jspm_packages/
+site-packages/
+venv/
+coverage/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）

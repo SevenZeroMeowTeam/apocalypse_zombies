@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.80` |
+| **当前版本** | `1.1.81` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.26） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -262,9 +262,10 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 | `specials` | 特殊敌对生物：`elite_natural_spawn` / `elite_spawn_weight` / `elite_horde_from_wave` / `elite_horde_max_per_wave` |
 | `cat_girl` | 猫耳娘：`auto`（自主模式）、`mine_radius` / `mine_max_blocks`（一键挖掘的范围 / 上限）、`universal_tool`（全功能工具）、`mine_all` / `mine_protected`（挖什么 / 绝不挖什么）、`station_use` / `station_radius` / `station_self_craft`（工作方块） |
 | `ai` | 本机 Ollama 助理：`enabled` / `model` / `endpoint` / `timeout_ms` 等 |
+| `player_mine` | **玩家一键挖掘**（1.1.81 起）：`enabled`（默认开）、`targets`（连带哪些方块：0 只矿石 / 1 矿石+自然方块 / 2 任何可挖方块）、`radius` / `max_blocks`（范围 / 上限 64）、`vein_only`（只连带连通矿脉）、`require_correct_tool`（工具不对口不连带）、`consume_durability`（扣耐久）、`sneak_disables`（潜行只挖一格）、`to_inventory`（产物进背包）、`protected`（追加保护名单） |
 
 > **图形界面**：`模组列表 → 选中 Apocalypse Zombies → 配置`（1.1.79 起真能用了）——
-> 列出**全部配置项**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
+> 列出**全部 167 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
 > 也就是说：界面和手改是**同一份配置**，不存在两套。
 
 > `specials.elite_spawn_weight` 改完要**重进世界**才生效 —— biome modifier 在加载时烘焙。
@@ -272,6 +273,27 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 1.1.81 — 2026-10-10
+
+**玩家也能一键挖掘了：左键砸掉一格，同一种矿石跟着一起下来 —— 不设按键、不加命令，
+全部行为只认配置文件（默认开启）。**
+
+- **触发方式就是原版的「破坏方块」**（`BlockEvent.BreakEvent`，服务端；没有按键、没有网络包、
+  客户端装不装这个 mod 都一样）：以你砸的那一格为种子，把**同一种方块**连带下来。默认**只认矿石**
+  （煤 / 铁 / 金 / 钻石 / 红石 / 青金石 / 绿宝石 …，走原版 `forge:ores` 标签）。
+- **深层也认亲**：`iron_ore` ↔ `deepslate_iron_ore` 算同一簇 —— 否则你在深层挖铁矿只会下来一格。
+- **配置 `[player_mine]`（10 项，图形界面里同样能改）**：`enabled`（默认 **true**）、
+  `targets`（**0 = 只矿石** / 1 = 矿石 + 自然方块 / 2 = 任何可挖方块）、`radius`（默认 16，4~64）、
+  `max_blocks`（默认 **64**，1~64，含你自己砸的那一格）、`vein_only`（true = 只连带连通的矿脉）、
+  `require_correct_tool`（true = 手上工具不对口就不连带，只砸你点的那格）、
+  `consume_durability`（true = 每多挖一格扣 1 点耐久，创造模式不扣、工具用坏就停手）、
+  `sneak_disables`（**true** = 潜行时只砸一格，想单挖就蹲下）、
+  `to_inventory`（true = 产物直接进背包，塞不下掉在你脚下）、
+  `protected`（追加保护名单，与 `cat_girl.mine_protected` 合并生效）。
+- **安全边界与她那边共用同一套判定**：容器 / 方块实体（箱子 · 熔炉 · 床）、保护名单、流体、火、
+  硬度为负 —— 一律不碰。只有把 `targets` 调成 2 才会连带你自己盖的房子，默认不会。
+- 不回归：1.1.80 的 36 格库存 / 手持物品方向 / 不垂直下钻照旧，猫耳娘 v4 与柯尔特 1878 原样。
 
 ### 1.1.80 — 2026-10-10
 

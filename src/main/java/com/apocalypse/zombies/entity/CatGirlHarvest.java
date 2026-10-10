@@ -156,6 +156,11 @@ public final class CatGirlHarvest {
     private static final net.minecraft.tags.TagKey<net.minecraft.world.level.block.Block> ORES_TAG =
             net.minecraft.tags.BlockTags.create(new net.minecraft.resources.ResourceLocation("forge", "ores"));
 
+    /** 是不是矿石（{@code forge:ores}）—— 玩家一键挖掘的默认目标集合。 */
+    public static boolean isOre(BlockState state) {
+        return state.is(ORES_TAG);
+    }
+
     /**
      * 自主挖矿（没人下单时她自己的活）的目标集合：自然方块。
      *

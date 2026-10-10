@@ -220,6 +220,29 @@ public final class Config {
     /** 只收与手上相同的物品；手上为空时一律收全部。 */
     public static final ForgeConfigSpec.BooleanValue COLLECT_MATCH_HAND;
 
+    // ---- 玩家一键挖掘（左键破坏即连带，1.1.81）。声明顺序 = 图形配置界面里的顺序。 ----
+
+    /** 总开关。默认开：一键挖掘本来就该是「点一下就整条矿脉下来」。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_MINE_ENABLED;
+    /** 连带范围：0 = 只矿石（默认） / 1 = 矿石 + 自然方块 / 2 = 任何能挖的方块。 */
+    public static final ForgeConfigSpec.IntValue PLAYER_MINE_TARGETS;
+    /** 搜索半径（格）。 */
+    public static final ForgeConfigSpec.IntValue PLAYER_MINE_RADIUS;
+    /** 一次连带最多几块（含玩家自己砸的那一格，最高 64）。 */
+    public static final ForgeConfigSpec.IntValue PLAYER_MINE_MAX_BLOCKS;
+    /** true = 只连带与目标连通的矿脉；false = 半径内所有同类方块。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_MINE_VEIN_ONLY;
+    /** 手上工具不对口时不连带（只砸点的那一格，与原版一致）。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_MINE_REQUIRE_TOOL;
+    /** 连带出来的每一格都扣 1 点耐久（创造模式不扣）。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_MINE_DURABILITY;
+    /** 潜行时只砸点的那一格（经典 veinminer 手感：想单挖就蹲下）。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_MINE_SNEAK_DISABLES;
+    /** 产物直接进背包（塞不下就掉在脚下）；false = 留在原地。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_MINE_TO_INVENTORY;
+    /** 追加保护名单（与 cat_girl.mine_protected 合并生效）。 */
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> PLAYER_MINE_PROTECTED;
+
     // ---- 持枪怪的贴身行为 + 死亡标记 ----
     /**
      * 枪手与目标贴到这么近时，把移动通道交还出去，由原版近战接手。
@@ -674,6 +697,37 @@ public final class Config {
         COLLECT_MATCH_HAND = b.comment("true = 只收与手上物品相同的；false = 收范围内所有掉落物。",
                         "手上是空的时候一律收全部。")
                 .define("match_hand_only", true);
+        b.pop();
+
+        b.comment("玩家一键挖掘：左键砸掉一格，同一种方块跟着一起下来。",
+                        "没有按键、没有命令 —— 触发方式就是原版的「破坏方块」，行为全部只认这份配置。",
+                        "安全边界与她那边共用一套：容器 / 方块实体 / 保护名单 / 流体 / 火 一律不碰。")
+                .push("player_mine");
+        PLAYER_MINE_ENABLED = b.comment("总开关（默认开）。")
+                .define("enabled", true);
+        PLAYER_MINE_TARGETS = b.comment("连带哪些方块：",
+                        "0 = 只矿石（煤 / 铁 / 金 / 钻石…，默认）",
+                        "1 = 矿石 + 自然方块（土 / 沙 / 石 / 木 / 叶 / 花）",
+                        "2 = 任何能挖的方块（自己盖的房子也会被连带，慎用）")
+                .defineInRange("targets", 0, 0, 2);
+        PLAYER_MINE_RADIUS = b.comment("搜索半径（格）。")
+                .defineInRange("radius", 16, 4, 64);
+        PLAYER_MINE_MAX_BLOCKS = b.comment("一次连带最多几块（含你自己砸的那一格，最高 64）。")
+                .defineInRange("max_blocks", 64, 1, 64);
+        PLAYER_MINE_VEIN_ONLY = b.comment("true = 只连带与目标连通的矿脉；false = 半径内所有同类方块（散落的也算）。")
+                .define("vein_only", true);
+        PLAYER_MINE_REQUIRE_TOOL = b.comment("手上工具不对口时不连带，只砸你点的那一格（与原版手感一致）。")
+                .define("require_correct_tool", true);
+        PLAYER_MINE_DURABILITY = b.comment("连带出来的每一格都扣 1 点耐久（创造模式不扣，工具用坏就停手）。")
+                .define("consume_durability", true);
+        PLAYER_MINE_SNEAK_DISABLES = b.comment("潜行时只砸你点的那一格（经典 veinminer 手感：想单挖就蹲下）。")
+                .define("sneak_disables", true);
+        PLAYER_MINE_TO_INVENTORY = b.comment("产物直接进背包（塞不下就掉在你脚下）；false = 留在原地。")
+                .define("to_inventory", true);
+        PLAYER_MINE_PROTECTED = b.comment("追加保护名单（方块 id，带不带 minecraft: 都行）。",
+                        "挖矿那份 cat_girl.mine_protected 同样生效，两份合并。")
+                .defineList("protected", List.of(),
+                        o -> o instanceof String);
         b.pop();
 
         b.comment("Gun-armed mobs up close, and the mark they leave on you.")
