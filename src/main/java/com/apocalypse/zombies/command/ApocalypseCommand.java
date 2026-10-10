@@ -11,6 +11,7 @@ import com.apocalypse.zombies.moon.MoonEvent;
 import com.apocalypse.zombies.moon.MoonEventManager;
 import com.apocalypse.zombies.zombie.EvolutionTier;
 import com.apocalypse.zombies.zombie.ZombieEvolution;
+import com.apocalypse.zombies.ai.LocalAiClient;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -20,6 +21,7 @@ import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
@@ -134,7 +136,13 @@ public final class ApocalypseCommand {
                 .then(Commands.literal("chest")
                         .executes(context -> catgirlChest(context.getSource(), false))
                         .then(Commands.literal("clear")
-                                .executes(context -> catgirlChest(context.getSource(), true)))));
+                                .executes(context -> catgirlChest(context.getSource(), true))))
+                .then(Commands.literal("ai")
+                        .then(Commands.literal("status")
+                                .executes(context -> catgirlAiStatus(context.getSource())))
+                        .then(Commands.argument("text", StringArgumentType.greedyString())
+                                .executes(context -> catgirlAi(context.getSource(),
+                                        StringArgumentType.getString(context, "text"))))));
 
         dispatcher.register(root);
     }
@@ -279,6 +287,35 @@ public final class ApocalypseCommand {
      * <p>她的「储物点」只能这么绑（原版分不出哪个箱子是玩家的）：绑定后她会把多余的成品
      * 收进去、背包里缺矿石时从那里取一组；<b>没绑她一个容器都不碰</b>。</p>
      */
+    /** {@code /apocalypse catgirl ai status}：端点、模型、熔断状态。 */
+    private static int catgirlAiStatus(CommandSourceStack source) {
+        source.sendSuccess(() -> Component.literal(LocalAiClient.statusLine()), false);
+        return 1;
+    }
+
+    /**
+     * {@code /apocalypse catgirl ai <一句话>}：把话交给本机模型，她回话、必要时动手。
+     *
+     * <p>这里只负责把话递出去（之后在工作线程上跑，结果用 server.execute 回投主线程），
+     * 所以命令本身立刻就返回，不会卡住服务器。</p>
+     */
+    private static int catgirlAi(CommandSourceStack source, String text) {
+        ServerPlayer player;
+        try {
+            player = source.getPlayerOrException();
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("这个命令要玩家来跑（得认得出哪只是你的）。"));
+            return 0;
+        }
+        CatGirlEntity cat = nearestOwned(source);
+        if (cat == null) {
+            source.sendFailure(Component.literal("16 格内没有你的猫耳娘。"));
+            return 0;
+        }
+        LocalAiClient.ask(source.getServer(), player, cat, text.trim());
+        return 1;
+    }
+
     private static int catgirlChest(CommandSourceStack source, boolean clear) {
         CatGirlEntity girl = nearestOwned(source);
         if (girl == null) {

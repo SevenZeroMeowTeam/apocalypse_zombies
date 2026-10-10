@@ -264,6 +264,19 @@ public final class Config {
     public static final ForgeConfigSpec.BooleanValue CAT_GIRL_CHEST;
     /** 护卫：主人挨打时贴过去站位。 */
     public static final ForgeConfigSpec.BooleanValue CAT_GIRL_ESCORT;
+
+    /** 本地 AI 助理：用本机的 Ollama 给她一张嘴（默认 qwen2 1.5B）。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_AI_ENABLED;
+    /** 允许她把模型的话落地（切工种 / 下单做东西）。关掉就只剩聊天。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_AI_ACTIONS;
+    /** Ollama 的地址（默认本机）。 */
+    public static final ForgeConfigSpec.ConfigValue<String> CAT_GIRL_AI_ENDPOINT;
+    /** 模型名，写 `ollama list` 里那个全名。 */
+    public static final ForgeConfigSpec.ConfigValue<String> CAT_GIRL_AI_MODEL;
+    /** 一轮最多等多久（毫秒）；超时不会崩游戏，只当她没听懂。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_AI_TIMEOUT_MS;
+    /** 上下文长度：KV 缓存越大越吃显存，4096 够她记住你说过的话和现状。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_AI_NUM_CTX;
     /** 破坏一根原木的基础耗时（tick），拿着斧头打折。 */
     public static final ForgeConfigSpec.IntValue CAT_GIRL_CHOP_TICKS;
     /** 破坏一块矿石的基础耗时（tick），拿着镐打折。 */
@@ -658,6 +671,24 @@ public final class Config {
                 .define("chest", true);
         CAT_GIRL_ESCORT = b.comment("护卫：主人被攻击时她会贴到主人与攻击者之间站住（打谁仍由目标选择器决定）。")
                 .define("escort", true);
+
+        b.comment("本地 AI 助理：用你机器上的 Ollama 让她听懂人话（/apocalypse catgirl ai <一句话>）。",
+                        "不联网、不花钱、离线也能用；连不上就当她没听懂，绝不会因此崩游戏。")
+                .push("ai");
+        CAT_GIRL_AI_ENABLED = b.comment("总开关。关掉后这个命令只会回一句「脑子关着」。")
+                .define("enabled", true);
+        CAT_GIRL_AI_ACTIONS = b.comment("允许她动手：把模型的提议落成「切工种 / 用她的材料下单做东西」。",
+                        "关掉 = 只能陪你说话，游戏状态一点不改（想先看看她怎么说话就关这个）。")
+                .define("actions", true);
+        CAT_GIRL_AI_ENDPOINT = b.comment("Ollama 地址。默认本机；指向别的机器前想清楚那是谁在替你算。")
+                .define("endpoint", "http://127.0.0.1:11434");
+        CAT_GIRL_AI_MODEL = b.comment("模型名，和 `ollama list` 里的一字不差。默认是 qwen2 1.5B。")
+                .define("model", "fableforge-ai/nexus-coder:q4_k_m");
+        CAT_GIRL_AI_TIMEOUT_MS = b.comment("一轮最多等多久（毫秒）。小模型一般 0.2~1 秒就回；等太久说明机器忙。")
+                .defineInRange("timeout_ms", 20000, 1000, 120000);
+        CAT_GIRL_AI_NUM_CTX = b.comment("上下文长度（KV 缓存）。4096 够用；显存紧就调小，别指望它能读完你的书。")
+                .defineInRange("num_ctx", 4096, 512, 32768);
+        b.pop();
         CAT_GIRL_CHOP_TICKS = b.comment("破坏一根原木的基础耗时（tick，20 = 1 秒）。")
                 .defineInRange("chop_ticks", 40, 4, 400);
         CAT_GIRL_MINE_TICKS = b.comment("破坏一块矿石的基础耗时（tick）。")

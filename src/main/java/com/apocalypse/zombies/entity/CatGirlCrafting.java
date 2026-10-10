@@ -5,6 +5,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.TransientCraftingContainer;
 import net.minecraft.world.item.ArrowItem;
 import net.minecraft.world.item.ArmorItem;
@@ -24,6 +25,9 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
 import net.minecraft.core.registries.BuiltInRegistries;
 
+import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -41,6 +45,8 @@ import java.util.List;
  * 不设白名单她会把玩家交给她的一堆材料做成木棍、台阶，库存立刻变垃圾场。</p>
  */
 public final class CatGirlCrafting {
+
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     private CatGirlCrafting() {
     }
@@ -131,11 +137,34 @@ public final class CatGirlCrafting {
     // ------------------------------------------------------------ 3x3 摆放
 
     /**
-     * 她那张 3x3。<b>故意传 null 菜单</b>：{@code TransientCraftingContainer.setChanged()} 会回调
-     * {@code menu.slotsChanged}，所以下面一处都不调 {@code setChanged()} —— 只借它的 {@code getWidth/getHeight}。
+     * 她那张 3x3。<b>必须配一张菜单</b>：{@code TransientCraftingContainer.setItem()} 内部**就会**回调
+     * {@code menu.slotsChanged(this)}，菜单为 {@code null} 时第一次 {@code setItem} 立刻 NPE
+     * （1.1.75 就这么把服务端崩了：{@code layOut → TransientCraftingContainer.setItem}）。
+     * 所以这里给一张空壳菜单：它的 {@code slotsChanged} 走默认空实现，永远不碰真实窗口。
      */
     private static TransientCraftingContainer grid() {
-        return new TransientCraftingContainer(null, 3, 3);
+        return new TransientCraftingContainer(new GridMenu(), 3, 3);
+    }
+
+    /**
+     * 只为了满足 {@link TransientCraftingContainer} 的菜单回调契约而存在的假菜单：
+     * 不打开、不渲染、不持有玩家；{@code slotsChanged} 用默认空实现（这正是我们要的）。
+     */
+    private static final class GridMenu extends AbstractContainerMenu {
+
+        GridMenu() {
+            super(null, -1);
+        }
+
+        @Override
+        public ItemStack quickMoveStack(Player player, int index) {
+            return ItemStack.EMPTY;
+        }
+
+        @Override
+        public boolean stillValid(Player player) {
+            return true;
+        }
     }
 
     /**
@@ -256,11 +285,17 @@ public final class CatGirlCrafting {
     /** 每 20 tick 的维护节拍里叫她一声：够料就自己做一件，够燃料就烧一炉。 */
     public static void tick(CatGirlEntity cat, ServerLevel level) {
         long time = level.getGameTime();
-        if (com.apocalypse.zombies.Config.CAT_GIRL_AUTO_CRAFT.get() && time % 40L == 0L) {
-            craftOne(cat, level);
-        }
-        if (com.apocalypse.zombies.Config.CAT_GIRL_SMELT.get() && time % 60L == 0L) {
-            smeltOne(cat, level);
+        try {
+            if (com.apocalypse.zombies.Config.CAT_GIRL_AUTO_CRAFT.get() && time % 40L == 0L) {
+                craftOne(cat, level);
+            }
+            if (com.apocalypse.zombies.Config.CAT_GIRL_SMELT.get() && time % 60L == 0L) {
+                smeltOne(cat, level);
+            }
+        } catch (RuntimeException e) {
+            // 这段跑在实体的服务端 tick 里：异常逃出去 = 把服务端一起带走。
+            // 记一条日志、这一拍跳过，下一拍再试 —— 别让某个奇怪配方毁掉存档。
+            LOGGER.error("cat_girl 自动制作/熔炼这一拍失败，跳过", e);
         }
     }
 

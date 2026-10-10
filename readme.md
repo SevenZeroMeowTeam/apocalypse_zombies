@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.75` |
+| **当前版本** | `1.1.76` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.23） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -248,6 +248,28 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
 ---
 
 ## 更新日志
+
+### 1.1.76 — 2026-10-10
+
+**修了一个会把服务端打崩的崩溃；她能听人话了 —— 用你机器上的本地模型（默认 qwen2 1.5B）。**
+
+- **崩溃修复（重要，1.1.75 装了就中）**：她那张合成用的 3x3 之前是「配一张空菜单」建的，
+  而原版 `TransientCraftingContainer.setItem()` 内部就会回调 `menu.slotsChanged(...)` ——
+  菜单是 null 时<b>第一次放材料就 NPE</b>，而这条路径跑在服务端每 tick 的 `broadcastChanges` 里，
+  于是整局崩（崩溃报告：`CatGirlCrafting.layOut → TransientCraftingContainer.setItem`）。
+  现在给她配了一张空壳菜单（`GridMenu`，`slotsChanged` 走默认空实现），并给
+  「下单」和「自动制作/熔炼」两条 tick 路径各加了一层兜底：真出事也只记日志、跳过这一拍。
+- **本地 AI 助理**：`/apocalypse catgirl ai <一句话>` —— 她听懂人话、回你一句，必要时动手：
+  **切工种**（伐木/挖矿/战斗/跟随，和「你手动指派」同一条路径，会关掉自主模式）或
+  **用她自己的材料给你下单做东西**（剑/镐/斧/锹/锄/弓弩/箭/盾/盔甲，扣爱心币手续费）。
+  `/apocalypse catgirl ai status` 看端点/模型/熔断状态。
+- **跑在你机器上的模型**：默认 `http://127.0.0.1:11434` + `fableforge-ai/nexus-coder:q4_k_m`（qwen2 1.5B），
+  不联网、不花钱。实测（RTX 3060 6GB）：**0.2~0.6 秒一轮、约 150 token/s**。
+  「思考标签」会被剥掉，模型返回的每个字段都会被<b>重新校验</b>：动作只认 none/say/set_job/craft，
+  物品必须真在配方表里、还得是她会做的那几类 —— 不可信的字段一律降级成聊天，绝不透传到执行层。
+- **不会因为 AI 而崩**：请求在工作线程跑、结果回投主线程；连不上/超时/回包是垃圾 → 一句中文提示；
+  连续失败 3 次熔断 5 分钟（别让她每句话都去戳一个没起来的 ollama）。配置项都在 `catgirl.ai.*`
+  （`enabled` / `actions` / `endpoint` / `model` / `timeout_ms` / `num_ctx`），`actions=false` 时她只陪聊不动手。
 
 ### 1.1.75 — 2026-10-10
 

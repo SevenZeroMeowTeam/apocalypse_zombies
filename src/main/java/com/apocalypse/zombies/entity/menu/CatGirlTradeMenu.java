@@ -19,11 +19,14 @@ import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.level.Level;
 
+import com.mojang.logging.LogUtils;
+
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.entity.CatGirlCrafting;
 import com.apocalypse.zombies.entity.CatGirlEntity;
 import com.apocalypse.zombies.registry.ModItems;
 import com.apocalypse.zombies.registry.ModMenus;
+import org.slf4j.Logger;
 
 /**
  * 猫耳娘的工作台菜单：出售 / 附魔 / 合成 / 购买，四个区域一张界面。
@@ -80,6 +83,8 @@ public class CatGirlTradeMenu extends AbstractContainerMenu {
     /** 上次给她报过的原因，避免每 tick 刷屏。 */
     private String lastOrderHint = "";
     private final Container enchantResult = new SimpleContainer(1);
+    private static final Logger LOGGER = LogUtils.getLogger();
+
     private final TransientCraftingContainer craftSlots;
     private final ResultContainer craftResult = new ResultContainer();
 
@@ -229,8 +234,15 @@ public class CatGirlTradeMenu extends AbstractContainerMenu {
         if (!(this.player.level() instanceof net.minecraft.server.level.ServerLevel server)) {
             return;
         }
-        CatGirlCrafting.Result result = CatGirlCrafting.craftOrder(
-                this.catGirl, server, sample.copyWithCount(1), 1, this.player);
+        CatGirlCrafting.Result result;
+        try {
+            result = CatGirlCrafting.craftOrder(this.catGirl, server, sample.copyWithCount(1), 1, this.player);
+        } catch (RuntimeException e) {
+            // 这条路径跑在服务端每 tick 的 broadcastChanges 里：异常逃出去 = 整个服务端崩
+            // （1.1.75 的崩溃就是这么出来的）。记日志、当作这次没做成，绝不带崩存档。
+            LOGGER.error("cat_girl 下单这一拍失败（样品 {}），跳过", sample, e);
+            return;
+        }
         String hint;
         switch (result.status) {
             case OK -> {
