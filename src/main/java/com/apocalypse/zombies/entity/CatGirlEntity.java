@@ -114,8 +114,20 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
     public static final int ACTION_MINE = 4;
     public static final int ACTION_HURT = 5;
 
-    /** 她自己的库存：伐木 / 挖矿的产物，也是交易菜单里可购买的那九格。 */
-    public static final int GOODS_SIZE = 9;
+    /** 她的物品栏（快捷栏）格数：存档里槽位 0–8，交易界面最下面那一行。 */
+    public static final int GOODS_HOTBAR = 9;
+
+    /** 她的背包格数：存档里槽位 9–35，交易界面上面三行。 */
+    public static final int GOODS_BACKPACK = 27;
+
+    /**
+     * 她自己的库存总格数：伐木 / 挖矿的产物、她自己做的东西都堆这里，
+     * 也是交易菜单里可买的那 36 格 —— 和玩家的「背包 27 + 物品栏 9」同款排布。
+     *
+     * <p>存档兼容：{@code CatGirlGoods} 是按槽位下标原样存的，老存档里那 9 格照旧落在 0–8，
+     * 9–35 是空的，不需要任何迁移。</p>
+     */
+    public static final int GOODS_SIZE = GOODS_HOTBAR + GOODS_BACKPACK;
 
     private static final EntityDataAccessor<Integer> DATA_JOB =
             SynchedEntityData.defineId(CatGirlEntity.class, EntityDataSerializers.INT);

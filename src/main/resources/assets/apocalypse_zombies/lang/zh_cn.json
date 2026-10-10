@@ -104,7 +104,7 @@
   "cat_girl.job.switched": "%s 的任务模式：%s",
   "cat_girl.trade.give": "给予",
   "cat_girl.trade.reward": "回报",
-  "cat_girl.trade.stock": "她的库存（爱心币购买）",
+  "cat_girl.trade.stock": "她的库存（背包 %1$s 格 + 物品栏 %2$s 格）",
   "cat_girl.trade.not_enough": "爱心币不够，需要 %s 枚",
   "cat_girl.not_tame": "她还没认主，喂她一条鱼（任何鱼类都行）",
   "cat_girl.not_owner": "她只认自己的主人",

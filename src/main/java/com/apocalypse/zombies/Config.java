@@ -291,6 +291,28 @@ public final class Config {
     /** 一条 {@code /apocalypse catgirl mine} 指令最多挖多少块（一键挖掘的上限）。 */
     public static final ForgeConfigSpec.IntValue CAT_GIRL_MINE_MAX_BLOCKS;
 
+    /** 自主挖矿：目标最多比她的脚层低几格（0 = 只在脚下那层及以上找）。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_MINE_DEPTH;
+
+    /** 一键挖掘订单：目标最多比她的脚层低几格（订单是主人点名的活）。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_MINE_ORDER_DEPTH;
+
+    /** 探矿：附近一时找不到矿石时，她主动走到附近没探过的位置转一圈。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_PROSPECT;
+
+    /** 一趟探矿最多连走几个探点。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_PROSPECT_TRIES;
+
+    /** 每个探点大概走多远（格）。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_PROSPECT_STEP;
+
+    /**
+     * 她手里那件东西要不要按镜像摆（默认 false = 原版右手拿法）。
+     *
+     * <p>只影响贴图的左右朝向（镐 / 斧的头朝里还是朝外），倾角与摆位两者相同。</p>
+     */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_HELD_ITEM_MIRROR;
+
     /** 干活去找工作方块：合成去合成台、熔炼去熔炉（走过去再动手）。 */
     public static final ForgeConfigSpec.BooleanValue CAT_GIRL_STATION_USE;
 
@@ -733,6 +755,24 @@ public final class Config {
                 .defineInRange("mine_radius", 24, 4, 64);
         CAT_GIRL_MINE_MAX_BLOCKS = b.comment("一条 /apocalypse catgirl mine 指令最多挖多少块（一键挖掘的数量上限，最高 64）。")
                 .defineInRange("mine_max_blocks", 64, 1, 64);
+        CAT_GIRL_MINE_DEPTH = b.comment("自主挖矿：目标最多比她脚层低几格（0 = 只在脚下那层及以上找）。",
+                        "默认 1：脚边浅层矿顺手捡，但绝不挖穿自己站着的地板 —— 她不会再垂直往下打洞、掉进自挖竖井。",
+                        "她站着的那一格正下方永远不动（不管这个值多大）。想恢复老行为（一路往下挖）就把这里设成 8。")
+                .defineInRange("mine_depth", 1, 0, 8);
+        CAT_GIRL_MINE_ORDER_DEPTH = b.comment("一键挖掘订单：目标最多比她脚层低几格（订单是主人点名的活，允许往下挖一点）。",
+                        "与 mine_depth 分开：自主挖矿不许下挖，你点名的矿脉在脚下也照样给你挖上来。")
+                .defineInRange("mine_order_depth", 6, 0, 16);
+        CAT_GIRL_PROSPECT = b.comment("探矿：附近一时找不到矿石时，她自己走到附近没探过的位置转一圈（而不是原地刨地 / 往下打洞）。",
+                        "只在「她自己的挖矿工种 + 没订单」时生效；连着几个探点都空手就回主人身边待命。")
+                .define("prospect", true);
+        CAT_GIRL_PROSPECT_TRIES = b.comment("一趟探矿最多连走几个探点；连着空手这么多次就回主人身边待命。")
+                .defineInRange("prospect_tries", 6, 1, 32);
+        CAT_GIRL_PROSPECT_STEP = b.comment("每个探点大概走多远（格）。探点在 mine_radius 内随机取，且不会走离主人超过 autonomy_radius。")
+                .defineInRange("prospect_step", 8, 2, 32);
+        CAT_GIRL_HELD_ITEM_MIRROR = b.comment("她手里那件东西按镜像摆（贴图左右反过来）。",
+                        "默认 false：与原版玩家右手拿东西完全同一条摆放链（倾角、朝向都跟玩家一致）。",
+                        "只有当你看她手上的镐 / 斧头朝里侧、跟玩家拿反了才开这个。")
+                .define("held_item_mirror", false);
         CAT_GIRL_STATION_USE = b.comment("干活去工作方块：合成去最近的合成台、熔炼去最近的熔炉，走过去再动手。",
                         "关掉 = 像以前一样就地空手做（她的 3×3 一手就能摆）。")
                 .define("station_use", true);

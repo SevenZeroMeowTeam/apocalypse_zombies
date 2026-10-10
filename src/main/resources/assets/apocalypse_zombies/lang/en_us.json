@@ -104,7 +104,7 @@
   "cat_girl.job.switched": "%s job: %s",
   "cat_girl.trade.give": "Give",
   "cat_girl.trade.reward": "Reward",
-  "cat_girl.trade.stock": "Her stock (buy with Love Coins)",
+  "cat_girl.trade.stock": "Her stock (backpack %1$s + hotbar %2$s)",
   "cat_girl.trade.not_enough": "Not enough Love Coins: %s needed",
   "cat_girl.not_tame": "She has not bonded with you yet - feed her a fish (any fish).",
   "cat_girl.not_owner": "She only answers to her owner.",

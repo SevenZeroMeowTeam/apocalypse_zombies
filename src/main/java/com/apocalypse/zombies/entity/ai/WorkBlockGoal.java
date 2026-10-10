@@ -1,12 +1,16 @@
 package com.apocalypse.zombies.entity.ai;
 
+import java.util.ArrayDeque;
 import java.util.EnumSet;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 
 import com.apocalypse.zombies.Config;
@@ -31,6 +35,12 @@ import com.apocalypse.zombies.entity.CatGirlHarvest;
  *       她会在原地反复起步，看起来像卡住了。</li>
  *   <li>破坏耗时按手持工具打折（斧对原木、镐对矿石减半）—— 让「给她一把好工具」
  *       这件事在体感上有回报，而不是只有动画好看。</li>
+ *   <li><b>不垂直下挖</b>：目标只在「她的脚层上下各一小段」里找（向下 {@code mine_depth}，
+ *       默认 1 格），而且**她站着那一格的正下方永远不选** —— 她不会挖穿自己的地板掉进自挖竖井。
+ *       想看老行为（一路往下钻）就把 {@code mine_depth} 调到 8。</li>
+ *   <li><b>探矿</b>：附近一时没矿可挖时，她按 {@link #PROSPECT_INTERVAL} 的节奏走到周围
+ *       没探过的位置转一圈（{@code prospect} 开关 + {@code prospect_tries} 次数上限），
+ *       而不是原地刨地或往下打洞；连着几个探点都空手就回主人身边待命，过一会儿再出门。</li>
  * </ul>
  */
 public class WorkBlockGoal extends Goal {
@@ -47,6 +57,18 @@ public class WorkBlockGoal extends Goal {
     /** 导航走不动超过这么多 tick 就放弃。 */
     private static final int STUCK_TICKS = 60;
 
+    /** 目标最多比她高几格（树冠 / 头顶的矿脉；再高导航也上不去）。 */
+    private static final int SCAN_UP = 4;
+
+    /** 探矿：记住多少个探点防打转。 */
+    private static final int VISITED_KEEP = 12;
+
+    /** 探矿：两个探点之间至少隔这么多 tick 再选下一个。 */
+    private static final int PROSPECT_INTERVAL = 40;
+
+    /** 空手太久（tick）就把探矿次数清零，允许她再出去转一圈。 */
+    private static final int DRY_RESET_TICKS = 1200;
+
     private final CatGirlEntity cat;
     private final Job job;
     private final Predicate<BlockPos> filter;
@@ -62,6 +84,15 @@ public class WorkBlockGoal extends Goal {
     private int blacklistTicks;
     private int stuckTicks;
     private int workTicks;
+
+    /** 当前目标是探点（走过去看看）而不是待砸的方块。 */
+    private boolean prospecting;
+    /** 这一轮已经走了几个探点（找到活就清零）。 */
+    private int prospectTries;
+    /** 这一轮第一次空手是什么时候（过 {@link #DRY_RESET_TICKS} 再允许探矿）。 */
+    private long drySince;
+    /** 最近探过的位置（先进先出，防在同一片地来回走）。 */
+    private final ArrayDeque<BlockPos> visited = new ArrayDeque<>();
 
     public WorkBlockGoal(CatGirlEntity cat, Job job, Predicate<BlockPos> filter, int action) {
         this(cat, job, filter, action, () -> true, false);
@@ -96,7 +127,7 @@ public class WorkBlockGoal extends Goal {
             return false;
         }
         // 主人跑远了先跟人：她是随从，不该为了砍树把主人丢在地图另一头。
-        net.minecraft.world.entity.LivingEntity owner = this.cat.getOwner();
+        LivingEntity owner = this.cat.getOwner();
         if (owner != null) {
             double leash = Config.CAT_GIRL_AUTONOMY_RADIUS.get();
             if (this.cat.distanceToSqr(owner) > leash * leash) {
@@ -112,6 +143,15 @@ public class WorkBlockGoal extends Goal {
         }
         this.scanCooldown = SCAN_INTERVAL;
         this.target = this.findBlock();
+        if (this.target != null) {
+            // 找到活了：空手的账清掉，探矿次数归零
+            this.prospecting = false;
+            this.prospectTries = 0;
+            this.drySince = 0L;
+            return true;
+        }
+        this.target = this.pickProspect();
+        this.prospecting = this.target != null;
         return this.target != null;
     }
 
@@ -119,6 +159,10 @@ public class WorkBlockGoal extends Goal {
     public boolean canContinueToUse() {
         if (this.cat.getJob() != this.job || this.target == null || !this.gate.getAsBoolean()) {
             return false;
+        }
+        if (this.prospecting) {
+            // 探点不是方块，别拿 filter 去验它
+            return this.cat.isAlive();
         }
         return this.filter.test(this.target) && this.cat.isAlive();
     }
@@ -129,6 +173,10 @@ public class WorkBlockGoal extends Goal {
         this.stuckTicks = 0;
         this.cat.getNavigation().moveTo(this.target.getX() + 0.5D, this.target.getY(), this.target.getZ() + 0.5D, 1.0D);
         this.cat.setTarget(null);
+        if (this.prospecting) {
+            // 探矿不砸方块：动作通道留空，让走路动画自己说话
+            this.cat.setAction(CatGirlEntity.ACTION_NONE, 0);
+        }
     }
 
     @Override
@@ -136,6 +184,7 @@ public class WorkBlockGoal extends Goal {
         this.cat.getNavigation().stop();
         this.cat.setAction(CatGirlEntity.ACTION_NONE, 0);
         this.target = null;
+        this.prospecting = false;
     }
 
     @Override
@@ -145,6 +194,11 @@ public class WorkBlockGoal extends Goal {
         }
         Vec3 center = Vec3.atCenterOf(this.target);
         this.cat.getLookControl().setLookAt(center.x, center.y, center.z, 30.0F, 30.0F);
+
+        if (this.prospecting) {
+            this.tickProspect(center);
+            return;
+        }
 
         double distance = this.cat.position().distanceTo(center);
         if (distance > REACH) {
@@ -213,17 +267,30 @@ public class WorkBlockGoal extends Goal {
         this.cat.getNavigation().stop();
     }
 
-    /** 在半径内找最近的匹配方块：以她所在位置为中心扫一个立方体，向下多扫一点（矿洞场景）。 */
+    /**
+     * 在半径内找最近的匹配方块。
+     *
+     * <p>垂直窗口 = 向下 {@code mine_depth}（订单用 {@code mine_order_depth}）、向上 {@link #SCAN_UP}。
+     * 向下收得这么窄是刻意的：原来向下扫 8 格，她会一路挖脚下的土/矿往下钻、掉进自己挖的竖井里继续挖。
+     * 另外**她站着那一格的正下方永远跳过** —— 那是她的地板，砸了就是自己给自己挖坑。</p>
+     */
     private BlockPos findBlock() {
         // 取两者较大的那个：老存档里 work_radius 还是 12，光靠它她走不出院子。
         // mine_radius（配置里的「范围」）既管自主挖矿也管一键挖掘订单。
         int radius = Math.max(Config.CAT_GIRL_MINE_RADIUS.get(), Config.CAT_GIRL_WORK_RADIUS.get());
+        int down = this.orderMode ? Config.CAT_GIRL_MINE_ORDER_DEPTH.get() : Config.CAT_GIRL_MINE_DEPTH.get();
+        down = Mth.clamp(down, 0, radius);
+        int up = Math.min(SCAN_UP, radius);
         BlockPos origin = this.cat.blockPosition();
+        BlockPos floor = origin.below();
         BlockPos best = null;
         double bestDistance = Double.MAX_VALUE;
         for (BlockPos pos : BlockPos.betweenClosed(
-                origin.offset(-radius, -Math.min(radius, 8), -radius),
-                origin.offset(radius, Math.min(radius, 6), radius))) {
+                origin.offset(-radius, -down, -radius),
+                origin.offset(radius, up, radius))) {
+            if (pos.equals(floor)) {
+                continue; // 绝不砸自己脚下那一格：那是唯一会让她掉下去的方块
+            }
             if (this.blacklistTicks > 0 && pos.equals(this.blacklisted)) {
                 continue;
             }
@@ -237,5 +304,80 @@ public class WorkBlockGoal extends Goal {
             }
         }
         return best;
+    }
+
+    /**
+     * 选一个探点：在她 {@code mine_radius} 内随机取一个方向 + 距离，落到地表，
+     * 且不离开主人超过 {@code autonomy_radius}；最近探过的位置跳过（防原地打转）。
+     *
+     * <p>返回 null = 这轮不探了（开关关了 / 是订单 / 已经探够 {@code prospect_tries} 次）。</p>
+     */
+    private BlockPos pickProspect() {
+        if (this.orderMode || !Config.CAT_GIRL_PROSPECT.get()) {
+            return null;
+        }
+        int maxTries = Config.CAT_GIRL_PROSPECT_TRIES.get();
+        long now = this.cat.level().getGameTime();
+        if (this.prospectTries >= maxTries) {
+            if (this.drySince == 0L || now - this.drySince < DRY_RESET_TICKS) {
+                return null; // 探够了：先回主人身边待命，过一会儿再出门
+            }
+            this.prospectTries = 0;
+            this.drySince = 0L;
+            this.visited.clear();
+        }
+        int radius = Math.max(Config.CAT_GIRL_MINE_RADIUS.get(), Config.CAT_GIRL_WORK_RADIUS.get());
+        int step = Math.min(Config.CAT_GIRL_PROSPECT_STEP.get(), radius);
+        LivingEntity owner = this.cat.getOwner();
+        double leash = Config.CAT_GIRL_AUTONOMY_RADIUS.get();
+        int here = this.cat.blockPosition().getY();
+        for (int attempt = 0; attempt < 16; attempt++) {
+            double angle = this.cat.getRandom().nextDouble() * Math.PI * 2.0D;
+            double dist = step + this.cat.getRandom().nextDouble() * Math.max(1, radius - step);
+            int x = Mth.floor(this.cat.getX() + Math.cos(angle) * dist);
+            int z = Mth.floor(this.cat.getZ() + Math.sin(angle) * dist);
+            if (owner != null && owner.distanceToSqr(x + 0.5D, owner.getY(), z + 0.5D) > leash * leash) {
+                continue; // 不许为了探矿走离主人太远
+            }
+            BlockPos spot = this.cat.level().getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                    new BlockPos(x, 0, z));
+            if (Math.abs(spot.getY() - here) > 6) {
+                continue; // 山顶 / 悬崖底够不着，别浪费这一趟
+            }
+            if (!this.cat.level().getBlockState(spot).isAir()) {
+                continue; // 地表不是空的（水 / 树叶 / 岩浆），站不住
+            }
+            if (this.visited.contains(spot)) {
+                continue;
+            }
+            this.visited.addFirst(spot);
+            while (this.visited.size() > VISITED_KEEP) {
+                this.visited.removeLast();
+            }
+            this.prospectTries++;
+            if (this.drySince == 0L) {
+                this.drySince = now;
+            }
+            return spot;
+        }
+        return null;
+    }
+
+    /** 探点：只走过去，不砸方块；到了 / 走不动了就记一笔，回去重扫。 */
+    private void tickProspect(Vec3 center) {
+        double distance = this.cat.position().distanceTo(center);
+        boolean walking = !this.cat.getNavigation().isDone() && distance > REACH;
+        if (walking && this.cat.horizontalCollision) {
+            this.stuckTicks++;
+        } else if (walking) {
+            this.stuckTicks = 0;
+        }
+        if (distance <= REACH || this.cat.getNavigation().isDone() || this.stuckTicks > STUCK_TICKS) {
+            this.cat.getNavigation().stop();
+            this.target = null;
+            this.prospecting = false;
+            this.stuckTicks = 0;
+            this.scanCooldown = PROSPECT_INTERVAL;
+        }
     }
 }

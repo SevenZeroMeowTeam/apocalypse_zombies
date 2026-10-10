@@ -24,6 +24,8 @@ import com.mojang.logging.LogUtils;
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.entity.CatGirlCrafting;
 import com.apocalypse.zombies.entity.CatGirlEntity;
+
+import static com.apocalypse.zombies.entity.CatGirlEntity.GOODS_BACKPACK;
 import com.apocalypse.zombies.registry.ModItems;
 import com.apocalypse.zombies.registry.ModMenus;
 import org.slf4j.Logger;
@@ -59,13 +61,42 @@ public class CatGirlTradeMenu extends AbstractContainerMenu {
     /** 面板高度（只有她的部分）：界面底部落在快捷栏那一行下面。 */
     public static final int PANEL_HEIGHT = 226;
 
-    /** 玩家背包第一行的 y：她的区块下面，按原版 9 列 × 18px 排（和玩家背包同款布局）。 */
-    public static final int PLAYER_ROW_Y = 142;
+    /** 她的库存第一行（背包第一行）的 y。 */
+    public static final int GOODS_Y = 114;
 
-    /** 快捷栏那一行在面板里的 y：最后一行背包下留 4px，与原版背包一致。 */
-    public static final int HOTBAR_Y = 200;
+    /** 一行 9 格的间距。 */
+    public static final int SLOT_PITCH = 18;
+
+    /**
+     * 玩家背包 27 格的 y —— 面板外（10000 = 屏幕外）：
+     * 这个界面按需求「只显示她自己的东西」，玩家那 27 格槽位仍然注册着、shift 搬货照常可用，
+     * 只是不画在面板里。玩家只剩底部快捷栏那一行留在面板里给「给予格 / 合成网格」供料。
+     */
+    public static final int PLAYER_ROW_Y = 10000;
+
+    /** 她的物品栏（快捷栏）那一行的 y：背包 3 行下留 4px，与原版背包同款。 */
+    public static final int GOODS_HOTBAR_Y = GOODS_Y + GOODS_BACKPACK / 9 * SLOT_PITCH + 4;
+
+    /** 玩家快捷栏那一行在面板里的 y：她那一行下面留 4px，两排快捷栏不贴在一起。 */
+    public static final int HOTBAR_Y = GOODS_HOTBAR_Y + SLOT_PITCH + 4;
 
     public static final int GOODS_COUNT = CatGirlEntity.GOODS_SIZE;
+
+    /**
+     * 她库存第 i 格在面板里的坐标：0–8 是物品栏（最下面一行），9–35 是背包（上面三行）。
+     * 菜单坐标与界面坐标必须同源，所以这里只留这一份算法，界面直接调它。
+     */
+    public static int goodsSlotX(int index) {
+        return 8 + (index % 9) * SLOT_PITCH;
+    }
+
+    /** 见 {@link #goodsSlotX}：物品栏在最后一行（原版玩家的快捷栏在底部）。 */
+    public static int goodsSlotY(int index) {
+        if (index < CatGirlEntity.GOODS_HOTBAR) {
+            return GOODS_HOTBAR_Y;
+        }
+        return GOODS_Y + (index - CatGirlEntity.GOODS_HOTBAR) / 9 * SLOT_PITCH;
+    }
     public static final int PLAYER_START = GOODS_START + GOODS_COUNT;
 
     /** 附魔等级（等效于附魔台 20 级投入）。 */
@@ -181,7 +212,7 @@ public class CatGirlTradeMenu extends AbstractContainerMenu {
 
         // ---- 她的库存：只读展示，购买在 clicked() 里做 ----
         for (int i = 0; i < GOODS_COUNT; i++) {
-            this.addSlot(new Slot(goods, i, 8 + i * 18, 114) {
+            this.addSlot(new Slot(goods, i, goodsSlotX(i), goodsSlotY(i)) {
                 @Override
                 public boolean mayPlace(ItemStack stack) {
                     return false;
@@ -195,7 +226,7 @@ public class CatGirlTradeMenu extends AbstractContainerMenu {
         }
 
         // ---- 玩家背包 ----
-        // 她的界面按需求「只显示她自己的东西」：玩家那 27 格整块挪到面板外面（y 远在视区之下），
+        // 她的界面按需求「只显示她自己的东西」：玩家那 27 格整块挪到面板外面（PLAYER_ROW_Y = 屏幕外），
         // 槽位本身仍然存在 —— 所以 shift 一件件搬进背包、关界面把给予/合成格还回玩家都照常可用；
         // 但只把**快捷栏那一行**留在面板底部：不然界面上一个玩家来源格都没有，
         // 给予格要放东西、3x3 合成要拿材料，就全都没法填了。
