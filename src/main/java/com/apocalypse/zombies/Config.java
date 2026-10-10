@@ -12,7 +12,15 @@ public final class Config {
 
     public static final ForgeConfigSpec SPEC;
 
-    // ---- Lunar event probabilities (rolled once per night, weights, not required to sum to 1) ----
+    /**
+     * 月亮事件的触发方式。
+     *
+     * <p>{@code true}（默认）= 按 <b>Crafting Dead 的 28 天日历</b>触发（第 6/7 蓝月、13 血月、
+     * 20/21 黄月、27 超级血月），玩家可以数着日子等；{@code false} = 每晚按下面那组权重独立掷骰。</p>
+     */
+    public static final ForgeConfigSpec.BooleanValue LUNAR_SCHEDULE_ENABLED;
+
+    // ---- Lunar event probabilities (random mode only: rolled once per night, weights not required to sum to 1) ----
     public static final ForgeConfigSpec.DoubleValue BLOOD_MOON_CHANCE;
     public static final ForgeConfigSpec.DoubleValue SUPER_BLOOD_MOON_CHANCE;
     public static final ForgeConfigSpec.DoubleValue YELLOW_MOON_CHANCE;
@@ -22,6 +30,8 @@ public final class Config {
 
     /** Blood moons (both kinds) make beds unusable for the whole night. */
     public static final ForgeConfigSpec.BooleanValue BLOOD_MOON_BLOCKS_SLEEP;
+    /** 血月期间禁止苦力怕 / 蜘蛛 / 洞穴蜘蛛 / 女巫生成（与 Crafting Dead 同步：血月之夜只留僵尸潮）。 */
+    public static final ForgeConfigSpec.BooleanValue BLOOD_MOON_BLOCKS_OTHER_MOBS;
 
     // ---- Zombie evolution ----
     /** In-game days required per global evolution level. */
@@ -258,6 +268,10 @@ public final class Config {
         b.comment("Chances rolled once per night when dusk starts. 0.10 = 10%.",
                         "Whatever is left over after all six rolls is an ordinary night.")
                 .push("lunar_events");
+        LUNAR_SCHEDULE_ENABLED = b.comment("月亮事件按 Crafting Dead 的 28 天日历触发：",
+                        "第 6/7 天蓝月、第 13 天血月、第 20/21 天黄月、第 27 天超级血月。",
+                        "关掉则退回「每晚独立掷骰」的随机模式（用下面那组概率）。")
+                .define("lunar_schedule", true);
         BLOOD_MOON_CHANCE = b.comment("Red moon, sky washed dark red, beds unusable.")
                 .defineInRange("blood_moon_chance", 0.10D, 0.0D, 1.0D);
         SUPER_BLOOD_MOON_CHANCE = b.comment("Bigger, deeper red blood moon; harsher night.")
@@ -272,6 +286,9 @@ public final class Config {
                 .defineInRange("super_blue_moon_chance", 0.02D, 0.0D, 1.0D);
         BLOOD_MOON_BLOCKS_SLEEP = b.comment("Players cannot sleep while a blood moon is up.")
                 .define("blood_moon_blocks_sleep", true);
+        BLOOD_MOON_BLOCKS_OTHER_MOBS = b.comment("血月期间禁止苦力怕 / 蜘蛛 / 洞穴蜘蛛 / 女巫生成。",
+                        "与 Crafting Dead 同一条规则：血月之夜只留僵尸潮。")
+                .define("blood_moon_blocks_other_mobs", true);
         b.pop();
 
         b.comment("Zombies level up over the in-game days and can evolve on the fly.")

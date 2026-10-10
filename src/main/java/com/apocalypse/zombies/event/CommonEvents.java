@@ -25,6 +25,8 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
+import net.minecraftforge.eventbus.api.Event;
+import net.minecraft.world.entity.EntityType;
 import net.minecraftforge.event.entity.living.MobSpawnEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerSleepInBedEvent;
@@ -106,6 +108,31 @@ public final class CommonEvents {
         event.setResult(Player.BedSleepingProblem.NOT_POSSIBLE_NOW);
         player.displayClientMessage(
                 Component.translatable("sleep.apocalypse_zombies.blocked", moon.getDisplayName()), true);
+    }
+
+    /**
+     * 血月期间禁止苦力怕 / 蜘蛛 / 洞穴蜘蛛 / 女巫生成。
+     *
+     * <p>与 Crafting Dead 的 {@code MoonEventHandler.handleCheckSpawn} 同一条规则：血月之夜把舞台
+     * 留给僵尸潮，而不是让一堆非僵尸怪跟着凑热闹。用 {@code PositionCheck}（而不是 FinalizeSpawn）
+     * 是因为只有它能在怪真正落位之前把这次生成否掉。</p>
+     */
+    @SubscribeEvent
+    public static void onSpawnPositionCheck(MobSpawnEvent.PositionCheck event) {
+        // 用实体自己的 level：PositionCheck 给的是 ServerLevelAccessor，不是 Level。
+        Level level = event.getEntity().level();
+        if (level.isClientSide() || !Config.BLOOD_MOON_BLOCKS_OTHER_MOBS.get()) {
+            return;
+        }
+        MoonEvent moon = MoonEventManager.getMoonEvent(level);
+        if (moon != MoonEvent.BLOOD_MOON && moon != MoonEvent.SUPER_BLOOD_MOON) {
+            return;
+        }
+        EntityType<?> type = event.getEntity().getType();
+        if (type == EntityType.CREEPER || type == EntityType.SPIDER
+                || type == EntityType.CAVE_SPIDER || type == EntityType.WITCH) {
+            event.setResult(Event.Result.DENY);
+        }
     }
 
     /** Blue moons pay out: evolved zombies carry bonus loot while the blessing is running. */

@@ -89,7 +89,12 @@ public final class MoonEventManager {
         if (night) {
             if (data.getLastRolledDay() != day) {
                 data.setLastRolledDay(day);
-                raiseMoon(level, data, roll(level.getRandom()), true);
+                // 默认走 Crafting Dead 的 28 天日历（forDay 是 1 起始天数口径，故 +1）；
+                // 关掉开关才退回旧的随机掷骰。
+                MoonEvent tonight = Config.LUNAR_SCHEDULE_ENABLED.get()
+                        ? MoonEvent.forDay(day + 1L)
+                        : roll(level.getRandom());
+                raiseMoon(level, data, tonight, true);
             }
         } else if (data.getMoonEvent().isActive()) {
             lowerMoon(level, data);

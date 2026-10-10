@@ -96,6 +96,42 @@ public enum MoonEvent {
         this.effectAmplifier = effectAmplifier;
     }
 
+    /**
+     * 按 <b>Crafting Dead 的 28 天日历</b>返回该天的月亮事件 —— 与 CD 的
+     * {@code MoonEventType.forDay} 逐条对齐（连判定顺序都照抄，便于两边对照）：
+     * <ul>
+     *   <li>第 6 天 → 蓝月；第 7 天 → 超级蓝月</li>
+     *   <li>第 13 天 → 血月（每 14 天一次）</li>
+     *   <li>第 20 天 → 黄月；第 21 天 → 超级黄月</li>
+     *   <li>第 27 天 → 超级血月（每 28 天一次）</li>
+     * </ul>
+     *
+     * <p><b>天数口径</b>：CD 用 1 起始的世界天数（首日 = {@code getDayTime() / 24000 + 1}），
+     * 比 {@link MoonEventManager#getWorldDay} 的 0 起始多 1 —— 调用处要 +1，否则整张日历错位一天。</p>
+     */
+    public static MoonEvent forDay(long day) {
+        long m = Math.floorMod(day, 28L);
+        if (m == 27) {
+            return SUPER_BLOOD_MOON;
+        }
+        if (m == 21) {
+            return SUPER_YELLOW_MOON;
+        }
+        if (m == 20) {
+            return YELLOW_MOON;
+        }
+        if (m == 13) {
+            return BLOOD_MOON;
+        }
+        if (m == 7) {
+            return SUPER_BLUE_MOON;
+        }
+        if (m == 6) {
+            return BLUE_MOON;
+        }
+        return NONE;
+    }
+
     /** Stable identifier used by commands and the network protocol. */
     public String getId() {
         return this.id;
