@@ -354,7 +354,32 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
             return InteractionResult.SUCCESS;
         }
 
-        // ---- 未驯服：喂鱼即认主 ----
+        // ---- 潜行右键：打开她自己的界面。刻意放在所有分支最前面 ----
+        // 「蹲下点击」是玩家明确下达的指令，不该被「手里正好拿着把斧子」（交工具）或
+        // 「正好拿着鱼」（喂食）吃掉；而且 shift 状态是每 tick 同步的，服务端有一两 tick 滞后，
+        // 分支越靠前越不容易被抢 —— 这是「蹲下点击没反应 / 反而切了工种」的根因。
+        if (player.isShiftKeyDown()) {
+            if (!this.isTame()) {
+                player.displayClientMessage(Component.translatable("cat_girl.not_tame"), true);
+                return InteractionResult.CONSUME;
+            }
+            if (!this.isOwnedBy(player)) {
+                player.displayClientMessage(Component.translatable("cat_girl.not_owner"), true);
+                return InteractionResult.CONSUME;
+            }
+            if (player instanceof ServerPlayer serverPlayer) {
+                // 1.20.1 的 ServerPlayer 只有 openMenu(MenuProvider)，没有带额外数据的 2 参重载；
+                // 要把 entityId 同步给客户端菜单，得走 Forge 的 NetworkHooks.openScreen。
+                net.minecraftforge.network.NetworkHooks.openScreen(serverPlayer,
+                        new SimpleMenuProvider(
+                                (id, inv, p) -> new CatGirlTradeMenu(id, inv, this.getId()),
+                                this.getDisplayName()),
+                        buf -> buf.writeVarInt(this.getId()));
+            }
+            return InteractionResult.CONSUME;
+        }
+
+        // ---- 未驯服：喂鱼即认主；拿别的东西点她也给一句话，不再静默无反应 ----
         if (!this.isTame()) {
             if (stack.is(ItemTags.FISHES)) {
                 if (!player.getAbilities().instabuild) {
@@ -367,12 +392,14 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
                 this.playSound(SoundEvents.CAT_EAT, 1.0F, 1.0F);
                 return InteractionResult.CONSUME;
             }
-            return InteractionResult.PASS;
+            player.displayClientMessage(Component.translatable("cat_girl.not_tame"), true);
+            return InteractionResult.CONSUME;
         }
 
-        // ---- 已驯服：只认主人 ----
+        // ---- 已驯服：只认主人（别人点她也要说明白）----
         if (!this.isOwnedBy(player)) {
-            return InteractionResult.PASS;
+            player.displayClientMessage(Component.translatable("cat_girl.not_owner"), true);
+            return InteractionResult.CONSUME;
         }
 
         // 手里拿鱼：加餐回血（顺手当个治疗手段）
@@ -402,19 +429,6 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
         }
 
         if (stack.isEmpty()) {
-            // 潜行右键：交易菜单
-            if (player.isShiftKeyDown()) {
-                if (player instanceof ServerPlayer serverPlayer) {
-                    // 1.20.1 的 ServerPlayer 只有 openMenu(MenuProvider)，没有带额外数据的 2 参重载；
-                    // 要把 entityId 同步给客户端菜单，得走 Forge 的 NetworkHooks.openScreen。
-                    net.minecraftforge.network.NetworkHooks.openScreen(serverPlayer,
-                            new SimpleMenuProvider(
-                                    (id, inv, p) -> new CatGirlTradeMenu(id, inv, this.getId()),
-                                    this.getDisplayName()),
-                            buf -> buf.writeVarInt(this.getId()));
-                }
-                return InteractionResult.CONSUME;
-            }
             // 空手右键：循环切换任务模式
             Job next = this.getJob().next();
             this.setJob(next);

@@ -52,6 +52,15 @@ public class CatGirlTradeMenu extends AbstractContainerMenu {
     public static final int CRAFT_COUNT = 9;
     public static final int CRAFT_RESULT = CRAFT_START + CRAFT_COUNT;
     public static final int GOODS_START = CRAFT_RESULT + 1;
+    /** 面板高度（只有她的部分）：界面底部落在快捷栏那一行下面。 */
+    public static final int PANEL_HEIGHT = 166;
+
+    /** 快捷栏那一行在面板里的 y。 */
+    public static final int HOTBAR_Y = 146;
+
+    /** 玩家 27 格的 y 原点：远在面板之下 = 存在但不可见（shift 搬运只走槽位索引）。 */
+    public static final int HIDDEN_PLAYER_Y = 10000;
+
     public static final int GOODS_COUNT = CatGirlEntity.GOODS_SIZE;
     public static final int PLAYER_START = GOODS_START + GOODS_COUNT;
 
@@ -156,13 +165,18 @@ public class CatGirlTradeMenu extends AbstractContainerMenu {
         }
 
         // ---- 玩家背包 ----
+        // 她的界面按需求「只显示她自己的东西」：玩家那 27 格整块挪到面板外面（y 远在视区之下），
+        // 槽位本身仍然存在 —— 所以 shift 一件件搬进背包、关界面把给予/合成格还回玩家都照常可用；
+        // 但只把**快捷栏那一行**留在面板底部：不然界面上一个玩家来源格都没有，
+        // 给予格要放东西、3x3 合成要拿材料，就全都没法填了。
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
-                this.addSlot(new Slot(playerInventory, col + row * 9 + 9, 8 + col * 18, 144 + row * 18));
+                this.addSlot(new Slot(playerInventory, col + row * 9 + 9, 8 + col * 18,
+                        HIDDEN_PLAYER_Y + row * 18));
             }
         }
         for (int col = 0; col < 9; col++) {
-            this.addSlot(new Slot(playerInventory, col, 8 + col * 18, 202));
+            this.addSlot(new Slot(playerInventory, col, 8 + col * 18, HOTBAR_Y));
         }
     }
 

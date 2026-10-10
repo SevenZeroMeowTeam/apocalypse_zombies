@@ -32,8 +32,10 @@ public class CatGirlTradeScreen extends net.minecraft.client.gui.screens.invento
     public CatGirlTradeScreen(CatGirlTradeMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
         this.imageWidth = 176;
-        this.imageHeight = 166;
-        this.inventoryLabelY = this.imageHeight - 94;
+        // 面板只包她自己的部分（交易行 / 库存行 / 底部快捷栏），玩家的 27 格不在这块面板里。
+        this.imageHeight = CatGirlTradeMenu.PANEL_HEIGHT;
+        // 玩家背包标题也挪出可视区：槽位已经藏在面板外，标题不该飘在别人的界面上。
+        this.inventoryLabelY = 10000;
     }
 
     @Override
@@ -48,6 +50,9 @@ public class CatGirlTradeScreen extends net.minecraft.client.gui.screens.invento
         guiGraphics.fill(x + 5, y + 76, x + this.imageWidth - 5, y + 77, PANEL_BORDER);
         // 交易行 / 库存行 / 玩家背包 的槽位框
         for (net.minecraft.world.inventory.Slot slot : this.menu.slots) {
+            if (slot.y >= this.imageHeight) {
+                continue; // 面板外的槽（玩家的 27 格）不画
+            }
             guiGraphics.fill(x + slot.x - 1, y + slot.y - 1, x + slot.x + 17, y + slot.y + 17, SLOT_FRAME);
             guiGraphics.fill(x + slot.x, y + slot.y, x + slot.x + 16, y + slot.y + 16, SLOT_FILL);
         }
@@ -64,7 +69,6 @@ public class CatGirlTradeScreen extends net.minecraft.client.gui.screens.invento
         guiGraphics.drawString(this.font, Component.translatable("cat_girl.trade.give"), 22, 42, LABEL_DARK, false);
         guiGraphics.drawString(this.font, Component.translatable("cat_girl.trade.reward"), 76, 42, LABEL_DARK, false);
         guiGraphics.drawString(this.font, Component.translatable("cat_girl.trade.stock"), 8, 80, LABEL_DARK, false);
-        guiGraphics.drawString(this.font, this.playerInventoryTitle, 8, this.inventoryLabelY, LABEL_DARK, false);
 
         // 库存价格：按价值 × 数量
         CatGirlEntity cat = this.menu.getCatGirl();
@@ -77,7 +81,8 @@ public class CatGirlTradeScreen extends net.minecraft.client.gui.screens.invento
                 int price = Math.max(1, CatGirlEntity.coinValue(stack) * stack.getCount());
                 String text = String.valueOf(price);
                 int slotX = 8 + i * 18;
-                guiGraphics.drawString(this.font, text, slotX + 8 - this.font.width(text) / 2, 72, PRICE_GOLD, true);
+                // 紧贴库存格下沿（格子底 132），原来画在 y=72 会飘到「她的库存」标题上面
+                guiGraphics.drawString(this.font, text, slotX + 8 - this.font.width(text) / 2, 133, PRICE_GOLD, true);
             }
         }
     }
