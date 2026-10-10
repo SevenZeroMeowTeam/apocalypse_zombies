@@ -214,6 +214,21 @@ public final class Config {
 
     // ---- 猫耳娘随从 ----
     /** 伐木 / 挖矿的搜索半径（格）。 */
+    /** 她会捡地上的东西塞进自己库存（捡到的东西就是她的货架）。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_PICKUP;
+
+    /** 她按工种自己换主手：伐木拿斧、挖矿拿镐、战斗拿剑（没剑就弓弩），并把库存里更好的盔甲穿上。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_AUTO_EQUIP;
+
+    /** 她自己动手把库存材料做成装备（工具 / 武器 / 盔甲 / 箭）。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_AUTO_CRAFT;
+
+    /** 她的装备不吃耐久（主手、盔甲、库存里的可损物品一律修满）。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_NO_DURABILITY;
+
+    /** 无视原版工具等级限制：她砸的方块一律有产物（用最高等级工具兜底取掉落）。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_ALWAYS_DROPS;
+
     /** 全无敌：任何来源都不掉血、也不会死（敌对生物、玩家、爆炸、虚空都免）。 */
     public static final ForgeConfigSpec.BooleanValue CAT_GIRL_INVULNERABLE;
     public static final ForgeConfigSpec.IntValue CAT_GIRL_WORK_RADIUS;
@@ -568,6 +583,16 @@ public final class Config {
                         "Cat girl companion: tame with fish, right-click bare-handed to cycle jobs,",
                         "sneak-right-click to open the barter menu.")
                 .push("cat_girl");
+        CAT_GIRL_PICKUP = b.comment("她会捡地上的东西收进自己库存（捡到的就是她的货架）。")
+                .define("pickup", true);
+        CAT_GIRL_AUTO_EQUIP = b.comment("她按工种自己换装备：伐木拿斧、挖矿拿镐、战斗拿剑（没剑用弓弩），顺手穿库存里更好的盔甲。")
+                .define("auto_equip", true);
+        CAT_GIRL_AUTO_CRAFT = b.comment("她自己把库存材料做成装备（工具 / 武器 / 盔甲 / 箭）。")
+                .define("auto_craft", true);
+        CAT_GIRL_NO_DURABILITY = b.comment("她的装备不吃耐久。")
+                .define("no_durability", true);
+        CAT_GIRL_ALWAYS_DROPS = b.comment("无视原版工具等级限制：她砸什么都有产物。")
+                .define("always_drops", true);
         CAT_GIRL_INVULNERABLE = b.comment("全无敌：任何来源都不掉血、也不会死（连 /kill 也伤不到她）。")
                 .define("invulnerable", true);
         CAT_GIRL_WORK_RADIUS = b.comment("伐木 / 挖矿时以她为中心的搜索半径（格）。")

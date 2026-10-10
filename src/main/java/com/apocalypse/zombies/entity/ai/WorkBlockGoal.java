@@ -171,6 +171,15 @@ public class WorkBlockGoal extends Goal {
         BlockState state = server.getBlockState(pos);
         BlockEntity entity = server.getBlockEntity(pos);
         List<ItemStack> drops = Block.getDrops(state, server, pos, entity, this.cat, this.cat.getMainHandItem());
+        if (drops.isEmpty() && state.requiresCorrectToolForDrops()
+                && Config.CAT_GIRL_ALWAYS_DROPS.get()) {
+            // 「无视原版规则限制」：原版卡掉落的是 playerDestroy 里的 canHarvestBlock（工具等级），
+            // 不是掉落表本身 —— 这里用最高等级工具再取一次，保证她砸什么都有产物。
+            ItemStack cheat = new ItemStack(this.job == Job.LUMBER
+                    ? net.minecraft.world.item.Items.NETHERITE_AXE
+                    : net.minecraft.world.item.Items.NETHERITE_PICKAXE);
+            drops = Block.getDrops(state, server, pos, entity, this.cat, cheat);
+        }
         server.destroyBlock(pos, false);
         this.cat.storeOrDrop(drops, pos);
         this.cat.playSound(net.minecraft.sounds.SoundEvents.ITEM_PICKUP, 0.5F, 1.6F);

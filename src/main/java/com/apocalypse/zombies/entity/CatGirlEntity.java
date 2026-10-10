@@ -118,6 +118,18 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
 
     private final SimpleContainer goods = new SimpleContainer(GOODS_SIZE);
 
+    /** 日常维护（换装 / 修耐久 / 自制品）的节拍计数。 */
+    private int maintenanceTicks = 20;
+    private int craftTicks = 40;
+    private int pickupTicks = 5;
+
+    /** 盔甲四个槽（她自己穿）。 */
+    private static final net.minecraft.world.entity.EquipmentSlot[] ARMOR_SLOTS = {
+            net.minecraft.world.entity.EquipmentSlot.HEAD,
+            net.minecraft.world.entity.EquipmentSlot.CHEST,
+            net.minecraft.world.entity.EquipmentSlot.LEGS,
+            net.minecraft.world.entity.EquipmentSlot.FEET};
+
     /** 当前动作还剩多少 tick；服务端倒计时，到点回 NONE。 */
     private int actionTicks;
 
@@ -284,7 +296,227 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
     @Override
     public void aiStep() {
         super.aiStep();
+        if (this.level().isClientSide) {
+            return;
+        }
         this.guardImmortal();
+        if (Config.CAT_GIRL_PICKUP.get()) {
+            this.pickupNearby();
+        }
+        if (--this.maintenanceTicks > 0) {
+            return;
+        }
+        this.maintenanceTicks = 20;
+        if (Config.CAT_GIRL_NO_DURABILITY.get()) {
+            this.keepGearPristine();
+        }
+        if (Config.CAT_GIRL_AUTO_EQUIP.get()) {
+            this.ensureMainHand(this.getJob());
+            this.ensureArmor();
+        }
+        if (Config.CAT_GIRL_AUTO_CRAFT.get() && this.level() instanceof ServerLevel server
+                && --this.craftTicks <= 0) {
+            this.craftTicks = 40;
+            CatGirlCrafting.craftOne(this, server);
+        }
+    }
+
+    // ------------------------------------------------------------ 拾取
+
+    /** 不用原版那套（它要 mobGriefing 开着）：自己扫身边 1.5 格捡。 */
+    private void pickupNearby() {
+        if (--this.pickupTicks > 0) {
+            return;
+        }
+        this.pickupTicks = 5;
+        net.minecraft.world.phys.AABB box = this.getBoundingBox().inflate(1.5D, 0.5D, 1.5D);
+        for (net.minecraft.world.entity.item.ItemEntity item :
+                this.level().getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, box)) {
+            if (item.isRemoved() || item.hasPickUpDelay() || item.getItem().isEmpty()) {
+                continue;
+            }
+            if (this.wantsToPickUp(item.getItem())) {
+                this.pickUpItem(item);
+            }
+        }
+    }
+
+    @Override
+    public boolean canPickUpLoot() {
+        return false; // 走自己的扫描，不受 mobGriefing 影响
+    }
+
+    @Override
+    public boolean wantsToPickUp(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < this.goods.getContainerSize(); i++) {
+            ItemStack s = this.goods.getItem(i);
+            if (s.isEmpty()) {
+                return true;
+            }
+            if (ItemStack.isSameItemSameTags(s, stack) && s.getCount() < s.getMaxStackSize()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    protected void pickUpItem(net.minecraft.world.entity.item.ItemEntity entity) {
+        ItemStack stack = entity.getItem();
+        ItemStack leftover = this.goods.addItem(stack.copy());
+        if (leftover.getCount() == stack.getCount()) {
+            return; // 一点也塞不进去，别动它
+        }
+        this.goods.setChanged();
+        this.take(entity, leftover.getCount());
+        stack.setCount(leftover.getCount());
+        if (stack.isEmpty()) {
+            entity.discard();
+        }
+    }
+
+    // ------------------------------------------------------------ 按工种换装
+
+    /** 工具打分：先看材质等级（木/金 0 < 石 1 < 铁 2 < 钻 3 < 下界 4），再看耐久上限。 */
+    private static int gearRank(ItemStack stack) {
+        int tier = stack.getItem() instanceof net.minecraft.world.item.TieredItem tiered
+                ? tiered.getTier().getLevel() : 0;
+        return tier * 10000 + stack.getMaxDamage();
+    }
+
+    /** 从库存里取出一件指定物品（真取走）。 */
+    private ItemStack takeFirst(net.minecraft.world.item.Item... items) {
+        for (int i = 0; i < this.goods.getContainerSize(); i++) {
+            ItemStack s = this.goods.getItem(i);
+            if (s.isEmpty()) {
+                continue;
+            }
+            for (net.minecraft.world.item.Item item : items) {
+                if (s.is(item)) {
+                    return this.goods.removeItem(i, 1);
+                }
+            }
+        }
+        return ItemStack.EMPTY;
+    }
+
+    /** 从库存里取出一把最合适的（真取走，不是复制）。 */
+    private ItemStack takeBest(net.minecraft.tags.TagKey<net.minecraft.world.item.Item> tag) {
+        int bestIdx = -1;
+        int best = -1;
+        for (int i = 0; i < this.goods.getContainerSize(); i++) {
+            ItemStack s = this.goods.getItem(i);
+            if (s.isEmpty() || !s.is(tag)) {
+                continue;
+            }
+            int rank = gearRank(s);
+            if (rank > best) {
+                best = rank;
+                bestIdx = i;
+            }
+        }
+        return bestIdx < 0 ? ItemStack.EMPTY : this.goods.removeItem(bestIdx, 1);
+    }
+
+    private void ensureMainHand(Job job) {
+        ItemStack held = this.getMainHandItem();
+        ItemStack want;
+        switch (job) {
+            case LUMBER -> {
+                if (held.is(net.minecraft.tags.ItemTags.AXES)) {
+                    return; // 手上就是斧子（比如玩家刚给她的），别动
+                }
+                want = this.takeBest(net.minecraft.tags.ItemTags.AXES);
+            }
+            case MINE -> {
+                if (held.is(net.minecraft.tags.ItemTags.PICKAXES)) {
+                    return;
+                }
+                want = this.takeBest(net.minecraft.tags.ItemTags.PICKAXES);
+            }
+            case FIGHT -> {
+                if (held.is(net.minecraft.tags.ItemTags.SWORDS)) {
+                    return;
+                }
+                want = this.takeBest(net.minecraft.tags.ItemTags.SWORDS);
+                if (want.isEmpty()) {
+                    if ((held.is(Items.BOW) || held.is(Items.CROSSBOW)) && this.countArrows() > 0) {
+                        return; // 没剑但有弓且有箭，就这么打
+                    }
+                    if (want.isEmpty()) {
+                        want = this.takeFirst(Items.BOW, Items.CROSSBOW);
+                    }
+                }
+            }
+            default -> want = ItemStack.EMPTY; // 跟随 / 没事干：收起工具
+        }
+        if (ItemStack.isSameItemSameTags(held, want)) {
+            return;
+        }
+        if (!held.isEmpty()) {
+            this.goods.addItem(held.copy()); // 换下来的收回库存，不丢
+        }
+        this.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+        if (!want.isEmpty()) {
+            this.setItemSlot(net.minecraft.world.entity.EquipmentSlot.MAINHAND, want);
+        }
+    }
+
+    private static int armorValue(ItemStack stack) {
+        return stack.getItem() instanceof net.minecraft.world.item.ArmorItem armor ? armor.getDefense() : -1;
+    }
+
+    /** 库存里有更好的盔甲就换上（换下来的回库存）。 */
+    private void ensureArmor() {
+        for (net.minecraft.world.entity.EquipmentSlot slot : ARMOR_SLOTS) {
+            ItemStack worn = this.getItemBySlot(slot);
+            int bestIdx = -1;
+            int best = armorValue(worn);
+            for (int i = 0; i < this.goods.getContainerSize(); i++) {
+                ItemStack s = this.goods.getItem(i);
+                if (s.isEmpty() || !(s.getItem() instanceof net.minecraft.world.item.ArmorItem armor)) {
+                    continue;
+                }
+                if (armor.getEquipmentSlot() != slot) {
+                    continue;
+                }
+                if (armorValue(s) > best) {
+                    best = armorValue(s);
+                    bestIdx = i;
+                }
+            }
+            if (bestIdx < 0) {
+                continue;
+            }
+            ItemStack take = this.goods.removeItem(bestIdx, 1);
+            if (!worn.isEmpty()) {
+                this.goods.addItem(worn.copy());
+            }
+            this.setItemSlot(slot, take);
+        }
+    }
+
+    /** 她的装备不吃耐久：主手、盔甲、库存里的可损物品一律修满。 */
+    private void keepGearPristine() {
+        ItemStack held = this.getMainHandItem();
+        if (held.isDamageableItem() && held.getDamageValue() > 0) {
+            held.setDamageValue(0);
+        }
+        for (net.minecraft.world.entity.EquipmentSlot slot : ARMOR_SLOTS) {
+            ItemStack s = this.getItemBySlot(slot);
+            if (s.isDamageableItem() && s.getDamageValue() > 0) {
+                s.setDamageValue(0);
+            }
+        }
+        for (int i = 0; i < this.goods.getContainerSize(); i++) {
+            ItemStack s = this.goods.getItem(i);
+            if (s.isDamageableItem() && s.getDamageValue() > 0) {
+                s.setDamageValue(0);
+            }
+        }
     }
 
     /** 全无敌时不许死：/kill、虚空都不行。 */
