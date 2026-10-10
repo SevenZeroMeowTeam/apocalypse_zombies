@@ -1,10 +1,13 @@
 package com.apocalypse.zombies.client;
 
 import com.apocalypse.zombies.ApocalypseZombies;
+import com.apocalypse.zombies.client.gui.CatGirlTradeScreen;
 import com.apocalypse.zombies.client.model.CorroderModel;
 import com.apocalypse.zombies.client.model.CrusherModel;
 import com.apocalypse.zombies.client.model.ScreamerModel;
 import com.apocalypse.zombies.client.renderer.BrideGeoRenderer;
+import com.apocalypse.zombies.client.renderer.CatGirlGeoRenderer;
+import com.apocalypse.zombies.registry.ModMenus;
 import com.apocalypse.zombies.client.renderer.OverlordGeoRenderer;
 import com.apocalypse.zombies.client.renderer.SoldierGeoRenderer;
 import com.apocalypse.zombies.client.renderer.CharmedZombieRenderer;
@@ -59,6 +62,20 @@ public final class ClientModBusEvents {
         event.registerLayerDefinition(CharmedZombieRenderer.LAYER, CharmedZombieRenderer::createBodyLayer);
     }
 
+    /**
+     * 菜单 → 界面 的绑定。
+     *
+     * <p><b>Forge 1.20.1 没有 {@code RegisterMenuScreensEvent}</b> —— 那是 1.20.2+（NeoForge）才有的
+     * 事件。1.20.1 的原版做法是在 {@code FMLClientSetupEvent} 里 {@code enqueueWork} 之后调
+     * {@code MenuScreens.register}。单独一个 handler 而不是塞进已有的初始化，是为了「界面没绑上」
+     * 这类问题能一眼定位。</p>
+     */
+    @SubscribeEvent
+    public static void onClientSetupMenuScreens(net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent event) {
+        event.enqueueWork(() -> net.minecraft.client.gui.screens.MenuScreens.register(
+                ModMenus.CAT_GIRL_TRADE.get(), CatGirlTradeScreen::new));
+    }
+
     @SubscribeEvent
     public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(ModEntities.SCREAMER.get(), ScreamerRenderer::new);
@@ -71,6 +88,8 @@ public final class ClientModBusEvents {
         // 尸潮之主：三阶段 Boss。同样是 GeckoLib 骨骼模型，模型自己 3 格高，不做缩放。
         event.registerEntityRenderer(ModEntities.OVERLORD.get(), OverlordGeoRenderer::new);
         event.registerEntityRenderer(ModEntities.CHARMED.get(), CharmedZombieRenderer::new);
+        // 猫耳娘：骨骼模型 + 手持物品层（她手里的东西是玩家给的真实物品，见渲染器注释）
+        event.registerEntityRenderer(ModEntities.CAT_GIRL.get(), CatGirlGeoRenderer::new);
         // 酸液直接借原版投掷物的渲染：一个飞出去的小球，材质疑似物品贴图
         event.registerEntityRenderer(ModEntities.ACID_PROJECTILE.get(),
                 context -> new ThrownItemRenderer<AcidProjectile>(context, 1.0F, true));

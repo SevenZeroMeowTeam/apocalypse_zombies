@@ -7,10 +7,8 @@
   "ammo.apocalypse_zombies.thermite.tip": "命中点燃目标",
   "ammo.apocalypse_zombies.explosive": "爆炸弹",
   "ammo.apocalypse_zombies.explosive.tip": "命中炸开 · 范围伤害",
-
   "wheel.apocalypse_zombies.hint": "松开 R 装填 · 光标移回中心保持原样",
   "wheel.apocalypse_zombies.selected": "将装填：%s",
-
   "moon.apocalypse_zombies.none": "平凡的夜晚",
   "moon.apocalypse_zombies.blood_moon": "血月",
   "moon.apocalypse_zombies.super_blood_moon": "超级血月",
@@ -18,24 +16,19 @@
   "moon.apocalypse_zombies.super_yellow_moon": "超级黄月",
   "moon.apocalypse_zombies.blue_moon": "蓝月",
   "moon.apocalypse_zombies.super_blue_moon": "超级蓝月",
-
   "moon.apocalypse_zombies.rise": "%s 升起了……",
   "moon.apocalypse_zombies.set": "%s 落下，天亮了。",
-
   "moon.apocalypse_zombies.subtitle.blood": "血色浸透天空，床铺拒绝了你",
   "moon.apocalypse_zombies.subtitle.yellow": "作物在月光下疯长",
   "moon.apocalypse_zombies.subtitle.blue": "幸运与你同行，直到天亮",
   "moon.apocalypse_zombies.subtitle.none": "",
-
   "sleep.apocalypse_zombies.blocked": "%s —— 今夜你无法入眠",
-
   "tier.apocalypse_zombies.common": "普通僵尸",
   "tier.apocalypse_zombies.reinforced": "强化僵尸",
   "tier.apocalypse_zombies.elite": "精英僵尸",
   "tier.apocalypse_zombies.mutant": "变异僵尸",
   "tier.apocalypse_zombies.tyrant": "暴君僵尸",
   "tier.apocalypse_zombies.warlord": "尸王",
-
   "horde.apocalypse_zombies.title": "尸潮来袭",
   "horde.apocalypse_zombies.subtitle": "共 %s 波，守住",
   "horde.apocalypse_zombies.start": "尸潮正在聚集：共 %s 波，杀光它们。",
@@ -44,13 +37,11 @@
   "horde.apocalypse_zombies.wave.title": "第 %s/%s 波",
   "horde.apocalypse_zombies.wave.subtitle": "敌人数量：%s",
   "horde.apocalypse_zombies.wave.message": "第 %s/%s 波 —— %s 只僵尸围了上来",
-
   "horde.apocalypse_zombies.boss.bar": "尸潮之主 · 第 %s 阶段 · %s 生命",
   "horde.apocalypse_zombies.boss.phase.title": "第 %s/%s 阶段",
   "horde.apocalypse_zombies.boss.phase.subtitle": "尸潮之主变了，小心它的手段。",
   "horde.apocalypse_zombies.boss.spawn.title": "尸潮之主",
   "horde.apocalypse_zombies.boss.spawn.message": "尸潮之主踏着尸群来了 —— 打掉它，这场围城才算完。",
-
   "command.apocalypse_zombies.status": "月亮：%s | 天数：%s | 进化等级：%s（%s）| 尸潮：%s",
   "command.apocalypse_zombies.status.horde": "进行中",
   "command.apocalypse_zombies.status.calm": "平静",
@@ -61,7 +52,6 @@
   "command.apocalypse_zombies.evolution.set": "已将进化等级设置为 %s",
   "command.apocalypse_zombies.evolution.upgrade": "已将 %s 只僵尸提升到等级 %s",
   "command.apocalypse_zombies.boss.none": "附近 256 格内没有尸潮之主",
-
   "item.apocalypse_zombies.awm": "精密国际 AWM",
   "item.apocalypse_zombies.m1_garand": "M1 加兰德",
   "item.apocalypse_zombies.mosin_nagant": "莫辛-纳甘 M91/30",
@@ -69,7 +59,6 @@
   "item.apocalypse_zombies.uzi": "乌兹冲锋枪",
   "item.apocalypse_zombies.s686": "金板 S686",
   "item.apocalypse_zombies.colt_1878": "柯尔特 1878 教练枪",
-
   "entity.apocalypse_zombies.screamer_zombie": "尖啸者",
   "entity.apocalypse_zombies.crusher_zombie": "碎颅者",
   "entity.apocalypse_zombies.corroder_zombie": "腐蚀者",
@@ -79,10 +68,8 @@
   "entity.apocalypse_zombies.soldier_zombie": "残兵",
   "entity.apocalypse_zombies.horde_overlord": "尸潮之主",
   "entity.apocalypse_zombies.acid_projectile": "酸液弹",
-
   "effect.apocalypse_zombies.death_mark": "死亡标记",
   "item.apocalypse_zombies.bouquet_dart": "花束飞刺",
-
   "item.apocalypse_zombies.screamer_zombie_spawn_egg": "尖啸者刷怪蛋",
   "item.apocalypse_zombies.crusher_zombie_spawn_egg": "碎颅者刷怪蛋",
   "item.apocalypse_zombies.corroder_zombie_spawn_egg": "腐蚀者刷怪蛋",
@@ -90,7 +77,6 @@
   "item.apocalypse_zombies.bride_zombie_spawn_egg": "美女僵尸刷怪蛋",
   "item.apocalypse_zombies.soldier_zombie_spawn_egg": "残兵刷怪蛋",
   "item.apocalypse_zombies.horde_overlord_spawn_egg": "尸潮之主刷怪蛋",
-
   "death.attack.awm_bullet": "%1$s 被一枪打穿了",
   "death.attack.awm_bullet.player": "%1$s 被 %2$s 一枪带走",
   "death.attack.m1_garand_bullet": "%1$s 被 M1 加兰德打穿了",
@@ -105,8 +91,20 @@
   "death.attack.s686_bullet.player": "%1$s 被 %2$s 用金板 S686 一喷带走",
   "death.attack.colt_1878_bullet": "%1$s 被一根短管喷成了筛子",
   "death.attack.colt_1878_bullet.player": "%1$s 被 %2$s 用柯尔特 1878 两管齐喷带走",
-
   "key.categories.apocalypse_zombies": "末日僵尸",
   "key.apocalypse_zombies.reload": "换弹 / 弹种轮盘",
-  "key.apocalypse_zombies.collect": "一键采集"
+  "key.apocalypse_zombies.collect": "一键采集",
+  "entity.apocalypse_zombies.cat_girl": "猫耳娘",
+  "item.apocalypse_zombies.cat_girl_spawn_egg": "猫耳娘刷怪蛋",
+  "item.apocalypse_zombies.love_coin": "爱心币",
+  "cat_girl.job.follow": "跟随",
+  "cat_girl.job.lumber": "伐木",
+  "cat_girl.job.mine": "挖矿",
+  "cat_girl.job.fight": "战斗",
+  "cat_girl.job.switched": "%s 的任务模式：%s",
+  "cat_girl.trade.give": "给予",
+  "cat_girl.trade.reward": "回报",
+  "cat_girl.trade.stock": "她的库存（爱心币购买）",
+  "cat_girl.trade.not_enough": "爱心币不够，需要 %s 枚",
+  "cat_girl.trade.title": "猫耳娘的小店"
 }

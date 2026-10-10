@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.65` |
+| **当前版本** | `1.1.66` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.23） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -248,6 +248,27 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
 ---
 
 ## 更新日志
+
+### 1.1.66 — 2026-10-10
+
+**新内容：猫耳娘（`cat_girl`）随从 —— 推倒重写 v4**
+
+- **模型 / 贴图**：`tools/cat_girl_v4_build.py` 是唯一真相源，从零生 128×128 皮肤 +
+  31 骨骼 / 126 方块装机 geo（逐面 `uv/uv_size`）。脸层 44×32 px（7.9 px/u）；
+  眼 / 眉 / 腮红全部走整数列镜像公式 `a' = w − a − width`（浮点起点在 44 列偶数画布上
+  会让左右各差 1 px），嘴宽取**偶数**才能让中心正好落在 22.0。
+- **玩法**：喂鱼驯服 → 空手右键循环工种（伐木 / 挖矿 / 游荡）→ 潜行右键开交易界面：
+  卖任意物品（含模组物品）换爱心币、爱心币附魔、3×3 合成走原版 `RecipeManager`
+  （模组配方照样能合）、用爱心币买她伐木挖矿攒下的库存。
+- **修 6 处 Java 编译**（都在源码里留了注释，别再踩）：
+  `TamableAnimal` 在 1.20.1 属 `net.minecraft.world.entity`（**不在** `.animal` 子包，
+  写错会让整类变未知类型并级联炸掉菜单与渲染器）；Forge 1.20.1 **没有**
+  `RegisterMenuScreensEvent`，走 `FMLClientSetupEvent` + `MenuScreens.register`；
+  `ServerPlayer.openMenu` 本版本**无 2 参重载**，要同步 entityId 得用 `NetworkHooks.openScreen`；
+  `SimpleContainer.addItem` 返回**剩余物 ItemStack**（不是 boolean）；
+  `ForgeRegistries.ITEM` → `BuiltInRegistries.ITEM`；`Config` 补 `CAT_GIRL_ENCHANT_COST`。
+- **工程**：`mod_version` `1.1.65` → `1.1.66`；出货脚本 `tools/_deploy_166.py`
+  （含**柯尔特 1878 不回归护栏**：12 骨 / 87 方块 / 512² / 8 条片段长度逐条等于 Java 常量）。
 
 ### 1.1.65 — 2026-10-09
 

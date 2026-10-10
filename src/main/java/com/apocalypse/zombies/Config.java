@@ -202,6 +202,24 @@ public final class Config {
     /** 标记持续时间（tick），每次命中都会刷新。 */
     public static final ForgeConfigSpec.IntValue DEATH_MARK_DURATION;
 
+    // ---- 猫耳娘随从 ----
+    /** 伐木 / 挖矿的搜索半径（格）。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_WORK_RADIUS;
+    /** 破坏一根原木的基础耗时（tick），拿着斧头打折。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_CHOP_TICKS;
+    /** 破坏一块矿石的基础耗时（tick），拿着镐打折。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_MINE_TICKS;
+    /** 拿对工具时的耗时折扣（0.5 = 减半）。 */
+    public static final ForgeConfigSpec.DoubleValue CAT_GIRL_TOOL_SPEEDUP;
+    /** 交易价值表：没有单独指定的物品一律按这个价收（模组物品也走这条）。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_TRADE_DEFAULT;
+    /** 工具 / 武器（含带攻击力属性的模组装备）的收购价。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_TRADE_TOOL_VALUE;
+    /** 覆盖价目表，形如 {@code "minecraft:diamond=8"}；命中即用该值，不再走默认与工具价。 */
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> CAT_GIRL_TRADE_VALUES;
+    /** 附魔一次的爱心币价格：在她的界面里给装备附魔时扣这么多。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_ENCHANT_COST;
+
     /** Q 弹（压扁回弹 + 自转）总开关。纯客户端，服务端不读。 */
     public static final ForgeConfigSpec.BooleanValue SQUASH_ENABLED;
     /**
@@ -525,6 +543,34 @@ public final class Config {
                 .defineInRange("death_mark_max_stacks", 3, 1, 10);
         DEATH_MARK_DURATION = b.comment("Mark duration in ticks (200 = 10 seconds). Every hit refreshes it.")
                 .defineInRange("death_mark_duration", 200, 20, 6000);
+        b.pop();
+
+        b.comment("猫耳娘随从：喂鱼驯服，空手右键切任务，潜行右键交易。",
+                        "Cat girl companion: tame with fish, right-click bare-handed to cycle jobs,",
+                        "sneak-right-click to open the barter menu.")
+                .push("cat_girl");
+        CAT_GIRL_WORK_RADIUS = b.comment("伐木 / 挖矿时以她为中心的搜索半径（格）。")
+                .defineInRange("work_radius", 12, 4, 32);
+        CAT_GIRL_CHOP_TICKS = b.comment("破坏一根原木的基础耗时（tick，20 = 1 秒）。")
+                .defineInRange("chop_ticks", 40, 4, 400);
+        CAT_GIRL_MINE_TICKS = b.comment("破坏一块矿石的基础耗时（tick）。")
+                .defineInRange("mine_ticks", 60, 4, 400);
+        CAT_GIRL_TOOL_SPEEDUP = b.comment("手里拿着对口工具（斧砍树 / 镐挖矿）时的耗时倍率。")
+                .defineInRange("tool_speedup", 0.5D, 0.05D, 1.0D);
+        CAT_GIRL_TRADE_DEFAULT = b.comment("默认收购价：没有单独指定、也不是工具/武器的物品都按它折算爱心币。",
+                        "模组物品天然走这一条，所以「任意物品包括模组物品」无需逐个登记。")
+                .defineInRange("trade_default_value", 1, 0, 64);
+        CAT_GIRL_TRADE_TOOL_VALUE = b.comment("工具 / 武器（含带攻击力属性的模组装备）的收购价。")
+                .defineInRange("trade_tool_value", 3, 0, 64);
+        CAT_GIRL_TRADE_VALUES = b.comment("覆盖价目表，格式 \"命名空间:物品=价格\"，例如：",
+                        "[\"minecraft:diamond=8\", \"minecraft:netherite_ingot=16\"]",
+                        "命中的物品用表里的价，未命中走默认价 / 工具价。")
+                .defineList("trade_values", List.of("minecraft:diamond=8", "minecraft:emerald=4",
+                                "minecraft:netherite_ingot=16", "minecraft:gold_ingot=3",
+                                "minecraft:iron_ingot=2"),
+                        value -> value instanceof String);
+        CAT_GIRL_ENCHANT_COST = b.comment("附魔一次的爱心币价格：在她的界面里给装备附魔时扣这么多。")
+                .defineInRange("enchant_cost", 8, 0, 64);
         b.pop();
 
         // 纯客户端效果：像 AI_GIANT_ARROW_SCALE 一样只被渲染代码读取，不参与任何服务端判定，

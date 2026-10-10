@@ -7,6 +7,7 @@ import com.apocalypse.zombies.registry.ModBiomeModifiers;
 import com.apocalypse.zombies.registry.ModEffects;
 import com.apocalypse.zombies.registry.ModEntities;
 import com.apocalypse.zombies.registry.ModItems;
+import com.apocalypse.zombies.registry.ModMenus;
 import com.apocalypse.zombies.registry.ModSounds;
 import com.apocalypse.zombies.registry.ModSpawns;
 import com.mojang.logging.LogUtils;
@@ -41,6 +42,7 @@ public class ApocalypseZombies {
         IEventBus modBus = FMLJavaModLoadingContext.get().getModEventBus();
         ModItems.register(modBus);
         ModEntities.register(modBus);
+        ModMenus.register(modBus);
         ModEffects.register(modBus);
         ModSounds.register(modBus);
         ModBiomeModifiers.register(modBus);

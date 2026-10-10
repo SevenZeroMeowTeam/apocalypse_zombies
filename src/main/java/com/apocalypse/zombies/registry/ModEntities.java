@@ -19,6 +19,7 @@ import com.apocalypse.zombies.entity.AcidProjectile;
 import com.apocalypse.zombies.entity.BouquetProjectile;
 import com.apocalypse.zombies.entity.BoneLockArrow;
 import com.apocalypse.zombies.entity.BrideZombie;
+import com.apocalypse.zombies.entity.CatGirlEntity;
 import com.apocalypse.zombies.entity.BulletProjectile;
 import com.apocalypse.zombies.entity.CharmedZombie;
 import com.apocalypse.zombies.entity.CorroderZombie;
@@ -113,6 +114,20 @@ public final class ModEntities {
                     .sized(1.6F, 3.1F)
                     .clientTrackingRange(16)
                     .build("horde_overlord"));
+
+    /**
+     * 猫耳娘随从：可驯服的劳作型伙伴，不属于任何刷怪表，只能靠刷怪蛋投放。
+     *
+     * <p>{@code MobCategory.CREATURE} 与判定无关，只影响生成上限分组 —— 放在 CREATURE
+     * 组是为了不占用敌对生物的刷怪配额。命中盒 0.6 × 1.95 对齐模型（32u 高）与
+     * 原版生物手感，略微出头与其它精英同样处理。</p>
+     */
+    public static final RegistryObject<EntityType<CatGirlEntity>> CAT_GIRL =
+            ENTITY_TYPES.register("cat_girl", () -> EntityType.Builder
+                    .<CatGirlEntity>of(CatGirlEntity::new, MobCategory.CREATURE)
+                    .sized(0.6F, 1.95F)
+                    .clientTrackingRange(12)
+                    .build("cat_girl"));
 
     public static final RegistryObject<EntityType<AcidProjectile>> ACID_PROJECTILE =
             ENTITY_TYPES.register("acid_projectile", () -> EntityType.Builder
@@ -252,5 +267,6 @@ public final class ModEntities {
         event.put(CHARMED.get(), CharmedZombie.createAttributes().build());
         event.put(SOLDIER.get(), SoldierZombie.createAttributes().build());
         event.put(OVERLORD.get(), HordeOverlord.createAttributes().build());
+        event.put(CAT_GIRL.get(), CatGirlEntity.createAttributes().build());
     }
 }

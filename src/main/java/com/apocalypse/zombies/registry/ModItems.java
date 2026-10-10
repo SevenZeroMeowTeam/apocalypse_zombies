@@ -93,6 +93,20 @@ public final class ModItems {
             ITEMS.register("horde_overlord_spawn_egg", () -> new ForgeSpawnEggItem(
                     ModEntities.OVERLORD, 0xD8D2C0, 0x7A1220, new Item.Properties()));
 
+    /** 猫耳娘：粉发 + 蓝白裙。 */
+    public static final RegistryObject<Item> CAT_GIRL_SPAWN_EGG =
+            ITEMS.register("cat_girl_spawn_egg", () -> new ForgeSpawnEggItem(
+                    ModEntities.CAT_GIRL, 0xE8C8C8, 0x8FB0DC, new Item.Properties()));
+
+    /**
+     * 爱心币：猫耳娘交易系统的通货。
+     *
+     * <p>卖出任意物品（含模组物品）按价值表得币，再用币买下她伐木挖矿攒下的库存。
+     * 可堆叠 64 —— 回报格按「价值 × 数量」出币，一叠才对得上大额交易。</p>
+     */
+    public static final RegistryObject<Item> LOVE_COIN =
+            ITEMS.register("love_coin", () -> new Item(new Item.Properties().stacksTo(64)));
+
     private ModItems() {
     }
 
@@ -120,6 +134,10 @@ public final class ModItems {
             event.accept(BRIDE_SPAWN_EGG);
             event.accept(SOLDIER_SPAWN_EGG);
             event.accept(OVERLORD_SPAWN_EGG);
+            event.accept(CAT_GIRL_SPAWN_EGG);
+        }
+        if (event.getTabKey() == CreativeModeTabs.INGREDIENTS) {
+            event.accept(LOVE_COIN);
         }
     }
 }
