@@ -29,6 +29,7 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import com.apocalypse.zombies.entity.ai.CatGirlBowGoal;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
 import net.minecraft.world.entity.ai.goal.FollowOwnerGoal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
@@ -41,6 +42,7 @@ import net.minecraft.world.entity.ai.goal.target.OwnerHurtTargetGoal;
 import net.minecraft.world.entity.TamableAnimal;   // 1.20.1：不在 .animal 子包（写成 .animal 会让整类变未知类型并级联炸掉菜单/渲染器）
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.Tags;
@@ -204,6 +206,9 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
         this.goalSelector.addGoal(0, new FloatGoal(this));
         // 走路优先级放在劳作之上：主人走出去十格，她会先跟上再继续干活
         this.goalSelector.addGoal(1, new FollowOwnerGoal(this, 1.15D, 10.0F, 2.5F, false));
+        // 弓排在近战之前（同优先级先注册者优先）：够远 + 有箭 + 有视线时她放箭，
+        // 贴脸（<=3 格）弓的 canUse 不成立，自动轮到下面的近战 —— 不需要另设优先级数字。
+        this.goalSelector.addGoal(2, new CatGirlBowGoal(this));
         this.goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.2D, true));
         this.goalSelector.addGoal(3, new WorkBlockGoal(this, Job.LUMBER, CatGirlEntity::isLog, ACTION_CHOP));
         this.goalSelector.addGoal(4, new WorkBlockGoal(this, Job.MINE, CatGirlEntity::isOre, ACTION_MINE));
@@ -413,8 +418,24 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
             return InteractionResult.CONSUME;
         }
 
-        // 手里拿工具 / 武器：交给她
-        if (isToolOrWeapon(stack)) {
+        // 箭：她放箭要用，直接进她自己的库存（砍伐/挖矿的产出也存这里）
+        if (stack.is(Items.ARROW) || stack.is(Items.SPECTRAL_ARROW) || stack.is(Items.TIPPED_ARROW)) {
+            ItemStack leftover = this.goods.addItem(stack.copy());
+            int moved = stack.getCount() - leftover.getCount();
+            if (moved > 0) {
+                stack.shrink(moved);
+                player.displayClientMessage(Component.translatable("cat_girl.gave_arrows",
+                        Component.translatable("cat_girl.arrows"), moved), true);
+                this.playSound(SoundEvents.ITEM_PICKUP, 0.6F, 1.4F);
+            }
+            if (!leftover.isEmpty()) {
+                player.drop(leftover, false); // 她装不下的掉在脚边
+            }
+            return InteractionResult.CONSUME;
+        }
+
+        // 手里拿工具 / 武器：交给她。**工具即指令** —— 交什么工具就干什么活。
+        if (isToolOrWeapon(stack) || stack.is(Items.BOW) || stack.is(Items.CROSSBOW)) {
             ItemStack old = this.getMainHandItem().copy();
             this.setItemSlot(EquipmentSlot.MAINHAND, stack.split(1));
             if (!old.isEmpty()) {
@@ -425,6 +446,21 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
             }
             this.setAction(ACTION_EQUIP, 12);
             this.playSound(SoundEvents.ARMOR_EQUIP_LEATHER, 0.8F, 1.4F);
+
+            Job toolJob = jobForTool(this.getMainHandItem());
+            if (toolJob != null && toolJob != this.getJob()) {
+                this.setJob(toolJob);
+                player.displayClientMessage(Component.translatable("cat_girl.job.from_tool",
+                        this.getDisplayName(),
+                        this.getMainHandItem().getHoverName(),
+                        Component.translatable(toolJob.langKey())), false);
+            }
+            // 弓：先看她箭袋里有没有箭，没有就提醒一句（不然给了弓她只能贴脸抡）
+            if (this.getMainHandItem().is(Items.BOW) || this.getMainHandItem().is(Items.CROSSBOW)) {
+                if (countArrows() == 0) {
+                    player.displayClientMessage(Component.translatable("cat_girl.bow.need_arrows"), false);
+                }
+            }
             return InteractionResult.CONSUME;
         }
 
@@ -440,6 +476,42 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
         }
 
         return InteractionResult.PASS;
+    }
+
+    /**
+     * 工具即指令：给她什么工具，她就干什么活。
+     *
+     * <p>斧子 → 伐木、镐子 → 挖矿、剑/弓/弩 → 打怪。其它工具（锹/锄）与自定义武器只换装不换工种，
+     * 返回 {@code null} 表示「保持她现在的活」。
+     *
+     * <p>判断走原版物品标签，所以模组里带相应标签的斧/镐同样认；剑/弓则按物品本身认。
+     */
+    public static Job jobForTool(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return null;
+        }
+        if (stack.is(ItemTags.AXES)) {
+            return Job.LUMBER;
+        }
+        if (stack.is(ItemTags.PICKAXES)) {
+            return Job.MINE;
+        }
+        if (stack.is(ItemTags.SWORDS) || stack.is(Items.BOW) || stack.is(Items.CROSSBOW)) {
+            return Job.FIGHT;
+        }
+        return null;
+    }
+
+    /** 她库存里有多少支箭（放箭与「箭袋空了」提示都用它）。 */
+    public int countArrows() {
+        int n = 0;
+        for (int i = 0; i < this.goods.getContainerSize(); i++) {
+            ItemStack s = this.goods.getItem(i);
+            if (s.is(Items.ARROW) || s.is(Items.SPECTRAL_ARROW) || s.is(Items.TIPPED_ARROW)) {
+                n += s.getCount();
+            }
+        }
+        return n;
     }
 
     /** 工具或武器：原版四大工具 + 剑的标签，外加「带攻击伤害属性」的自定义物品（模组武器）。 */

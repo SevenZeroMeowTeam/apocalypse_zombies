@@ -109,5 +109,9 @@
   "cat_girl.not_tame": "她还没认主，喂她一条鱼（任何鱼类都行）",
   "cat_girl.not_owner": "她只认自己的主人",
   "cat_girl.trade.hotbar": "快捷栏",
+  "cat_girl.job.from_tool": "%s 收下了%s，开始%s",
+  "cat_girl.gave_arrows": "她把%d 支%s收进了自己的箭袋",
+  "cat_girl.arrows": "箭",
+  "cat_girl.bow.need_arrows": "她收下了弓，但箭袋是空的——把箭交给她（右键）她才能放箭",
   "cat_girl.trade.title": "猫耳娘的小店"
 }
