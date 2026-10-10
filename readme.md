@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.69` |
+| **当前版本** | `1.1.70` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.23） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -248,6 +248,27 @@ cp build/libs/apocalypse_zombies-1.1.40.jar \
 ---
 
 ## 更新日志
+
+### 1.1.70 — 2026-10-10
+
+**猫耳娘配方表：自动同步游戏里所有能做得出来的东西**
+
+- 新增 `tools/cat_girl_recipes_sync.py`：自动发现并抽取**原版 `client.jar` +
+  游戏实例 `mods/` 下每一个 jar + 本模组开发目录**里的配方（`data/<ns>/recipes/**.json`），
+  归一化成「id / 来源 / 类型 / 产物 / 材料」四要素，按 id 排序、算内容指纹。
+  只认真配方文件，`advancements/recipes/`（进度）与 `datapacks/bundle/`（实验数据包）自动排除。
+- 产出三份：主表 `art/cat_girl/recipes_all.json`、汇总 `art/cat_girl/recipes_summary.md`、
+  装机副本 `data/apocalypse_zombies/cat_girl/recipes.json`（随 mod 打包，运行时读）。
+  幂等可复跑，`--check` 用指纹判定「盘上的表是否还跟游戏一致」（不一致 exit 1，已接入出货门禁）。
+- 新增 `CatGirlRecipeTable`：从资源管理器载入装机表，按服务器实例缓存，暴露总数 / 来源 /
+  命名空间 / 按产物反查 —— 这是她「会做玩家能做的任何东西」的依据表；
+  真正合成仍走原版 `RecipeManager`，所以模组配方天然支持。
+- 新增调试命令：`/apocalypse catgirl recipes`（总数 + 内容来源 + 命名空间分布）、
+  `/apocalypse catgirl recipes <命名空间>`（列明细，最多 20 条）。
+
+**当前实机数据**：1 433 条配方（原版 1 174 + 模组 259），命名空间 10 个，
+供了配方的模组 9 个（sophisticatedbackpacks 84、crafting-dead-core 83、Jennycraft 34、
+hexalunar_calamity 24、tacz 11 …）。指纹 `644faf82cd9b7035`。
 
 ### 1.1.69 — 2026-10-10
 

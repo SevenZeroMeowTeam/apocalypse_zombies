@@ -1,6 +1,7 @@
 package com.apocalypse.zombies.command;
 
 import com.apocalypse.zombies.Config;
+import com.apocalypse.zombies.entity.CatGirlRecipeTable;
 import com.apocalypse.zombies.entity.HordeOverlord;
 import com.apocalypse.zombies.horde.HordeManager;
 import com.apocalypse.zombies.moon.ApocalypseData;
@@ -111,6 +112,13 @@ public final class ApocalypseCommand {
 
         root.then(Commands.literal("boss").executes(context -> bossStatus(context.getSource())));
 
+        root.then(Commands.literal("catgirl")
+                .then(Commands.literal("recipes")
+                        .executes(context -> recipeReport(context.getSource(), null))
+                        .then(Commands.argument("namespace", StringArgumentType.string())
+                                .executes(context -> recipeReport(context.getSource(),
+                                        StringArgumentType.getString(context, "namespace"))))));
+
         dispatcher.register(root);
     }
 
@@ -177,5 +185,55 @@ public final class ApocalypseCommand {
         source.sendSuccess(() -> Component.translatable(
                 "command.apocalypse_zombies.evolution.upgrade", finalUpgraded, tier), true);
         return upgraded;
+    }
+
+    /** 猫耳娘配方表：总数 / 来源 / 命名空间；给了命名空间就列出它名下的配方。 */
+    private static int recipeReport(CommandSourceStack source, String namespace) {
+        CatGirlRecipeTable.ensureLoaded(source.getServer());
+        if (!CatGirlRecipeTable.isPresent()) {
+            source.sendFailure(Component.literal(
+                    "配方表没载入 —— 跑 py tools/cat_girl_recipes_sync.py 同步后再重进世界"));
+            return 0;
+        }
+        if (namespace != null) {
+            List<CatGirlRecipeTable.Entry> hits = CatGirlRecipeTable.all().stream()
+                    .filter(e -> e.namespace().equalsIgnoreCase(namespace))
+                    .toList();
+            source.sendSuccess(() -> Component.literal(
+                    "命名空间 " + namespace + "： " + hits.size() + " 条配方"), false);
+            for (CatGirlRecipeTable.Entry e : hits.stream().limit(20).toList()) {
+                source.sendSuccess(() -> Component.literal(
+                        "  " + e.output() + "  <- " + String.join(", ", e.ingredients())
+                                + "   [" + e.type() + "]"), false);
+            }
+            if (hits.size() > 20) {
+                source.sendSuccess(() -> Component.literal("  … 另有 " + (hits.size() - 20) + " 条"), false);
+            }
+            return hits.size();
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("猫耳娘配方表：").append(CatGirlRecipeTable.size()).append(" 条");
+        sb.append("，指纹 ").append(CatGirlRecipeTable.digest());
+        source.sendSuccess(() -> Component.literal(sb.toString()), false);
+
+        var bySource = CatGirlRecipeTable.bySource();
+        source.sendSuccess(() -> Component.literal("来源 " + bySource.size() + " 个："), false);
+        bySource.entrySet().stream()
+                .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
+                .limit(12)
+                .forEach(e -> source.sendSuccess(() -> Component.literal(
+                        "  " + e.getKey() + " —— " + e.getValue() + " 条"), false));
+
+        var byNs = CatGirlRecipeTable.byNamespace();
+        source.sendSuccess(() -> Component.literal("命名空间 " + byNs.size() + " 个："), false);
+        byNs.entrySet().stream()
+                .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
+                .limit(20)
+                .forEach(e -> source.sendSuccess(() -> Component.literal(
+                        "  " + e.getKey() + " —— " + e.getValue() + " 条"), false));
+        source.sendSuccess(() -> Component.literal(
+                "  /apocalypse catgirl recipes <命名空间> 看明细"), false);
+        return CatGirlRecipeTable.size();
     }
 }
