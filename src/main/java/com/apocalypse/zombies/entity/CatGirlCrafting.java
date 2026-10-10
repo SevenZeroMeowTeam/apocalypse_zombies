@@ -599,18 +599,25 @@ public final class CatGirlCrafting {
      * 她的维护节拍落点相位 —— 相位错开 20 就永远对不上 40 的倍数，她会**一次都不做**
      * （1.1.76 实测：给她原木+圆石，站了几分钟一块木板都没劈出来）。</p>
      */
-    private static final Map<ResourceKey<Level>, long[]> LAST_RUN = new HashMap<>();
+    private static final Map<java.util.UUID, long[]> LAST_RUN = new HashMap<>();
 
     /** 每 20 tick 的维护节拍里叫她一声：缺什么做什么（含先自己做材料），有燃料就烧一炉。 */
     public static void tick(CatGirlEntity cat, ServerLevel level) {
         long time = level.getGameTime();
         try {
-            long[] stamps = LAST_RUN.computeIfAbsent(level.dimension(), key -> new long[]{0L, 0L});
-            if (com.apocalypse.zombies.Config.CAT_GIRL_AUTO_CRAFT.get() && time - stamps[0] >= 40L) {
+            // 按**她本人**记账，不是按维度：节拍是每只实体各跑一次的，同 tick 内第二只
+            // 会被第一只刚写下的时间戳挡掉 —— 用维度做键 = 一群猫耳娘里只有一只会做东西。
+            if (LAST_RUN.size() > 256) {
+                LAST_RUN.clear();
+            }
+            long[] stamps = LAST_RUN.computeIfAbsent(cat.getUUID(), key -> new long[]{0L, 0L});
+            if (com.apocalypse.zombies.Config.CAT_GIRL_AUTO_CRAFT.get() && time - stamps[0] >= 40L
+                    && atStation(cat, level, CatGirlStation.Kind.CRAFTING_TABLE)) {
                 stamps[0] = time;
                 craftOne(cat, level);
             }
-            if (com.apocalypse.zombies.Config.CAT_GIRL_SMELT.get() && time - stamps[1] >= 60L) {
+            if (com.apocalypse.zombies.Config.CAT_GIRL_SMELT.get() && time - stamps[1] >= 60L
+                    && atStation(cat, level, CatGirlStation.Kind.FURNACE)) {
                 stamps[1] = time;
                 smeltOne(cat, level);
             }
@@ -619,6 +626,102 @@ public final class CatGirlCrafting {
             // 记一条日志、这一拍跳过，下一拍再试 —— 别让某个奇怪配方毁掉存档。
             LOGGER.error("cat_girl 自动制作/熔炼这一拍失败，跳过", e);
         }
+    }
+
+    /**
+     * 站台门槛：{@code station_use} 打开时，她要真站在对应的方块边上才动手
+     * （合成去合成台、熔炼去熔炉；她自己放下去的那个也算）。
+     *
+     * <p><b>为什么留了退路</b>：就近压根没有这类方块就放行（退回原地空手做）。
+     * 否则「没台子 + 做不出台子」会让她从此停工 —— 那是把一个新功能变成一场事故。</p>
+     */
+    private static boolean atStation(CatGirlEntity cat, ServerLevel level, CatGirlStation.Kind kind) {
+        if (!com.apocalypse.zombies.Config.CAT_GIRL_STATION_USE.get()) {
+            return true;
+        }
+        if (cat.isAtStation(kind)) {
+            return true;
+        }
+        return cat.stationNear(kind, com.apocalypse.zombies.Config.CAT_GIRL_STATION_RADIUS.get()) == null;
+    }
+
+    /**
+     * 只探需求、不动库存：她现在「想不想」用合成台 / 熔炉。
+     *
+     * <p>刻意不复用 {@link #smeltNeeded} —— 那个函数会真的开炉（有副作用），
+     * 拿来当探测等于每 tick 给她烧一炉。</p>
+     *
+     * <p>只认「炉子专属」的产物（原版配方里烧得出、工作台又做不出的），
+     * 免得她为了一块铁锭跑去站在合成台前干等。</p>
+     */
+    public static CatGirlStation.Kind wantedWork(CatGirlEntity cat, ServerLevel level) {
+        ensureGraph(level);
+        if (gearRecipes == null) {
+            return CatGirlStation.Kind.NONE;
+        }
+        boolean wantTable = false;
+        boolean wantFurnace = false;
+        SimpleContainer goods = cat.getGoods();
+        RegistryAccess access = level.registryAccess();
+        for (CraftingRecipe recipe : gearRecipes) {
+            ItemStack result = recipe.getResultItem(access);
+            if (result.isEmpty() || countIn(goods, result) >= desiredCount(result)) {
+                continue;
+            }
+            if (desiredCount(result) == 1 && alreadyHasAtLeast(goods, result)) {
+                continue;
+            }
+            String id = BuiltInRegistries.ITEM.getKey(result.getItem()).toString();
+            boolean furnaceOnly = smeltByOutput != null && smeltByOutput.containsKey(id)
+                    && recipeFor(level, result) == null;
+            if (furnaceOnly) {
+                wantFurnace = true;
+            } else if (com.apocalypse.zombies.Config.CAT_GIRL_AUTO_CRAFT.get()) {
+                wantTable = true;
+                break;
+            }
+        }
+        if (wantTable) {
+            return CatGirlStation.Kind.CRAFTING_TABLE;
+        }
+        return wantFurnace && com.apocalypse.zombies.Config.CAT_GIRL_SMELT.get()
+                ? CatGirlStation.Kind.FURNACE : CatGirlStation.Kind.NONE;
+    }
+
+    /**
+     * 她自己做一件东西进自己库存（不走玩家下单、不收费、不扣爱心币）。
+     * 「就近没有工作方块就自己做一个」用的就是这条路。
+     */
+    public static Result selfMake(CatGirlEntity cat, ServerLevel level, ItemStack wanted, int count) {
+        if (wanted.isEmpty() || count <= 0) {
+            return Result.nothing();
+        }
+        ensureGraph(level);
+        CraftingRecipe recipe = recipeFor(level, wanted);
+        if (recipe == null) {
+            return new Result(Status.NO_RECIPE, ItemStack.EMPTY, 0, 0, "");
+        }
+        SimpleContainer goods = cat.getGoods();
+        RegistryAccess access = level.registryAccess();
+        TransientCraftingContainer grid = grid();
+        ItemStack produced = ItemStack.EMPTY;
+        int made = 0;
+        for (int i = 0; i < count; i++) {
+            int[] used = layOut(recipe, goods, level, grid);
+            if (used == null && i == 0) {
+                fillMissing(cat, level, recipe, grid);
+                used = layOut(recipe, goods, level, grid);
+            }
+            if (used == null) {
+                break;
+            }
+            ItemStack product = recipe.assemble(grid, access).copy();
+            consume(goods, used);
+            deliver(cat, level, product);
+            produced = product.copy();
+            made += product.getCount();
+        }
+        return made > 0 ? new Result(Status.OK, produced, made, 0, "") : Result.nothing();
     }
 
     /**

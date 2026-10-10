@@ -247,6 +247,30 @@ public final class Config {
     /** 无视原版工具等级限制：她砸的方块一律有产物（用最高等级工具兜底取掉落）。 */
     public static final ForgeConfigSpec.BooleanValue CAT_GIRL_ALWAYS_DROPS;
 
+    /** 全功能工具：按方块「该用的工具类型」取掉落 —— 斧砍树、锹挖土、剪刀剪叶，一律有产物。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_UNIVERSAL_TOOL;
+
+    /** 什么都能挖：挖矿目标从「只有矿石」放开到所有非保护方块（基岩等仍不碰）。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_MINE_ALL;
+
+    /** 挖矿保护名单（方块 id）：名单内一律不砸，默认是基岩 / 屏障 / 命令方块 / 传送门框这类。 */
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> CAT_GIRL_MINE_PROTECTED;
+
+    /** 挖矿时以她为中心的搜索半径（格）。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_MINE_RADIUS;
+
+    /** 一条 {@code /apocalypse catgirl mine} 指令最多挖多少块（一键挖掘的上限）。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_MINE_MAX_BLOCKS;
+
+    /** 干活去找工作方块：合成去合成台、熔炼去熔炉（走过去再动手）。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_STATION_USE;
+
+    /** 找工作方块的半径（格）。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_STATION_RADIUS;
+
+    /** 就近没有工作方块时，她自己做出来并放在脚边（只限合成台 / 熔炉，只放在可替换的位置）。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_STATION_SELF_CRAFT;
+
     /** 全无敌：任何来源都不掉血、也不会死（敌对生物、玩家、爆炸、虚空都免）。 */
     public static final ForgeConfigSpec.BooleanValue CAT_GIRL_INVULNERABLE;
     public static final ForgeConfigSpec.IntValue CAT_GIRL_WORK_RADIUS;
@@ -650,6 +674,44 @@ public final class Config {
                 .define("no_durability", true);
         CAT_GIRL_ALWAYS_DROPS = b.comment("无视原版工具等级限制：她砸什么都有产物。")
                 .define("always_drops", true);
+        CAT_GIRL_UNIVERSAL_TOOL = b.comment("全功能工具：按方块「该用的工具类型」取掉落（斧砍树 / 锹挖土 / 剪刀剪叶 / 镐挖石），",
+                        "除保护名单里的方块外，她砸什么都掉产物 —— 一根木镐也能挖下树来。")
+                .define("universal_tool", true);
+        CAT_GIRL_MINE_ALL = b.comment("什么都能挖：挖矿目标从「只有矿石」放开到所有非保护方块（土 / 沙 / 树叶都算）。")
+                .define("mine_all", true);
+        CAT_GIRL_MINE_PROTECTED = b.comment("挖矿保护名单（方块 id，带不带 minecraft: 都行）。名单内一律不砸。",
+                        "默认：基岩 / 屏障 / 命令方块 / 结构方块 / 传送门与传送门框 / 刷怪笼 / 紫水晶母岩。",
+                        "想让她连刷怪笼也挖掉，就把 minecraft:spawner 从名单里删掉。")
+                .defineList("mine_protected", List.of(
+                                "minecraft:bedrock",
+                                "minecraft:barrier",
+                                "minecraft:light",
+                                "minecraft:structure_void",
+                                "minecraft:command_block",
+                                "minecraft:chain_command_block",
+                                "minecraft:repeating_command_block",
+                                "minecraft:structure_block",
+                                "minecraft:jigsaw",
+                                "minecraft:end_portal",
+                                "minecraft:end_portal_frame",
+                                "minecraft:end_gateway",
+                                "minecraft:nether_portal",
+                                "minecraft:reinforced_deepslate",
+                                "minecraft:budding_amethyst",
+                                "minecraft:spawner"),
+                        o -> o instanceof String);
+        CAT_GIRL_MINE_RADIUS = b.comment("挖矿时以她为中心的搜索半径（格）。一键挖掘也按这个半径找目标。")
+                .defineInRange("mine_radius", 24, 4, 64);
+        CAT_GIRL_MINE_MAX_BLOCKS = b.comment("一条 /apocalypse catgirl mine 指令最多挖多少块（一键挖掘的数量上限）。")
+                .defineInRange("mine_max_blocks", 256, 1, 4096);
+        CAT_GIRL_STATION_USE = b.comment("干活去工作方块：合成去最近的合成台、熔炼去最近的熔炉，走过去再动手。",
+                        "关掉 = 像以前一样就地空手做（她的 3×3 一手就能摆）。")
+                .define("station_use", true);
+        CAT_GIRL_STATION_RADIUS = b.comment("找工作方块的半径（格）。")
+                .defineInRange("station_radius", 16, 2, 64);
+        CAT_GIRL_STATION_SELF_CRAFT = b.comment("就近没有工作方块时，她自己把合成台 / 熔炉做出来并放在脚边用。",
+                        "只限这两个方块，只放在空气/草/雪这类可替换的位置，绝不覆盖任何已有方块。")
+                .define("station_self_craft", true);
         CAT_GIRL_INVULNERABLE = b.comment("全无敌：任何来源都不掉血、也不会死（连 /kill 也伤不到她）。")
                 .define("invulnerable", true);
         CAT_GIRL_WORK_RADIUS = b.comment("伐木 / 挖矿时以她为中心的搜索半径（格）。")

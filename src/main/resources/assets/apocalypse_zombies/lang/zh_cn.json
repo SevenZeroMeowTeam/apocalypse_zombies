@@ -118,5 +118,6 @@
   "cat_girl.order.no_materials": "她材料不够，缺：%s",
   "cat_girl.order.no_coins": "爱心币不够付手续费",
   "cat_girl.order.no_recipe": "她不会做这个（没有配方）",
-  "cat_girl.trade.title": "猫耳娘的小店"
+  "cat_girl.trade.title": "猫耳娘的小店",
+  "cat_girl.mine.done": "挖掘订单完成：%s 齐了。"
 }

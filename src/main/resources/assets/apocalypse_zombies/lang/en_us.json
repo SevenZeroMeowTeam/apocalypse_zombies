@@ -118,5 +118,6 @@
   "cat_girl.order.no_materials": "She is missing: %s",
   "cat_girl.order.no_coins": "Not enough love coins",
   "cat_girl.order.no_recipe": "She has no recipe for that",
-  "cat_girl.trade.title": "Cat Girl's Shop"
+  "cat_girl.trade.title": "Cat Girl's Shop",
+  "cat_girl.mine.done": "Mining order done: %s collected."
 }

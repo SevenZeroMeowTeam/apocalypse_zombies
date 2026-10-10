@@ -3,6 +3,7 @@ package com.apocalypse.zombies.command;
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.entity.CatGirlCrafting;
 import com.apocalypse.zombies.entity.CatGirlEntity;
+import com.apocalypse.zombies.entity.CatGirlHarvest;
 import com.apocalypse.zombies.entity.CatGirlRecipeTable;
 import com.apocalypse.zombies.entity.HordeOverlord;
 import com.apocalypse.zombies.horde.HordeManager;
@@ -131,6 +132,16 @@ public final class ApocalypseCommand {
                         .then(Commands.argument("namespace", StringArgumentType.string())
                                 .executes(context -> recipeReport(context.getSource(),
                                         StringArgumentType.getString(context, "namespace")))))
+                .then(Commands.literal("mine")
+                        .then(Commands.literal("stop")
+                                .executes(context -> catgirlMineStop(context.getSource())))
+                        .then(Commands.argument("block", StringArgumentType.word())
+                                .executes(context -> catgirlMine(context.getSource(),
+                                        StringArgumentType.getString(context, "block"), 1))
+                                .then(Commands.argument("count", IntegerArgumentType.integer(1, 4096))
+                                        .executes(context -> catgirlMine(context.getSource(),
+                                                StringArgumentType.getString(context, "block"),
+                                                IntegerArgumentType.getInteger(context, "count"))))))
                 .then(Commands.literal("auto")
                         .executes(context -> catgirlAuto(context.getSource())))
                 .then(Commands.literal("chest")
@@ -343,6 +354,72 @@ public final class ApocalypseCommand {
         String at = found.getX() + ", " + found.getY() + ", " + found.getZ();
         source.sendSuccess(() -> Component.literal("储物点已绑定到 " + at
                 + " —— 她会把多余成品收进去，缺矿石时从那里取；换绑定就再跑一次。"), false);
+        return 1;
+    }
+
+    /**
+     * {@code /apocalypse catgirl mine <方块> [数量]} —— 派一份「一键挖掘」订单：她自己走过去，
+     * 在配置范围里找最近的同名方块砸，产物进她库存；挖满或 {@code mine stop} 收工。
+     *
+     * <p>数量一定被 {@code cat_girl.mine_max_blocks} 夹住 —— 命令里写多大都越不过配置，
+     * 免得一条命令让她把整片大陆搬空（想挖更多就去配置文件调上限）。</p>
+     */
+    private static int catgirlMine(CommandSourceStack source, String blockId, int count) {
+        CatGirlEntity girl = nearestOwned(source);
+        if (girl == null) {
+            return 0;
+        }
+        net.minecraft.resources.ResourceLocation rl = net.minecraft.resources.ResourceLocation.tryParse(
+                blockId.contains(":") ? blockId : "minecraft:" + blockId);
+        net.minecraft.world.level.block.Block block = rl == null ? null
+                : net.minecraft.core.registries.BuiltInRegistries.BLOCK.getOptional(rl).orElse(null);
+        if (block == null || block == net.minecraft.world.level.block.Blocks.AIR) {
+            source.sendFailure(Component.literal(
+                    "认不出方块「" + blockId + "」—— 用注册名，例如 minecraft:stone。"));
+            return 0;
+        }
+        var state = block.defaultBlockState();
+        if (CatGirlHarvest.isProtected(state, CatGirlHarvest.protectedExtra())) {
+            source.sendFailure(Component.literal(block.getName().getString()
+                    + " 在保护名单里（基岩那一类）—— 她不会碰它。"));
+            return 0;
+        }
+        if (state.hasBlockEntity() || !state.getFluidState().isEmpty()) {
+            source.sendFailure(Component.literal(block.getName().getString()
+                    + " 是容器 / 方块实体那一类 —— 约定里她绝不碰，换个别的东西挖吧。"));
+            return 0;
+        }
+        int max = Math.max(1, Config.CAT_GIRL_MINE_MAX_BLOCKS.get());
+        int wanted = Math.max(1, Math.min(count, max));
+        girl.orderMine(block, wanted);
+        girl.setJob(CatGirlEntity.Job.MINE);
+        if (wanted > 0 && count > max) {
+            source.sendSuccess(() -> Component.literal(
+                    "你要了 " + count + " 个 —— 按配置上限压到 " + wanted + "（想再高点改 cat_girl.mine_max_blocks）。"), false);
+        }
+        String name = block.getName().getString();
+        source.sendSuccess(() -> Component.literal("订单："
+                + name + " × " + wanted + " —— 她就近找（范围 "
+                + Config.CAT_GIRL_MINE_RADIUS.get() + " 格）；挖满自动收工，想中止 /apocalypse catgirl mine stop"), true);
+        return 1;
+    }
+
+    /** {@code /apocalypse catgirl mine stop} —— 撤掉她手上的挖掘订单。 */
+    private static int catgirlMineStop(CommandSourceStack source) {
+        CatGirlEntity girl = nearestOwned(source);
+        if (girl == null) {
+            return 0;
+        }
+        if (!girl.hasMineOrder()) {
+            source.sendSuccess(() -> Component.literal("她手上没有挖掘订单。"), false);
+            return 1;
+        }
+        net.minecraft.world.level.block.Block block = girl.getMineOrderBlock();
+        int left = girl.getMineOrderLeft();
+        girl.clearMineOrder();
+        String name = block == null ? "" : block.getName().getString();
+        source.sendSuccess(() -> Component.literal(
+                "订单撤了 —— 剩 " + left + " 个 " + name + " 没挖。"), false);
         return 1;
     }
 

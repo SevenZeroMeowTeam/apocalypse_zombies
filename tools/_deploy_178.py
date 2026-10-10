@@ -1,0 +1,632 @@
+import sys
+import pathlib
+"""1.1.78 出货：**全功能镐子/工具**（什么都能挖、都有掉落，保护名单除外）+ **一键挖掘订单**（/apocalypse catgirl mine，范围/上限走配置）+ **就近去工作方块干活、缺则自己做**（含 1.1.77 全部不回归）（猫耳娘 v4 内容不回退 —— 128² 皮肤 / 逐面 UV 装机 geo / 脸层 44×32）。
+
+跑法（**游戏须完全关闭**）：
+    py tools/_deploy_177.py --build        # 先 ./gradlew build 再出货
+    py tools/_deploy_177.py                # 用 build/libs 里已构建好的包
+
+判据（任一条不过就退出，不动 mods/）：
+  1. 构建产物存在，且 jar 内 mods.toml 的 version == 1.1.77；
+  2. 猫耳娘该有的东西：
+     · geo/cat_girl.geo.json —— identifier geometry.cat_girl、贴图基准 128×128、
+       31 骨 / 126 方块，且**每个 cube 用逐面 uv/uv_size**（v4 的盒式 UV 表达不了
+       每块不同密度，必须逐面）；rest 姿态骨骼无旋转（骨骼一根都不许带 rotation）；
+     · textures/entity/cat_girl.png 是 128×128；
+     · animations/cat_girl.animation.json 在位，每条片段 animation_length > 0；
+     · Java 侧 CatGirlEntity / CatGirlGeoModel / CatGirlGeoRenderer 在 jar 里；
+  3. **不回归**：柯尔特 1878 仍在包里且规格未变（12 骨 / 87 方块 / 512² 基准 /
+     8 条片段长度逐条等于 Java 常量）—— 1.1.71 的内容不许被这次改动冲掉；
+  4. 工程门禁在**本机跑一遍**：tools/check_gun_resources.py 全绿才继续；
+  5. 基线：mods/ 里当前那个包必须是本版或上一版（按**包内 mods.toml 版本**认）；
+  6. 换包：旧包挪到 mods/ **同级** 的 mods_backup/（保 3 份），mods/ 里只留一个本模组包；
+     其它模组 md5 必须全等，mods/ 下不许有子目录（Forge 会递归扫描 → 重复加载）。
+"""
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import struct
+import subprocess
+import zipfile
+
+VER = '1.1.78'
+PREV = '1.1.77'
+SRC = 'F:/mcmod/build/libs/apocalypse_zombies-%s.jar' % VER
+DEV = 'F:/.minecraft/versions/1.20.1-Forge_47.4.26'
+MODS, BACKUP = DEV + '/mods', DEV + '/mods_backup'
+PREFIX = 'apocalypse_zombies-'
+KEEP_BACKUPS = 3
+A = 'assets/apocalypse_zombies/'
+ACCEPT = (PREV, VER)
+
+CLIENT_MARKERS = ('net.minecraft.client.main.Main',)
+DEV_SERVER_MARKERS = ('forgeclient', 'forgeserver', 'forgeuserdev', 'net.minecraft.server.Main')
+
+#: 猫耳娘 v4 规格
+CG_BONES, CG_CUBES, CG_TEX = 31, 126, (128, 128)
+#: 柯尔特 1878 规格（回归护栏）
+COLT_CLIPS = {'static_idle': 2.0, 'draw': 0.8, 'shoot': 0.6, 'bolt': 1.4,
+              'reload_tactical': 3.0, 'reload_empty': 3.6, 'ADS_up': 0.22, 'ADS_down': 0.18}
+COLT_BONES, COLT_CUBES, COLT_TEX = 12, 87, (512, 512)
+CG_JAVA = ('com/apocalypse/zombies/entity/CatGirlEntity.class',
+           'com/apocalypse/zombies/client/model/CatGirlGeoModel.class',
+           'com/apocalypse/zombies/client/renderer/CatGirlGeoRenderer.class')
+
+ok = True
+_ap = argparse.ArgumentParser(description='1.1.78 出货：全功能镐子 + 一键挖掘 + 工作方块')
+_ap.add_argument('--build', action='store_true', help='先跑 ./gradlew build 再出货')
+_ap.add_argument('--allow-dev-server', action='store_true', help='放行无头开发服在跑')
+args = _ap.parse_args()
+
+
+def md5(path):
+    h = hashlib.md5()
+    with open(path, 'rb') as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def check(cond, label, detail=None):
+    global ok
+    ok = ok and bool(cond)
+    tail = ('  —— %s' % (detail,)) if detail not in (None, '', []) else ''
+    print('  %s %s%s' % ('[OK  ]' if cond else '[FAIL]', label, tail))
+    return bool(cond)
+
+
+def jar_version(path):
+    with zipfile.ZipFile(path) as z:
+        toml = z.read('META-INF/mods.toml').decode('utf-8', 'replace')
+    m = re.search(r'^version\s*=\s*"([^"]+)"', toml, re.M)
+    return m.group(1) if m else '?'
+
+
+def game_state():
+    ps = ('Get-CimInstance Win32_Process -Filter "Name=\'java.exe\'" | '
+          'ForEach-Object { $_.CommandLine }')
+    try:
+        r = subprocess.run(['powershell', '-NoProfile', '-NonInteractive', '-Command', ps],
+                           capture_output=True, text=True, errors='replace', timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None, None
+    if r.returncode != 0:
+        return None, None
+    t = (r.stdout or '').lower()
+    return (any(m.lower() in t for m in CLIENT_MARKERS),
+            any(m.lower() in t for m in DEV_SERVER_MARKERS))
+
+
+def png_size(blob):
+    if blob[:8] != b'\x89PNG\r\n\x1a\n':
+        return None
+    return struct.unpack('>II', blob[16:24])
+
+
+print('=== 1/9 构建产物 ===')
+if args.build or not os.path.exists(SRC):
+    if args.build:
+        print('  跑 ./gradlew build ...')
+        rc = subprocess.call('gradlew.bat build --console=plain', shell=True, cwd='F:/mcmod')
+        if rc != 0:
+            print('  ★ 构建失败（exit %d）' % rc)
+            raise SystemExit(1)
+if not os.path.exists(SRC):
+    print('  没有 %s —— 先跑 py tools/_deploy_177.py --build' % SRC)
+    raise SystemExit(1)
+src_md5, src_size = md5(SRC), os.path.getsize(SRC)
+print('  %s\n  md5=%s  %d 字节' % (SRC, src_md5, src_size))
+
+print('=== 2/9 包内自检：猫耳娘 v4 ===')
+with zipfile.ZipFile(SRC) as z:
+    names = z.namelist()
+    toml = z.read('META-INF/mods.toml').decode('utf-8', 'replace')
+    geo = json.loads(z.read(A + 'geo/cat_girl.geo.json'))['minecraft:geometry'][0]
+    anim = json.loads(z.read(A + 'animations/cat_girl.animation.json'))['animations']
+    png = z.read(A + 'textures/entity/cat_girl.png') if A + 'textures/entity/cat_girl.png' in names else b''
+    colt = json.loads(z.read(A + 'geo/colt_1878.geo.json'))['minecraft:geometry'][0]
+    colta = json.loads(z.read(A + 'animations/colt_1878.animation.json'))['animations']
+    colt_png = z.read(A + 'textures/item/colt_1878.png') if A + 'textures/item/colt_1878.png' in names else b''
+    jij = [n for n in names if 'jarjar' in n.lower()]
+
+check('version="%s"' % VER in toml, 'mods.toml 版本 == %s' % VER,
+      [l.strip() for l in toml.splitlines() if 'version=' in l][0])
+desc = geo.get('description', {})
+check(desc.get('identifier') == 'geometry.cat_girl', 'geo identifier == geometry.cat_girl',
+      desc.get('identifier'))
+check((desc.get('texture_width'), desc.get('texture_height')) == CG_TEX,
+      'geo 贴图基准 %d×%d' % CG_TEX, '%s×%s' % (desc.get('texture_width'), desc.get('texture_height')))
+bones = geo.get('bones', [])
+cubes = sum(len(b.get('cubes', [])) for b in bones)
+check(len(bones) == CG_BONES and cubes == CG_CUBES,
+      'geo %d 骨 / %d 方块' % (CG_BONES, CG_CUBES), '%d 骨 / %d 方块' % (len(bones), cubes))
+dirty = [b['name'] for b in bones if b.get('rotation')]
+check(not dirty, 'rest 姿态骨骼无旋转（铁律）', dirty or '%d 根全零' % len(bones))
+facewise = 0
+for b in bones:
+    for c in b.get('cubes', []):
+        uv = c.get('uv')
+        if isinstance(uv, dict) and all(isinstance(v, dict) and 'uv' in v for v in uv.values()):
+            facewise += 1
+check(facewise == CG_CUBES, '每块逐面 uv/uv_size（v4 必须，%d/%d）' % (facewise, CG_CUBES))
+sz = png_size(png) if png else None
+check(sz == CG_TEX, 'textures/entity/cat_girl.png 是 %d×%d' % CG_TEX, sz)
+bad_clip = {k: (v.get('animation_length') if isinstance(v, dict) else None)
+            for k, v in anim.items() if not (isinstance(v, dict) and (v.get('animation_length') or 0) > 0)}
+check(anim and not bad_clip, 'cat_girl 动画 %d 条，长度均 > 0' % len(anim), sorted(anim.keys()))
+miss_java = [p for p in CG_JAVA if p not in names]
+check(not miss_java, '猫耳娘 Java 类在 jar 内（实体/模型/渲染器）', miss_java or '3/3')
+check(not jij, '本模组 jar 不含 jar-in-jar', '干净')
+
+# ---- 月亮事件：日历表必须与 Crafting Dead 的 MoonEventType.forDay 逐条一致 ----
+# 这张表就是从 CD 抄过来的；改动必须两边一起动，所以在这里钉死防漂移。
+cdmoon = {6: 'BLUE_MOON', 7: 'SUPER_BLUE_MOON', 13: 'BLOOD_MOON',
+          20: 'YELLOW_MOON', 21: 'SUPER_YELLOW_MOON', 27: 'SUPER_BLOOD_MOON'}
+check('com/apocalypse/zombies/moon/MoonEvent.class' in names
+      and 'com/apocalypse/zombies/event/CommonEvents.class' in names,
+      '月亮事件类进包（MoonEvent / CommonEvents）')
+msrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/moon/MoonEvent.java',
+            encoding='utf-8').read()
+mi = msrc.find('forDay(')
+got = {int(m.group(1)): m.group(2) for m in re.finditer(
+    r'm\s*==\s*(\d+)\s*\)\s*\{?\s*return\s+([A-Z_]+)', msrc[mi:mi + 1600])}
+check(got == cdmoon, '月亮日历与 Crafting Dead 逐条一致（%d 天有事件）' % len(cdmoon), got)
+
+# ---- 猫耳娘交互：两套 lang 必须都有「未认主 / 非主人」提示键（这次修复的对外表现）----
+for lf in ('en_us.json', 'zh_cn.json'):
+    lp = 'F:/mcmod/src/main/resources/assets/apocalypse_zombies/lang/' + lf
+    ls = open(lp, encoding='utf-8').read()
+    check('"cat_girl.not_tame"' in ls and '"cat_girl.not_owner"' in ls,
+          'lang %s 有未认主/非主人提示键' % lf)
+menusrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/menu/CatGirlTradeMenu.java',
+               encoding='utf-8').read()
+check('PLAYER_ROW_Y' in menusrc and 'HOTBAR_Y' in menusrc,
+      '玩家 27 格回到面板内（原版 9 列布局）')
+
+# ---- 工具即指令：映射函数 / 弓目标 / 外显提示键都在 ----
+cgsrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/CatGirlEntity.java',
+             encoding='utf-8').read()
+check('public static Job jobForTool(' in cgsrc, '工具→工种 映射函数在')
+check('CatGirlBowGoal' in cgsrc, '弓的远程目标已注册')
+check('countArrows' in cgsrc, '箭袋计数在（供「她没箭了」提示）')
+check(pathlib.Path('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/ai/CatGirlBowGoal.java').exists(),
+      'CatGirlBowGoal.java 在')
+for lf in ('en_us.json', 'zh_cn.json'):
+    ls = open('F:/mcmod/src/main/resources/assets/apocalypse_zombies/lang/' + lf, encoding='utf-8').read()
+    check('"cat_girl.job.from_tool"' in ls and '"cat_girl.bow.need_arrows"' in ls,
+          'lang %s 有工具→工种 / 箭袋提示键' % lf)
+
+# ---- 配方表：表在、与当前游戏一致（真同步）、读取器与命令都进了包 ----
+import subprocess
+tbl = pathlib.Path('F:/mcmod/src/main/resources/data/apocalypse_zombies/cat_girl/recipes.json')
+check(tbl.is_file() and tbl.stat().st_size > 10000, '装机配方表在（%s KB）' % (tbl.stat().st_size // 1024 if tbl.is_file() else 0))
+sync = subprocess.run([sys.executable, 'F:/mcmod/tools/cat_girl_recipes_sync.py', '--check'],
+                      capture_output=True, text=True, cwd='F:/mcmod')
+check(sync.returncode == 0, '配方表与当前游戏一致（--check 通过）—— %s' % (sync.stdout.strip() or sync.stderr.strip())[:120])
+cgsrc2 = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/CatGirlRecipeTable.java', encoding='utf-8').read()
+check('cat_girl/recipes.json' in cgsrc2, '读取器指向装机配方表')
+cmdsrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/command/ApocalypseCommand.java', encoding='utf-8').read()
+check('"catgirl"' in cmdsrc and 'recipeReport' in cmdsrc, '/apocalypse catgirl recipes 命令在')
+
+# ---- 1.1.72：无敌不死 / 弓弩蓄力 / 界面布局 / 尾巴摆动 ----
+entsrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/CatGirlEntity.java', encoding='utf-8').read()
+cfgsrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/Config.java', encoding='utf-8').read()
+check('CAT_GIRL_INVULNERABLE' in cfgsrc and '"invulnerable"' in cfgsrc, 'Config 有全无敌开关（默认开）')
+check('CAT_GIRL_INVULNERABLE' in entsrc and 'guardImmortal' in entsrc and 'public void kill()' in entsrc,
+      '本体全无敌 + /kill 与虚空兜底')
+bow = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/ai/CatGirlBowGoal.java', encoding='utf-8').read()
+check('BOW_DRAW = 20' in bow and 'CROSSBOW_LOAD = 25' in bow, '弓 20 tick 满弦 / 弩 25 tick 装填')
+menusrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/menu/CatGirlTradeMenu.java', encoding='utf-8').read()
+check('PLAYER_ROW_Y = 142' in menusrc and 'PANEL_HEIGHT = 226' in menusrc and 'HIDDEN_PLAYER_Y' not in menusrc,
+      '玩家 27 格回到面板内（原版 9 列布局，面板 226）')
+scr = open('F:/mcmod/src/main/java/com/apocalypse/zombies/client/gui/CatGirlTradeScreen.java', encoding='utf-8').read()
+check('PLAYER_ROW_Y - 6' in scr, '玩家背包分隔线在')
+import json as _json
+_anim = _json.load(open('F:/mcmod/src/main/resources/assets/apocalypse_zombies/animations/cat_girl.animation.json', encoding='utf-8'))['animations']
+_tails = [_anim['idle']['bones'].get('tail%d' % i) for i in (1, 2, 3, 4)] + [_anim['walk']['bones'].get('tail%d' % i) for i in (1, 2, 3, 4)]
+check(all(t and len(t['rotation']) == 5 for t in _tails), '尾巴 4 节 x 5 关键帧相位波（idle + walk）')
+
+# ---- 1.1.72：拾取 / 自制 / 自动换装（含盔甲）/ 无耐久 / 砸矿必掉 ----
+cfgsrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/Config.java', encoding='utf-8').read()
+for _k in ('"pickup"', '"auto_equip"', '"auto_craft"', '"no_durability"', '"always_drops"'):
+    check(_k in cfgsrc, 'Config 有开关 %s' % _k)
+entsrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/CatGirlEntity.java', encoding='utf-8').read()
+check('pickupNearby' in entsrc and 'wantsToPickUp' in entsrc and 'pickUpItem' in entsrc,
+      '她会捡地上的东西进自己库存')
+check('ensureMainHand' in entsrc and 'ensureArmor' in entsrc and 'takeBest' in entsrc,
+      '伐木换斧 / 挖矿换镐 / 战斗换剑 + 穿盔甲')
+check('keepGearPristine' in entsrc, '装备不吃耐久（主手/盔甲/库存一律修满）')
+check('CatGirlCrafting.tick' in entsrc, '自制/熔炼节拍已接进 aiStep')
+craft = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/CatGirlCrafting.java', encoding='utf-8').read()
+check('isHerCraftable' in craft and 'RecipeType.CRAFTING' in craft and 'getIngredients' in craft,
+      '自制走原版配方表（工具/武器/盔甲/箭白名单）')
+work = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/ai/WorkBlockGoal.java', encoding='utf-8').read()
+_hv0 = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/CatGirlHarvest.java', encoding='utf-8').read()
+check('CAT_GIRL_ALWAYS_DROPS' in _hv0 and 'NETHERITE_PICKAXE' in _hv0 and 'dropTool(' in _hv0,
+      '砸什么都有掉（无视原版工具等级）—— 1.1.78 起规则在 CatGirlHarvest')
+mitsrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/registry/ModItems.java', encoding='utf-8').read()
+check('love_coin' in mitsrc, '货币（爱心币）仍在')
+
+print('=== 5/9 1.1.73：订做 / 盔甲层 / 熔炼 / 月亮三项 ===')
+cfgsrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/Config.java', encoding='utf-8').read()
+for _k in ('"craft_fee"', '"smelt"', '"armor_render"', '"blood_moon_spawn"',
+           '"blood_moon_spawn_interval"', '"blood_moon_spawn_count"'):
+    check(_k in cfgsrc, 'Config 有 1.1.73 开关 %s' % _k)
+craft = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/CatGirlCrafting.java',
+             encoding='utf-8').read()
+check('TransientCraftingContainer' in craft and 'recipe.matches(grid, level)' in craft,
+      '3x3 摆放：配方形状铺进网格 + 原版 matches 点头')
+check('craftOrder' in craft and 'NO_MATERIALS' in craft and 'NO_COINS' in craft,
+      '订做：材料不足/币不足分别给结论')
+check('smeltOne' in craft and 'RecipeType.SMELTING' in craft and 'AbstractFurnaceBlockEntity.isFuel' in craft,
+      '内部熔炉：走原版冶炼配方 + 燃料判定')
+check('BuiltInRegistries.ITEM.getOptional' in craft, '按物品 id 查物品（命令用）')
+cmenusrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/menu/CatGirlTradeMenu.java',
+                encoding='utf-8').read()
+check('orderInput' in cmenusrc and 'orderResult' in cmenusrc and 'updateOrder' in cmenusrc,
+      '界面下单槽：样品 → 成品（取走再续单）')
+check('getCraftFee' in cmenusrc, '界面能显示手续费')
+cmdsrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/command/ApocalypseCommand.java',
+              encoding='utf-8').read()
+check('Commands.literal("craft")' in cmdsrc and 'StringArgumentType.word()' in cmdsrc,
+      '/apocalypse catgirl craft <物品id> [数量] 在')
+for _lf in ('en_us.json', 'zh_cn.json'):
+    _ls = open('F:/mcmod/src/main/resources/assets/apocalypse_zombies/lang/' + _lf, encoding='utf-8').read()
+    check('"cat_girl.trade.order"' in _ls and '"cat_girl.order.no_materials"' in _ls,
+          'lang %s 有下单相关键' % _lf)
+_layer = pathlib.Path('F:/mcmod/src/main/java/com/apocalypse/zombies/client/renderer/CatGirlArmorLayer.java')
+check(_layer.is_file(), 'CatGirlArmorLayer.java 在')
+_ls2 = _layer.read_text(encoding='utf-8') if _layer.is_file() else ''
+check('HumanoidModel' in _ls2 and 'prepMatrixForBone' in _ls2 and 'armorCutoutNoCull' in _ls2
+      and 'PLAYER_INNER_ARMOR' in _ls2 and 'PLAYER_OUTER_ARMOR' in _ls2,
+      '盔甲层：原版网格（内/外层）贴到她的骨骼')
+check('"head"' in _ls2 and '"right_arm"' in _ls2 and '"left_leg"' in _ls2 and '"right_foot"' in _ls2,
+      '盔甲层覆盖 头/身/双臂/双腿/双脚')
+_rsrc = open('F:/mcmod/src/main/java/com/apocalypse/zombies/client/renderer/CatGirlGeoRenderer.java',
+             encoding='utf-8').read()
+check('new CatGirlArmorLayer(this)' in _rsrc, '渲染器挂上盔甲层')
+check(any(n.endswith('CatGirlArmorLayer.class') for n in names), '盔甲层类进包')
+_mo = open('F:/mcmod/src/main/java/com/apocalypse/zombies/moon/MoonEvent.java', encoding='utf-8').read()
+for _hex, _name in (('0x55AAFF', 'BLUE_MOON'), ('0x88CCFF', 'SUPER_BLUE_MOON'),
+                    ('0xFF5555', 'BLOOD_MOON'), ('0xFFE055', 'YELLOW_MOON'),
+                    ('0xFFCC55', 'SUPER_YELLOW_MOON'), ('0xCC44FF', 'SUPER_BLOOD_MOON')):
+    check(_hex in _mo, '月相 tint 对齐 CD：%s = %s' % (_name, _hex))
+_mm = open('F:/mcmod/src/main/java/com/apocalypse/zombies/moon/MoonEventManager.java',
+           encoding='utf-8').read()
+check('spawnBloodMoonWave' in _mm and 'isBloodMoon()' in _mm,
+      '血月主动刷怪（isBloodMoon 闸门 + 节流）')
+check('EntityType.ZOMBIE.create' in _mm and 'finalizeSpawn' in _mm,
+      '刷的是原版僵尸并走 finalizeSpawn（吃尸潮倍率）')
+
+print('=== 6/9 1.1.74：像玩家一样操作（第一批）===')
+_cw = pathlib.Path('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/ai/CatGirlClearWayGoal.java')
+_br = pathlib.Path('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/ai/CatGirlBridgeGoal.java')
+_nv = pathlib.Path('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/ai/CatGirlNavigation.java')
+check(_nv.is_file() and _cw.is_file() and _br.is_file(), '导航 / 开路 / 搭桥三个新类在源码里')
+for _c in ('entity/ai/CatGirlNavigation.class', 'entity/ai/CatGirlClearWayGoal.class',
+           'entity/ai/CatGirlBridgeGoal.class'):
+    check(any(n.endswith(_c) for n in names), '进包：%s' % _c.split('/')[-1])
+_ent2 = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/CatGirlEntity.java',
+             encoding='utf-8').read()
+check('createNavigation' in _ent2 and 'CatGirlNavigation(this, level)' in _ent2,
+      '实体已换成玩家式导航（开门 / 浮水）')
+check('CatGirlClearWayGoal(this)' in _ent2 and 'CatGirlBridgeGoal(this)' in _ent2,
+      '开路 / 搭桥已注册进 goalSelector')
+check('Config.CAT_GIRL_FOLLOW_SPEED.get()' in _ent2, '跟随速度走 Config.follow_speed')
+check('harvestBlockHard' in _ent2 and 'CatGirlHarvest.breakAndCollect' in _ent2,
+      '开路走她自己的掉落规则（always_drops 不被绕开）')
+_cws = _cw.read_text(encoding='utf-8') if _cw.is_file() else ''
+check('hasBlockEntity()' in _cws and 'MAX_HARDNESS' in _cws and 'defaultDestroyTime' in _cws,
+      '开路边界：无方块实体 + 硬度上限')
+check('BlockTags.LOGS' in _cws and 'BlockTags.DIRT' in _cws and 'Blocks.GRAVEL' in _cws,
+      '开路白名单是自然方块')
+check('Goal.Flag.MOVE' in _cws, '开路抢 MOVE 标记（拿不到就干不了活）')
+_brs = _br.read_text(encoding='utf-8') if _br.is_file() else ''
+check('BlockItem' in _brs and 'getGoods()' in _brs and 'shrink(1)' in _brs,
+      '搭桥只用她自己背包里的方块并扣掉')
+check('canBeReplaced' in _brs, '搭桥只在空格上落脚（不乱铺）')
+_cfg2 = open('F:/mcmod/src/main/java/com/apocalypse/zombies/Config.java', encoding='utf-8').read()
+for _k in ('"autonomy_radius"', '"clear_way"', '"bridge"', '"follow_speed"'):
+    check(_k in _cfg2, 'Config 有 1.1.74 开关 %s' % _k)
+_wbg = open('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/ai/WorkBlockGoal.java',
+            encoding='utf-8').read()
+check('CAT_GIRL_AUTONOMY_RADIUS' in _wbg, '找目标半径取 work_radius/autonomy_radius 的较大值')
+check('getOwner()' in _wbg and 'leash' in _wbg, '主人跑远先跟人（牵引闸门）')
+
+print('=== 3/9 1.1.75：像玩家一样操作（第二批 · 脑子）===')
+_p = 'F:/mcmod/src/main/java/com/apocalypse/zombies/'
+for _c in ('entity/ai/CatGirlNeedGoal.class', 'entity/ai/CatGirlEscortGoal.class',
+           'entity/ai/CatGirlContainerGoal.class'):
+    check(any(n.endswith(_c) for n in names), '进包：%s' % _c.split('/')[-1])
+_ent3 = open(_p + 'entity/CatGirlEntity.java', encoding='utf-8').read()
+for _g in ('new CatGirlNeedGoal(this)', 'new CatGirlEscortGoal(this)', 'new CatGirlContainerGoal(this)'):
+    check(_g in _ent3, '已注册目标：%s' % _g[4:-6])
+check('applyPlayerJob' in _ent3 and 'this.autoJob = false' in _ent3,
+      '玩家切工种 → 关掉这个个体的自动模式（手动优先）')
+check('isAutoJob' in _ent3 and 'getStorage' in _ent3 and 'setStorage' in _ent3,
+      '自主开关 / 储物点访问器在实体上')
+check('CatGirlAutoJob' in _ent3 and 'CatGirlChest' in _ent3, '这两个状态进 NBT（读档不丢）')
+check('!tag.contains("CatGirlAutoJob")' in _ent3, '老存档默认落在安全那一侧（自动开、没绑箱子）')
+check(_ent3.count('applyPlayerJob') >= 3, '两处玩家交互（给工具 / 空手右键）都改走 applyPlayerJob')
+_need = open(_p + 'entity/ai/CatGirlNeedGoal.java', encoding='utf-8').read()
+check('EnumSet' not in _need and 'setFlags' not in _need, '需求 Goal 不占 MOVE/LOOK 执行权')
+check('Job.FIGHT' in _need and 'Job.LUMBER' in _need and 'Job.MINE' in _need and 'Job.FOLLOW' in _need,
+      '四种需求都在（打 / 伐木 / 挖矿 / 跟随）')
+check('AllyJudge.isHorde' in _need, '认敌复用她那一套判据（不会把友军当敌人）')
+check('Config.CAT_GIRL_AUTO_JOB' in _need and 'isAutoJob()' in _need, '需求 Goal 受开关 + 手动模式双重约束')
+_ct = open(_p + 'entity/ai/CatGirlContainerGoal.java', encoding='utf-8').read()
+check('Config.CAT_GIRL_CHEST' in _ct and 'getStorage()' in _ct, '容器 Goal 受开关约束且只认储物点')
+check('pos == null' in _ct and 'instanceof Container container' in _ct,
+      '没绑储物点 / 那儿不是容器 → 什么都不做')
+check('countIn(chest, stack.getItem()) == 0' in _ct, '成品每种至少留一件（不会把唯一那把镐子存走）')
+check('Tags.Items.ORES' in _ct and 'WANT_ORES' in _ct, '缺矿时从储物点取一组矿石')
+_esc = open(_p + 'entity/ai/CatGirlEscortGoal.java', encoding='utf-8').read()
+check('getLastHurtByMob' in _esc and 'Config.CAT_GIRL_ESCORT' in _esc, '护卫只认「主人被打」这个信号')
+_cmd = open(_p + 'command/ApocalypseCommand.java', encoding='utf-8').read()
+check('catgirlAuto' in _cmd and 'catgirlChest' in _cmd, '两个新子命令在命令表里')
+check('Commands.literal("auto")' in _cmd and 'Commands.literal("chest")' in _cmd, '命令字面量 auto / chest 已注册')
+_cfg3 = open(_p + 'Config.java', encoding='utf-8').read()
+for _k in ('"auto_job"', '"chest"', '"escort"'):
+    check(_k in _cfg3, 'Config 有 1.1.75 开关 %s' % _k)
+
+print('=== 4/9 不回归：柯尔特 1878（1.1.71 内容不许被冲掉） ===')
+cdesc = colt.get('description', {})
+cbones = colt.get('bones', [])
+ccubes = sum(len(b.get('cubes', [])) for b in cbones)
+check(cdesc.get('identifier') == 'geometry.colt_1878', 'colt geo identifier',
+      cdesc.get('identifier'))
+check((cdesc.get('texture_width'), cdesc.get('texture_height')) == COLT_TEX,
+      'colt 贴图基准 %d×%d' % COLT_TEX,
+      '%s×%s' % (cdesc.get('texture_width'), cdesc.get('texture_height')))
+check(len(cbones) == COLT_BONES and ccubes == COLT_CUBES,
+      'colt %d 骨 / %d 方块' % (COLT_BONES, COLT_CUBES), '%d 骨 / %d 方块' % (len(cbones), ccubes))
+csz = png_size(colt_png) if colt_png else None
+check(csz == COLT_TEX, 'colt 贴图是 %d×%d' % COLT_TEX, csz)
+got = {k: (v.get('animation_length') if isinstance(v, dict) else None) for k, v in colta.items()}
+bad_len = {k: (got.get(k), w) for k, w in COLT_CLIPS.items() if abs((got.get(k) or -1) - w) > 1e-6}
+check(sorted(colta.keys()) == sorted(COLT_CLIPS.keys()) and not bad_len,
+      'colt 8 条片段长度逐条等于 Java 常量', bad_len or '8/8')
+
+print('=== 8/9 1.1.76 不回归：崩溃修复 + 本地 AI 助理 ===')
+_p = 'F:/mcmod/src/main/java/com/apocalypse/zombies/'
+# —— 崩溃修复：那张 3x3 必须配菜单
+_craft = open(_p + 'entity/CatGirlCrafting.java', encoding='utf-8').read()
+check('new TransientCraftingContainer(new GridMenu(), 3, 3)' in _craft,
+      '她的 3x3 配了空壳菜单（不再传 null）')
+check('new TransientCraftingContainer(null' not in _craft,
+      '源码里已无「传 null 菜单」的老写法（那就是崩溃根因）')
+check('extends AbstractContainerMenu' in _craft and 'GridMenu' in _craft,
+      '空壳菜单在（slotsChanged 走默认空实现，不碰真实窗口）')
+check('catch (RuntimeException e)' in _craft and 'LOGGER.error' in _craft,
+      '自动制作/熔炼那一拍有兜底（异常只记日志）')
+_menu = open(_p + 'entity/menu/CatGirlTradeMenu.java', encoding='utf-8').read()
+check('LOGGER.error' in _menu, '下单路径（跑在服务端 tick 里）也有兜底')
+check('TransientCraftingContainer(this, 3, 3)' in _menu,
+      '菜单自己的 3x3 仍然挂在真菜单上（没被顺手改坏）')
+# —— AI 助理：类进包
+for _c in ('ai/OllamaWire.class', 'ai/LocalAiClient.class', 'ai/CatGirlAiPrompt.class',
+           'ai/CatGirlAiActions.class'):
+    check(any(n.endswith(_c) for n in names), '进包：%s' % _c.split('/')[-1])
+# —— AI 助理：纪律
+_wire = open(_p + 'ai/OllamaWire.java', encoding='utf-8').read()
+check('import net.minecraft' not in _wire,
+      'OllamaWire 不碰 Minecraft 类（所以能拿裸 JVM 对着真模型测同一份字节码）')
+check('ACTIONS = List.of("none", "say", "set_job", "craft")' in _wire,
+      '动作白名单在代码里写死（模型说什么都不越界）')
+check('degraded' in _wire and 'stripThink' in _wire,
+      '坏回包统一降级 + 思考标签剥除')
+_client = open(_p + 'ai/LocalAiClient.java', encoding='utf-8').read()
+check('server.execute(' in _client, 'HTTP 在工作线程、结果回投主线程')
+check('COOLDOWN_MS' in _client and 'FAIL_LIMIT' in _client, '连续失败熔断')
+check('CAT_GIRL_AI_ENDPOINT' in _client and 'CAT_GIRL_AI_MODEL' in _client,
+      '端点/模型走配置')
+check('sendAsync' in _client, '请求是异步发的（不阻塞调用它的那一步）')
+_acts = open(_p + 'ai/CatGirlAiActions.java', encoding='utf-8').read()
+check('CatGirlRecipeTable.find' in _acts
+      and ('isHerMakeable' in _acts or 'isHerCraftable' in _acts),
+      '合成要过「配方表 + 她的白名单」两道')
+check('teleport' not in _acts and 'addItem' not in _acts and 'setHealth' not in _acts,
+      '第一版没有「凭空给物品 / 传送 / 加血」这类动作')
+_cfg4 = open(_p + 'Config.java', encoding='utf-8').read()
+check('"model", "fableforge-ai/nexus-coder:q4_k_m"' in _cfg4, '默认模型 = qwen2 1.5B')
+check('"endpoint", "http://127.0.0.1:11434"' in _cfg4, '默认只连本机')
+check('"actions", true' in _cfg4 and '"enabled", true' in _cfg4, 'AI 两个开关在配置里')
+_cmd4 = open(_p + 'command/ApocalypseCommand.java', encoding='utf-8').read()
+check('Commands.literal("ai")' in _cmd4 and 'catgirlAi(' in _cmd4,
+      '/apocalypse catgirl ai <一句话> 在命令表里')
+check('catgirlAiStatus' in _cmd4, '有 ai status 自检出口')
+# —— 真端点实跑：用线上那份源码编出字节码，对着真 Ollama 跑
+print('  —— 真模型实跑（Ollama + 线上那份 OllamaWire）')
+_gson = 'F:/.minecraft/libraries/com/google/code/gson/gson/2.10.1/gson-2.10.1.jar'
+if not os.path.exists(_gson):
+    check(False, 'gson jar 在（门禁用例要它编译）', _gson)
+else:
+    os.makedirs('F:/mcmod/build/aiw', exist_ok=True)
+    _rc = subprocess.call('javac -encoding UTF-8 -J-Duser.language=en -d build/aiw -cp "%s" '
+                          'src/main/java/com/apocalypse/zombies/ai/OllamaWire.java '
+                          'tools/ai_wire_test/OllamaWireTest.java' % _gson,
+                          shell=True, cwd='F:/mcmod')
+    check(_rc == 0, '门禁用例编译通过（编的就是线上那份 OllamaWire）')
+    if _rc == 0:
+        _run = subprocess.run('java -cp "build/aiw;%s" OllamaWireTest' % _gson,
+                              shell=True, cwd='F:/mcmod', capture_output=True, text=True,
+                              errors='replace', timeout=900)
+        _lines = [l.strip() for l in (_run.stdout or '').splitlines() if l.strip()]
+        check(_run.returncode == 0, '真 Ollama 端点上 12 项全过',
+              _lines[-1] if _lines else (_run.stderr or '')[:120])
+        for _l in _lines:
+            if '她的回话' in _l or _l.startswith('动作：'):
+                print('       ' + _l)
+
+print('=== 9/9 1.1.77：她真的会自己做材料/物品 ===')
+_p = 'F:/mcmod/src/main/java/com/apocalypse/zombies/'
+_craft = open(_p + 'entity/CatGirlCrafting.java', encoding='utf-8').read()
+# —— 根因 1：「有没有」必须升级成「够不够」
+check('private static int countMatching(' in _craft,
+      '有「库存里这种料有几个」的计数（不再是只看有没有）')
+check('private static Map<String, Need> needsOf(' in _craft,
+      '有「一条配方每种料各要几个」的需求表（同一种料占几格就是几个）')
+check(_craft.count('for (Need need : needsOf(recipe).values())') >= 3,
+      '三处补料链都改成按需求记账（makeInto / fillMissing / smeltNeeded）',
+      '%d 处' % _craft.count('for (Need need : needsOf(recipe).values())'))
+check('while (countMatching(goods, need.want) < need.required)' in _craft,
+      '缺几个补几个（while 到够为止，不是补一次就算）')
+check('if (countMatching(goods, need.want) <= before)' in _craft,
+      '补了但没变多就撤退（防在这圈空转）')
+# —— 根因 2：不许把自己的成品装备丢进炉子
+check('!isHerCraftable(stack)' in _craft,
+      '成品装备不进炉（原始「铁装烧成铁粒」不再烧掉她的剑/甲）')
+# —— fill 不再「有就不补」（那正是量不足的成因）
+check('注意：这里**不能**「已经有就不补」' in _craft,
+      'fill 里的「已经有就跳过」已删（调用方要的是凑够）')
+# —— 不靠猜：配方表仍是唯一来源
+check('getRecipeManager().getAllRecipesFor(RecipeType.CRAFTING)' in _craft,
+      '配方来自服务端的真实配方表（RecipeManager，不是写死的菜单）')
+check(not any(s in _craft for s in ('minecraft:diamond', 'minecraft:netherite', 'minecraft:emerald')),
+      '没有「凭空变物」的硬编码物品菜单（钻石/下界合金/绿宝石都不在源码里）')
+# —— 可复跑的实机探针在
+_probe = pathlib.Path('F:/mcmod/tools/rcon_catgirl_craft_probe.py')
+check(_probe.is_file(), '实机探针 tools/rcon_catgirl_craft_probe.py 在')
+_ps = _probe.read_text(encoding='utf-8') if _probe.is_file() else ''
+check('A5 镐斧剑齐活' in _ps, '探针含「镐/斧/剑齐活」断言（做一件就收手会被抓）')
+check('minecraft:item,distance=..64' in _ps or 'type=minecraft:item,distance=..64' in _ps,
+      '探针开跑前清场地掉落物（否则上局尸体掉落会假绿）')
+check('\u4e0d\u70e7' in _ps or '不烧自己装备' in _ps or 'WASTE' in _ps,
+      '探针含「不烧自己的东西」断言')
+# —— AI 路径同样走白名单
+_acts = open(_p + 'ai/CatGirlAiActions.java', encoding='utf-8').read()
+check('CatGirlRecipeTable.find' in _acts and 'CatGirlCrafting.isHerMakeable' in _acts
+      and 'CatGirlCrafting.craftOrder' in _acts,
+      'AI 下单路径也走「配方表 + 她的白名单」（校验完才 craftOrder 扣她库存）')
+
+print('=== 10/9 1.1.78：全功能镐子 / 一键挖掘 / 工作方块 ===')
+_p = 'F:/mcmod/src/main/java/com/apocalypse/zombies/'
+_cfg5 = open(_p + 'Config.java', encoding='utf-8').read()
+for _k in ('"universal_tool"', '"mine_all"', '"mine_protected"', '"mine_radius"',
+           '"mine_max_blocks"', '"station_use"', '"station_radius"', '"station_self_craft"'):
+    check(_k in _cfg5, 'Config 有 1.1.78 项 %s' % _k)
+check('defineInRange("mine_radius", 24, 4, 64)' in _cfg5, '范围默认 24（4~64）')
+check('defineInRange("mine_max_blocks", 256, 1, 4096)' in _cfg5, '一键挖掘数量上限默认 256（1~4096）')
+check('defineInRange("station_radius", 16, 2, 64)' in _cfg5, '工作方块搜索半径默认 16（2~64）')
+check('"minecraft:bedrock"' in _cfg5, '保护名单里钉着基岩（她永远不挖）')
+check('defineList("mine_protected"' in _cfg5 and '"minecraft:spawner"' in _cfg5,
+      '保护名单是可增删的列表（默认含刷怪笼）')
+check('define("universal_tool", true)' in _cfg5 and 'define("mine_all", true)' in _cfg5
+      and 'define("station_use", true)' in _cfg5 and 'define("station_self_craft", true)' in _cfg5,
+      '四个新开关默认开')
+
+_hv = open(_p + 'entity/CatGirlHarvest.java', encoding='utf-8').read()
+check('public static boolean isMineable(' in _hv and 'protectedExtra()' in _hv,
+      '挖矿判定：白名单 + 保护名单')
+check('forge", "ores"' in _hv, '矿石标签走 forge:ores（1.20.1 没有 minecraft:ores）')
+check('public static boolean breakAndCollect(' in _hv and 'dropTool(' in _hv and 'proxyFor(' in _hv,
+      '唯一的破坏出口：掉掉落 + 换对口工具 + 收进库存')
+check('hasBlockEntity()' in _hv and 'FluidState' in _hv, '保护边界：方块实体 / 流体一律不碰')
+
+_st = pathlib.Path('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/CatGirlStation.java')
+_go = pathlib.Path('F:/mcmod/src/main/java/com/apocalypse/zombies/entity/ai/CatGirlStationGoal.java')
+check(_st.is_file() and _go.is_file(), 'CatGirlStation / CatGirlStationGoal 两个新类在源码里')
+check(any(n.endswith('entity/CatGirlStation.class') for n in names), '进包：CatGirlStation.class')
+check(any(n.endswith('entity/ai/CatGirlStationGoal.class') for n in names), '进包：CatGirlStationGoal.class')
+_sts = _st.read_text(encoding='utf-8') if _st.is_file() else ''
+check('canBeReplaced()' in _sts and 'isFaceSturdy' in _sts and 'hasBlockEntity()' in _sts,
+      '放工作方块：只认可替换位置 + 实心支撑 + 无方块实体')
+check('CRAFTING_TABLE' in _sts and 'FURNACE' in _sts and 'BLAST_FURNACE' in _sts,
+      '认合成台 / 熔炉（含高炉 / 烟熏炉）')
+_gos = _go.read_text(encoding='utf-8') if _go.is_file() else ''
+check('CAT_GIRL_STATION_SELF_CRAFT' in _gos and 'CatGirlCrafting.selfMake' in _gos,
+      '就近没有 → 她自己做（受 station_self_craft 约束）')
+check('setStation(' in _gos and 'REACH' in _gos, '走到位才认下台子（到位后交给制作那一侧）')
+
+_cr = open(_p + 'entity/CatGirlCrafting.java', encoding='utf-8').read()
+check('public static CatGirlStation.Kind wantedWork(' in _cr,
+      '只探需求、不动库存的「想去哪种台子」探测在')
+check('public static Result selfMake(' in _cr, '她自己做一件进自己库存的入口在')
+check('private static boolean atStation(' in _cr and 'CAT_GIRL_STATION_USE' in _cr,
+      '站台门槛（station_use）在')
+check('LAST_RUN.computeIfAbsent(cat.getUUID()' in _cr,
+      '自动制作按**每个个体**记账（修掉「第二只永远不会做东西」）')
+check('furnaceOnly' in _cr, '炉子专属才去熔炉（免得为铁锭跑去合成台干等）')
+
+_ent5 = open(_p + 'entity/CatGirlEntity.java', encoding='utf-8').read()
+check('new CatGirlStationGoal(this)' in _ent5, '工作方块目标已注册进 goalSelector')
+check('public void orderMine(' in _ent5 and 'public void minedOne(' in _ent5
+      and 'public boolean matchesMineOrder(' in _ent5,
+      '一键挖掘订单：下单 / 记账 / 匹配 三件套在')
+check('CatGirlMineBlock' in _ent5 and 'CatGirlMineLeft' in _ent5, '订单进 NBT（读档接着挖）')
+check('boolean isMineOrderTarget(' in _ent5, '订单目标判定在（含保护名单）')
+check('stationNear(' in _ent5 and 'isAtStation(' in _ent5 and 'setStation(' in _ent5,
+      '工作方块的就近查找（带缓存）/ 到位判定 / 认领 都在实体上')
+
+_wb = open(_p + 'entity/ai/WorkBlockGoal.java', encoding='utf-8').read()
+check('WorkBlockGoal.forOrder' in _ent5 and 'orderMode' in _wb and 'minedOne' in _wb,
+      '一键挖掘复用劳作目标（订单没了目标立刻不成立）')
+check('CAT_GIRL_MINE_RADIUS' in _wb and 'CAT_GIRL_WORK_RADIUS' in _wb,
+      '找目标半径取 mine_radius / work_radius 的较大值')
+
+_cmd5 = open(_p + 'command/ApocalypseCommand.java', encoding='utf-8').read()
+check('Commands.literal("mine")' in _cmd5 and 'catgirlMine(' in _cmd5 and 'catgirlMineStop(' in _cmd5,
+      '/apocalypse catgirl mine <方块id> [数量] 与 mine stop 在命令表里')
+check('CAT_GIRL_MINE_MAX_BLOCKS' in _cmd5 and 'Math.min(count, max)' in _cmd5,
+      '命令里的数量被配置上限夹住（写多大都越不过去）')
+check('isProtected(state, CatGirlHarvest.protectedExtra())' in _cmd5,
+      '保护名单里的方块直接拒单（基岩挖不了）')
+check('hasBlockEntity()' in _cmd5, '容器 / 方块实体类方块拒单')
+for _lf in ('en_us.json', 'zh_cn.json'):
+    _ls = open('F:/mcmod/src/main/resources/assets/apocalypse_zombies/lang/' + _lf, encoding='utf-8').read()
+    check('"cat_girl.mine.done"' in _ls, 'lang %s 有订单完成提示键' % _lf)
+
+_rd = open('F:/mcmod/readme.md', encoding='utf-8').read()
+check('| **当前版本** | `1.1.78` |' in _rd, 'readme 头表版本 == 1.1.78')
+check('/apocalypse catgirl mine <方块id> [数量]' in _rd, 'readme 有 mine 指令')
+check('/apocalypse catgirl mine stop' in _rd, 'readme 有 mine stop')
+check('mine_max_blocks' in _rd and 'mine_radius' in _rd, 'readme 写明范围 / 上限两项配置')
+
+print('=== 最后：工程门禁（本机实跑） ===')
+rc = subprocess.call(['py', 'tools/check_gun_resources.py'], cwd='F:/mcmod')
+check(rc == 0, 'tools/check_gun_resources.py 全绿', 'exit %d' % rc)
+
+print('=== 8/9 基线校验 + 换包 ===')
+if not os.path.isdir(MODS):
+    check(False, 'mods/ 存在', MODS)
+    raise SystemExit(1)
+jars = [f for f in os.listdir(MODS) if f.lower().endswith('.jar')]
+subdirs = [f for f in os.listdir(MODS) if os.path.isdir(os.path.join(MODS, f))]
+mine = [f for f in jars if f.startswith(PREFIX)]
+others = [f for f in jars if not f.startswith(PREFIX)]
+check(not subdirs, 'mods/ 下无子目录（Forge 会递归扫描）', subdirs or '干净')
+check(len(mine) == 1, 'mods/ 里只有 1 个本模组包', mine)
+client, devsrv = game_state()
+check(client is not True, '游戏客户端没在跑', '探测失败=按未在跑处理'
+      if client is None else ('在跑！' if client else '未在跑'))
+if devsrv and not args.allow_dev_server:
+    check(False, '无头开发服没在跑（要放行加 --allow-dev-server）', '在跑')
+base_ver = jar_version(os.path.join(MODS, mine[0])) if mine else '?'
+check(base_ver in ACCEPT, '基线包版本 ∈ %s（按包内 mods.toml 认）' % (ACCEPT,), base_ver)
+other_md5 = {f: md5(os.path.join(MODS, f)) for f in others}
+
+if not ok:
+    print('\n★ 有判据未通过 —— 未改动 mods/。')
+    raise SystemExit(1)
+
+os.makedirs(BACKUP, exist_ok=True)
+old = os.path.join(MODS, mine[0])
+shutil.move(old, os.path.join(BACKUP, mine[0]))
+shutil.copy2(SRC, os.path.join(MODS, os.path.basename(SRC)))
+print('  换包：%s → mods_backup/；新包 %s' % (mine[0], os.path.basename(SRC)))
+
+backups = sorted([f for f in os.listdir(BACKUP) if f.startswith(PREFIX)],
+                 key=lambda f: [int(x) for x in re.findall(r'\d+', f)])
+for f in backups[:-KEEP_BACKUPS]:
+    os.remove(os.path.join(BACKUP, f))
+    print('  清理旧备份：%s' % f)
+
+now = {f: md5(os.path.join(MODS, f)) for f in os.listdir(MODS) if f.lower().endswith('.jar')}
+same = all(now.get(f) == m for f, m in other_md5.items())
+check(same, '其它模组 md5 全等（没被误伤）', '%d 个' % len(others))
+check(jar_version(os.path.join(MODS, os.path.basename(SRC))) == VER, '装机包版本 == %s' % VER)
+print('\n★ 出货完成：mods/ = %s' % [f for f in now if f.startswith(PREFIX)])
+raise SystemExit(0 if ok else 1)

@@ -1,27 +1,25 @@
 package com.apocalypse.zombies.entity.ai;
 
 import java.util.EnumSet;
-import java.util.List;
+import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.goal.Goal;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.entity.CatGirlEntity;
 import com.apocalypse.zombies.entity.CatGirlEntity.Job;
+import com.apocalypse.zombies.entity.CatGirlHarvest;
 
 /**
  * 猫耳娘的劳作目标：找到最近的匹配方块 → 走过去 → 抡起来砸碎，产物进她的库存。
  *
- * <p>伐木与挖矿共用一套实现，差别只在构造参数：模式（{@link Job}）、方块过滤器
- * （原木 / 矿石）、动作通道（chop / mine）。加一种新工种不用再写一个 Goal。</p>
+ * <p>伐木、挖矿、以及主人点名的「一键挖掘」共用这一套实现，差别只在构造参数：
+ * 模式（{@link Job}）、方块过滤器、动作通道（chop / mine）、以及一个可选的额外门槛
+ * （{@code gate}，一键挖掘用它兜住「订单还在不在」）。加一种新工种不用再写一个 Goal。</p>
  *
  * <p><b>几个刻意的设计</b>：</p>
  * <ul>
@@ -51,8 +49,12 @@ public class WorkBlockGoal extends Goal {
 
     private final CatGirlEntity cat;
     private final Job job;
-    private final Predicate<BlockState> filter;
+    private final Predicate<BlockPos> filter;
     private final int action;
+    /** 额外门槛：返回 false 时这个目标整个不成立（默认没有门槛）。 */
+    private final BooleanSupplier gate;
+    /** 是不是「一键挖掘」订单目标（决定产出记账）。 */
+    private final boolean orderMode;
 
     private int scanCooldown;
     private BlockPos target;
@@ -61,17 +63,36 @@ public class WorkBlockGoal extends Goal {
     private int stuckTicks;
     private int workTicks;
 
-    public WorkBlockGoal(CatGirlEntity cat, Job job, Predicate<BlockState> filter, int action) {
+    public WorkBlockGoal(CatGirlEntity cat, Job job, Predicate<BlockPos> filter, int action) {
+        this(cat, job, filter, action, () -> true, false);
+    }
+
+    public WorkBlockGoal(CatGirlEntity cat, Job job, Predicate<BlockPos> filter, int action, BooleanSupplier gate) {
+        this(cat, job, filter, action, gate, false);
+    }
+
+    private WorkBlockGoal(CatGirlEntity cat, Job job, Predicate<BlockPos> filter, int action,
+            BooleanSupplier gate, boolean orderMode) {
         this.cat = cat;
         this.job = job;
         this.filter = filter;
         this.action = action;
+        this.gate = gate;
+        this.orderMode = orderMode;
         this.setFlags(EnumSet.of(Goal.Flag.MOVE, Goal.Flag.LOOK));
+    }
+
+    /**
+     * 一键挖掘订单专用的构造：订单挖满或被撤掉，这个目标立刻不成立
+     * —— 订单没了就该回到自主挖矿 / 别的活，而不是继续扫方块。
+     */
+    public static WorkBlockGoal forOrder(CatGirlEntity cat, Predicate<BlockPos> filter, int action) {
+        return new WorkBlockGoal(cat, Job.MINE, filter, action, cat::hasMineOrder, true);
     }
 
     @Override
     public boolean canUse() {
-        if (this.cat.getJob() != this.job) {
+        if (this.cat.getJob() != this.job || !this.gate.getAsBoolean()) {
             return false;
         }
         // 主人跑远了先跟人：她是随从，不该为了砍树把主人丢在地图另一头。
@@ -96,11 +117,10 @@ public class WorkBlockGoal extends Goal {
 
     @Override
     public boolean canContinueToUse() {
-        if (this.cat.getJob() != this.job || this.target == null) {
+        if (this.cat.getJob() != this.job || this.target == null || !this.gate.getAsBoolean()) {
             return false;
         }
-        BlockState state = this.cat.level().getBlockState(this.target);
-        return this.filter.test(state) && this.cat.isAlive();
+        return this.filter.test(this.target) && this.cat.isAlive();
     }
 
     @Override
@@ -154,7 +174,7 @@ public class WorkBlockGoal extends Goal {
         this.workTicks++;
 
         if (this.workTicks >= this.breakTicks()) {
-            this.breakBlock(center);
+            this.breakBlock();
             this.workTicks = 0;
             this.target = null;
             this.cat.setAction(CatGirlEntity.ACTION_NONE, 0);
@@ -173,24 +193,17 @@ public class WorkBlockGoal extends Goal {
         return tool ? Math.max(4, (int) (base * Config.CAT_GIRL_TOOL_SPEEDUP.get())) : base;
     }
 
-    private void breakBlock(Vec3 center) {
-        ServerLevel server = (ServerLevel) this.cat.level();
+    private void breakBlock() {
         BlockPos pos = this.target;
-        BlockState state = server.getBlockState(pos);
-        BlockEntity entity = server.getBlockEntity(pos);
-        List<ItemStack> drops = Block.getDrops(state, server, pos, entity, this.cat, this.cat.getMainHandItem());
-        if (drops.isEmpty() && state.requiresCorrectToolForDrops()
-                && Config.CAT_GIRL_ALWAYS_DROPS.get()) {
-            // 「无视原版规则限制」：原版卡掉落的是 playerDestroy 里的 canHarvestBlock（工具等级），
-            // 不是掉落表本身 —— 这里用最高等级工具再取一次，保证她砸什么都有产物。
-            ItemStack cheat = new ItemStack(this.job == Job.LUMBER
-                    ? net.minecraft.world.item.Items.NETHERITE_AXE
-                    : net.minecraft.world.item.Items.NETHERITE_PICKAXE);
-            drops = Block.getDrops(state, server, pos, entity, this.cat, cheat);
+        BlockState state = this.cat.level().getBlockState(pos);
+        // 掉落 + 换对口工具 + 收进库存，统一在 CatGirlHarvest 里做（全功能工具的唯一出口）。
+        // 注意：破坏后方块已变空气，filter 会立刻失败，所以记账必须在这里、破坏之前判断。
+        if (!CatGirlHarvest.breakAndCollect(this.cat, pos, state2 -> this.filter.test(pos))) {
+            return;
         }
-        server.destroyBlock(pos, false);
-        this.cat.storeOrDrop(drops, pos);
-        this.cat.playSound(net.minecraft.sounds.SoundEvents.ITEM_PICKUP, 0.5F, 1.6F);
+        if (this.orderMode) {
+            this.cat.minedOne(state);
+        }
     }
 
     private void blacklistAndStop() {
@@ -203,7 +216,8 @@ public class WorkBlockGoal extends Goal {
     /** 在半径内找最近的匹配方块：以她所在位置为中心扫一个立方体，向下多扫一点（矿洞场景）。 */
     private BlockPos findBlock() {
         // 取两者较大的那个：老存档里 work_radius 还是 12，光靠它她走不出院子。
-        int radius = Math.max(Config.CAT_GIRL_WORK_RADIUS.get(), Config.CAT_GIRL_AUTONOMY_RADIUS.get());
+        // mine_radius（配置里的「范围」）既管自主挖矿也管一键挖掘订单。
+        int radius = Math.max(Config.CAT_GIRL_MINE_RADIUS.get(), Config.CAT_GIRL_WORK_RADIUS.get());
         BlockPos origin = this.cat.blockPosition();
         BlockPos best = null;
         double bestDistance = Double.MAX_VALUE;
@@ -213,7 +227,7 @@ public class WorkBlockGoal extends Goal {
             if (this.blacklistTicks > 0 && pos.equals(this.blacklisted)) {
                 continue;
             }
-            if (!this.filter.test(this.cat.level().getBlockState(pos))) {
+            if (!this.filter.test(pos)) {
                 continue;
             }
             double distance = pos.distToCenterSqr(this.cat.position());

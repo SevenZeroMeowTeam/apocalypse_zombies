@@ -50,6 +50,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.common.Tags;
 
@@ -64,6 +65,7 @@ import software.bernie.geckolib.util.GeckoLibUtil;
 
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.entity.ai.AllyJudge;
+import com.apocalypse.zombies.entity.ai.CatGirlStationGoal;
 import com.apocalypse.zombies.entity.ai.WorkBlockGoal;
 import com.apocalypse.zombies.entity.menu.CatGirlTradeMenu;
 
@@ -161,6 +163,13 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
     /** 她的储物点（主人绑定的容器）；null = 没绑，她一个容器都不碰。 */
     private BlockPos storage;
 
+    // ------------------------------------------------------------ 一键挖掘订单
+
+    /** 一键挖掘的目标方块（null = 没订单）。玩家用 /apocalypse catgirl mine 下单。 */
+    private Block mineOrderBlock;
+    /** 一键挖掘还差几块。 */
+    private int mineOrderLeft;
+
     // ------------------------------------------------------------ 任务模式
 
     /** 玩家下达的任务。空手右键循环切换。 */
@@ -244,6 +253,142 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
         this.actionTicks = 5;
     }
 
+    // ------------------------------------------------------------ 一键挖掘订单
+
+    /** 有没有正在执行的「一键挖掘」订单。 */
+    public boolean hasMineOrder() {
+        return this.mineOrderLeft > 0 && this.mineOrderBlock != null;
+    }
+
+    /** 订单目标方块（没订单时 null）。 */
+    public Block getMineOrderBlock() {
+        return this.mineOrderBlock;
+    }
+
+    public int getMineOrderLeft() {
+        return this.mineOrderLeft;
+    }
+
+    /**
+     * 下单：去挖 {@code count} 块 {@code block}。
+     *
+     * <p>数量由调用方按 {@code cat_girl.mine_max_blocks} 夹好；这里只记账。
+     * 下单同时把她切到挖矿工种 —— 不然她还在伐木，永远不会去碰这个目标。</p>
+     */
+    public void orderMine(Block block, int count) {
+        this.mineOrderBlock = block;
+        this.mineOrderLeft = Math.max(1, count);
+        this.setJob(Job.MINE);
+    }
+
+    public void clearMineOrder() {
+        this.mineOrderBlock = null;
+        this.mineOrderLeft = 0;
+    }
+
+    public boolean matchesMineOrder(BlockState state) {
+        return this.mineOrderBlock != null && state.is(this.mineOrderBlock);
+    }
+
+    /**
+     * 记一块订单产出。挖满时清掉订单并回主人一句 —— 免得她挖完还在原地转圈，
+     * 主人也不知道该不该等她。
+     */
+    public void minedOne(BlockState state) {
+        if (!this.matchesMineOrder(state)) {
+            return;
+        }
+        if (--this.mineOrderLeft > 0) {
+            return;
+        }
+        String done = this.mineOrderBlock.getName().getString();
+        this.clearMineOrder();
+        Player owner = this.getOwner() instanceof Player player ? player : null;
+        if (owner != null) {
+            owner.displayClientMessage(Component.translatable("cat_girl.mine.done", done), false);
+        }
+    }
+
+    // ------------------------------------------------------------ 工作方块（合成台 / 熔炉）
+
+    /** 她当前认定的工作方块（走过去或自己放好之后写进来）。 */
+    private BlockPos stationPos;
+    private int stationTicksLeft;
+    /** 就近找站台的扫描缓存：Goal 的 canUse 每 tick 都可能问一遍。 */
+    private CatGirlStation.Kind stationScanKind;
+    private long stationScanAt = -1000L;
+    private BlockPos stationScanHit;
+
+    /** 认定一个工作方块，ticks 内有效（走开 / 到期就作废）。 */
+    public void setStation(BlockPos pos, int ticks) {
+        this.stationPos = pos;
+        this.stationTicksLeft = ticks;
+    }
+
+    /** 她是不是正站在这一类工作方块边上（4 格内，且那个方块还在）。 */
+    public boolean isAtStation(CatGirlStation.Kind kind) {
+        if (this.stationTicksLeft <= 0 || this.stationPos == null) {
+            return false;
+        }
+        if (!CatGirlStation.matches(this.level(), this.stationPos, kind)) {
+            return false;
+        }
+        return this.blockPosition().distSqr(this.stationPos) <= 16;
+    }
+
+    /** 就近找工作方块（60 tick 缓存，一次扫描同时服务 Goal 与制作门槛）。 */
+    public BlockPos stationNear(CatGirlStation.Kind kind, int radius) {
+        long now = this.level().getGameTime();
+        if (this.stationScanKind == kind && now - this.stationScanAt < 60L) {
+            return this.stationScanHit;
+        }
+        this.stationScanKind = kind;
+        this.stationScanAt = now;
+        this.stationScanHit = CatGirlStation.findNear(this, kind, radius);
+        return this.stationScanHit;
+    }
+
+    /** 按条件从库存里取走一件（真扣掉）；放工作方块用。 */
+    public boolean consumeOneMatching(java.util.function.Predicate<ItemStack> want) {
+        for (int i = 0; i < this.goods.getContainerSize(); i++) {
+            ItemStack s = this.goods.getItem(i);
+            if (!s.isEmpty() && want.test(s)) {
+                this.goods.removeItem(i, 1);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 按条件从库存里取出一件（真取走）；换工具用。 */
+    public ItemStack takeBestFor(java.util.function.Predicate<ItemStack> want) {
+        int bestIdx = -1;
+        int best = -1;
+        for (int i = 0; i < this.goods.getContainerSize(); i++) {
+            ItemStack s = this.goods.getItem(i);
+            if (s.isEmpty() || !want.test(s)) {
+                continue;
+            }
+            int rank = gearRank(s);
+            if (rank > best) {
+                best = rank;
+                bestIdx = i;
+            }
+        }
+        return bestIdx < 0 ? ItemStack.EMPTY : this.goods.removeItem(bestIdx, 1);
+    }
+
+    /** 库存里有没有符合条件的（只看不动）。 */
+    public boolean hasGoodsMatching(java.util.function.Predicate<ItemStack> want) {
+        for (int i = 0; i < this.goods.getContainerSize(); i++) {
+            ItemStack s = this.goods.getItem(i);
+            if (!s.isEmpty() && want.test(s)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public SimpleContainer getGoods() {
         return this.goods;
     }
@@ -274,13 +419,15 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
         // 开路 / 搭桥：只在「正在导航且卡住」时接管，所以排在战斗之后、劳作之前。
         this.goalSelector.addGoal(3, new CatGirlClearWayGoal(this));
         this.goalSelector.addGoal(3, new CatGirlBridgeGoal(this));
-        this.goalSelector.addGoal(4, new WorkBlockGoal(this, Job.LUMBER, CatGirlEntity::isLog, ACTION_CHOP));
-        this.goalSelector.addGoal(5, new WorkBlockGoal(this, Job.MINE, CatGirlEntity::isOre, ACTION_MINE));
+        this.goalSelector.addGoal(4, WorkBlockGoal.forOrder(this, this::isMineOrderTarget, ACTION_MINE));
+        this.goalSelector.addGoal(5, new WorkBlockGoal(this, Job.LUMBER, this::isLog, ACTION_CHOP));
+        this.goalSelector.addGoal(6, new WorkBlockGoal(this, Job.MINE, this::isMineTarget, ACTION_MINE));
         // 用容器排在劳作之后：先干活，多余的成品才收进箱子
-        this.goalSelector.addGoal(6, new CatGirlContainerGoal(this));
-        this.goalSelector.addGoal(6, new WaterAvoidingRandomStrollGoal(this, 1.0D));
-        this.goalSelector.addGoal(7, new LookAtPlayerGoal(this, Player.class, 8.0F));
-        this.goalSelector.addGoal(8, new RandomLookAroundGoal(this));
+        this.goalSelector.addGoal(7, new CatGirlStationGoal(this));
+        this.goalSelector.addGoal(7, new CatGirlContainerGoal(this));
+        this.goalSelector.addGoal(7, new WaterAvoidingRandomStrollGoal(this, 1.0D));
+        this.goalSelector.addGoal(8, new LookAtPlayerGoal(this, Player.class, 8.0F));
+        this.goalSelector.addGoal(9, new RandomLookAroundGoal(this));
 
         // 保护主人：这两种目标不分模式都会接（被打了总得还手）
         this.targetSelector.addGoal(1, new OwnerHurtByTargetGoal(this));
@@ -295,12 +442,40 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
         });
     }
 
-    private static boolean isLog(BlockState state) {
-        return state.is(BlockTags.LOGS);
+    /** 伐木目标：原木（保护名单 / 容器类仍然一律不碰）。 */
+    private boolean isLog(BlockPos pos) {
+        BlockState state = this.level().getBlockState(pos);
+        return state.is(BlockTags.LOGS)
+                && CatGirlHarvest.isMineable(this.level(), pos, state, CatGirlHarvest.protectedExtra());
     }
 
-    private static boolean isOre(BlockState state) {
-        return state.is(Tags.Blocks.ORES);
+    /**
+     * 自主挖矿目标：原来只认矿石；{@code mine_all} 打开后连土 / 沙 / 砾 / 石头 / 树叶都算
+     * —— 但**只认自然方块**，免得她把主人的房子当成矿脉。
+     */
+    private boolean isMineTarget(BlockPos pos) {
+        BlockState state = this.level().getBlockState(pos);
+        if (!CatGirlHarvest.isMineable(this.level(), pos, state, CatGirlHarvest.protectedExtra())) {
+            return false;
+        }
+        if (state.is(Tags.Blocks.ORES)) {
+            return true;
+        }
+        return Config.CAT_GIRL_MINE_ALL.get() && CatGirlHarvest.isNaturalTarget(state);
+    }
+
+    /**
+     * 一键挖掘订单的目标：只要是她点的那一种、且没进保护名单。
+     *
+     * <p>比自主挖矿宽 —— 泥土 / 木头 / 树叶 / 玻璃都接单，因为这是主人明确点的名。</p>
+     */
+    private boolean isMineOrderTarget(BlockPos pos) {
+        if (!this.hasMineOrder()) {
+            return false;
+        }
+        BlockState state = this.level().getBlockState(pos);
+        return this.matchesMineOrder(state)
+                && CatGirlHarvest.isMineable(this.level(), pos, state, CatGirlHarvest.protectedExtra());
     }
 
     /**
@@ -333,6 +508,11 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
         if (this.storage != null) {
             tag.putLong("CatGirlChest", this.storage.asLong());
         }
+        if (this.mineOrderBlock != null && this.mineOrderLeft > 0) {
+            tag.putString("CatGirlMineBlock", net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                    .getKey(this.mineOrderBlock).toString());
+            tag.putInt("CatGirlMineLeft", this.mineOrderLeft);
+        }
     }
 
     @Override
@@ -350,6 +530,15 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
         this.autoJob = !tag.contains("CatGirlAutoJob") || tag.getBoolean("CatGirlAutoJob");
         this.storage = tag.contains("CatGirlChest")
                 ? BlockPos.of(tag.getLong("CatGirlChest")) : null;
+        if (tag.contains("CatGirlMineBlock")) {
+            net.minecraft.resources.ResourceLocation rl =
+                    net.minecraft.resources.ResourceLocation.tryParse(tag.getString("CatGirlMineBlock"));
+            this.mineOrderBlock = rl == null ? null
+                    : net.minecraft.core.registries.BuiltInRegistries.BLOCK.getOptional(rl).orElse(null);
+            this.mineOrderLeft = this.mineOrderBlock == null ? 0 : tag.getInt("CatGirlMineLeft");
+        } else {
+            this.clearMineOrder();
+        }
     }
 
     // ------------------------------------------------------------ tick
@@ -357,6 +546,9 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
     @Override
     public void tick() {
         super.tick();
+        if (this.stationTicksLeft > 0) {
+            this.stationTicksLeft--;
+        }
         if (this.actionTicks > 0) {
             this.actionTicks--;
             if (this.actionTicks == 0 && this.getAction() != ACTION_NONE) {
@@ -996,27 +1188,14 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
     }
 
     /**
-     * 「砸开挡路的」通用实现：和伐木/挖矿同一套掉落规则（含 always_drops），
+     * 「砸开挡路的」通用实现：和伐木/挖矿同一套掉落规则（含全功能工具 / always_drops），
      * 破坏后收进她的库存 —— 开路行为不能把「她砸什么都有产物」这条绕过去。
+     *
+     * @param axeLike 老参数：现在掉落统一由 {@link CatGirlHarvest#breakAndCollect} 按方块
+     *                该用的工具决定，这个标志已经不参与判断，只为不动调用方而留着。
      */
     public void harvestBlockHard(BlockPos pos, boolean axeLike) {
-        if (!(this.level() instanceof ServerLevel server)) {
-            return;
-        }
-        BlockState state = server.getBlockState(pos);
-        net.minecraft.world.level.block.entity.BlockEntity be = server.getBlockEntity(pos);
-        List<ItemStack> drops = net.minecraft.world.level.block.Block.getDrops(
-                state, server, pos, be, this, this.getMainHandItem());
-        if (drops.isEmpty() && state.requiresCorrectToolForDrops()
-                && Config.CAT_GIRL_ALWAYS_DROPS.get()) {
-            ItemStack cheat = new ItemStack(axeLike
-                    ? net.minecraft.world.item.Items.NETHERITE_AXE
-                    : net.minecraft.world.item.Items.NETHERITE_PICKAXE);
-            drops = net.minecraft.world.level.block.Block.getDrops(state, server, pos, be, this, cheat);
-        }
-        server.destroyBlock(pos, false);
-        this.storeOrDrop(drops, pos);
-        this.playSound(SoundEvents.ITEM_PICKUP, 0.5F, 1.6F);
+        CatGirlHarvest.breakAndCollect(this, pos, state -> true);
     }
 
     /** 交易菜单用的催肥粒子（钱不够时的反馈）。 */
