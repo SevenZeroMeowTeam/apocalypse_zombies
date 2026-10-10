@@ -294,13 +294,14 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 - 实现：`client/ModConfigScreens`（注册扩展点）+ `client/gui/ApocalypseConfigScreen`（界面本体，
   直接读 `Config.values()` 的声明顺序）；注册走 `DistExecutor.unsafeRunWhenOn(Dist.CLIENT, ...)`，
   这几个纯客户端类在**专用服务器上不会被加载**（`_deploy_179.py` 有断言钉着）。
-- **修了个真 bug（实机撞出来的）**：`mine` 的方块参数原来是 `StringArgumentType.word()`，它（以及
-  `string()`）的**不带引号**形式只认 `[A-Za-z0-9_.+-]` —— 也就是说**文档里让你写的
-  `minecraft:diamond_ore` 其实解析不过去**（Brigadier 直接报
-  `Expected whitespace to end one argument, but found trailing data`）。
-  改用原版 `/setblock` 那套 `ResourceLocationArgument.id()` 后两种写法都收：
-  `minecraft:diamond_ore` 与 `diamond_ore`（不带命名空间按 `minecraft:` 补前缀），还白拿一份 id 补全；
-  控制台上两种写法都验过能解析。
+- **修了个真 bug（实机撞出来的，`mine` 和 `craft` 都中）**：两个命令的 id 参数原来是
+  `StringArgumentType.word()` —— 它（以及 `string()`）的**不带引号**形式只认 `[A-Za-z0-9_.+-]`，
+  所以**文档里让你写的 `minecraft:diamond_ore` 一直解析不过去**（Brigadier 直接报
+  `Expected whitespace to end one argument, but found trailing data`）；`craft` 更别扭：
+  它的失败提示里写着「写 id，例如 minecraft:diamond_pickaxe」，你照抄反而报错。两条都换成
+  原版 `/setblock` 那套 `ResourceLocationArgument.id()`：两种写法都收
+  （`minecraft:diamond_ore` 与 `diamond_ore`，不带命名空间按 `minecraft:` 补前缀），
+  还白拿一份 id 补全；控制台上两种写法都验过能解析。
 - 三处不回归：1.1.78 的镐子 / 一键挖掘 / 工作方块、猫耳娘 v4 皮肤与几何、柯尔特 1878。
 
 ### 1.1.78 — 2026-10-10
