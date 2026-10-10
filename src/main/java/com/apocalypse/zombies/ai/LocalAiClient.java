@@ -145,7 +145,8 @@ public final class LocalAiClient {
         }
 
         String said = text.length() > MAX_INPUT ? text.substring(0, MAX_INPUT) : text;
-        List<String> candidates = CatGirlAiPrompt.candidates(said);
+        List<String> candidates = CatGirlAiPrompt.candidates(said,
+                cat.level() instanceof ServerLevel level ? level : null);
         String userTurn = CatGirlAiPrompt.userTurn(cat, player, said, candidates);
         List<String[]> history = new ArrayList<>(HISTORY.getOrDefault(player.getUUID(), new ArrayDeque<>()));
 

@@ -92,11 +92,13 @@ public final class CatGirlAiActions {
             player.sendSystemMessage(herLine("我不认识「" + itemId + "」这个东西。"));
             return;
         }
-        if (!CatGirlCrafting.isHerCraftable(wanted)) {
-            player.sendSystemMessage(herLine("这个我做不了 —— 我只会做剑、镐、斧、锹、锄、弓弩、箭、盾和盔甲。"));
+        if (!(cat.level() instanceof ServerLevel level)) {
             return;
         }
-        if (!(cat.level() instanceof ServerLevel level)) {
+        CatGirlCrafting.ensureGraph(level);
+        if (!CatGirlCrafting.isHerMakeable(wanted)) {
+            player.sendSystemMessage(herLine("这个我做不了 —— 我只会做剑、镐、斧、锹、锄、弓弩、箭、盾和盔甲，"
+                    + "外加做它们要用的材料（木板、木棍、锭那些）。"));
             return;
         }
         if (CatGirlCrafting.countCoins(player) < 1) {

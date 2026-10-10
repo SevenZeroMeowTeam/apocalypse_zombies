@@ -76,15 +76,19 @@ public final class CatGirlAiPrompt {
             Map.entry("下界", new String[]{"netherite"}),
             Map.entry("铁", new String[]{"iron"}),
             Map.entry("石", new String[]{"stone"}),
-            Map.entry("木", new String[]{"wooden"})
+            Map.entry("木", new String[]{"wooden"}),
+            Map.entry("木板", new String[]{"planks"}),
+            Map.entry("木棍", new String[]{"stick"}),
+            Map.entry("圆石", new String[]{"cobblestone"}),
+            Map.entry("锭", new String[]{"ingot"})
     );
 
-    /** 兜底候选：玩家没提任何能认出关键词时，给她手边最有用的几样。 */
+    /** 兜底候选：玩家没提任何能认出关键词时，给她手边最有用的几样（含最基础的材料）。 */
     private static final List<String> FALLBACK = List.of(
             "minecraft:wooden_pickaxe", "minecraft:stone_pickaxe", "minecraft:iron_pickaxe",
             "minecraft:stone_axe", "minecraft:iron_axe", "minecraft:wooden_sword",
             "minecraft:stone_sword", "minecraft:iron_sword", "minecraft:bow", "minecraft:arrow",
-            "minecraft:shield", "minecraft:furnace", "minecraft:torch");
+            "minecraft:shield", "minecraft:stick", "minecraft:oak_planks");
 
     private static final Pattern ITEM_ID = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
     private static final int MAX_CANDIDATES = 8;
@@ -96,11 +100,17 @@ public final class CatGirlAiPrompt {
      * 从玩家这句话里检索出「她做得到」的候选 id。
      *
      * <p>三条来源：玩家直接打的 id（校验过存在）、中文关键词映射、兜底清单 ——
-     * 全部再过一遍 {@link CatGirlCrafting#isHerCraftable} 和配方表存在性。</p>
+     * 全部再过一遍 {@link CatGirlCrafting#isHerMakeable} 和配方表存在性。</p>
+     *
+     * <p>{@code level} 给上才认识「中间材料」（木板 / 木棍 / 锭）；为 {@code null} 时只认成品装备。
+     * 小模型得先看见 id 才敢报，所以候选里没有的东西等于不存在。</p>
      */
-    public static List<String> candidates(String text) {
+    public static List<String> candidates(String text, ServerLevel level) {
         Set<String> out = new LinkedHashSet<>();
         String lower = text == null ? "" : text.toLowerCase(Locale.ROOT);
+        if (level != null) {
+            CatGirlCrafting.ensureGraph(level);
+        }
 
         Matcher m = ITEM_ID.matcher(lower);
         while (m.find() && out.size() < MAX_CANDIDATES) {
@@ -108,7 +118,7 @@ public final class CatGirlAiPrompt {
             if (CatGirlRecipeTable.find(id).isEmpty() && CatGirlCrafting.itemById(id).isEmpty()) {
                 continue;
             }
-            if (craftable(id)) {
+            if (makeable(id)) {
                 out.add(id);
             }
         }
@@ -123,7 +133,7 @@ public final class CatGirlAiPrompt {
                         if (out.size() >= MAX_CANDIDATES) {
                             break;
                         }
-                        if (craftable(hit.outputItem())) {
+                        if (makeable(hit.outputItem())) {
                             out.add(hit.outputItem());
                         }
                     }
@@ -134,7 +144,7 @@ public final class CatGirlAiPrompt {
                     if (out.size() >= MAX_CANDIDATES) {
                         break;
                     }
-                    if (craftable(id)) {
+                    if (makeable(id)) {
                         out.add(id);
                     }
                 }
@@ -143,9 +153,14 @@ public final class CatGirlAiPrompt {
         return new ArrayList<>(out);
     }
 
-    private static boolean craftable(String id) {
+    /** 老签名：不认中间材料（没有服务器实例时用）。 */
+    public static List<String> candidates(String text) {
+        return candidates(text, null);
+    }
+
+    private static boolean makeable(String id) {
         ItemStack stack = CatGirlCrafting.itemById(id);
-        return !stack.isEmpty() && CatGirlCrafting.isHerCraftable(stack);
+        return !stack.isEmpty() && CatGirlCrafting.isHerMakeable(stack);
     }
 
     /**
