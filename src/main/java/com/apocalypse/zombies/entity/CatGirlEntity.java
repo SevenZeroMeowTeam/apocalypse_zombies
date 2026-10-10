@@ -279,10 +279,54 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
         }
     }
 
+    // ------------------------------------------------------------ 全无敌 / 不死
+
+    @Override
+    public void aiStep() {
+        super.aiStep();
+        this.guardImmortal();
+    }
+
+    /** 全无敌时不许死：/kill、虚空都不行。 */
+    @Override
+    public void kill() {
+        if (!Config.CAT_GIRL_INVULNERABLE.get()) {
+            super.kill();
+        }
+    }
+
+    /**
+     * 全无敌兜底：血线永远满格；掉出世界（虚空）就拉回主人身边。
+     *
+     * <p>虚空伤害（{@code OUT_OF_WORLD}）在原版里绕开无敌判定，所以要单独兜一次 ——
+     * 不然「全无敌」会被一条 void 打脸。同理 {@code /kill} 也不看无敌，见 {@link #kill()}。</p>
+     */
+    private void guardImmortal() {
+        if (this.level().isClientSide || !Config.CAT_GIRL_INVULNERABLE.get()) {
+            return;
+        }
+        if (this.getHealth() < this.getMaxHealth()) {
+            this.setHealth(this.getMaxHealth());
+        }
+        if (this.getY() < this.level().getMinBuildHeight() - 8.0D) {
+            LivingEntity owner = this.getOwner();
+            if (owner != null) {
+                this.teleportTo(owner.getX(), owner.getY() + 1.0D, owner.getZ());
+            } else {
+                this.teleportTo(this.getX(), this.level().getMinBuildHeight() + 80.0D, this.getZ());
+            }
+            this.fallDistance = 0.0F;
+        }
+    }
+
     // ------------------------------------------------------------ 无敌（敌对生物无效）
 
     @Override
     public boolean isInvulnerableTo(DamageSource source) {
+        // 全无敌（config，默认开）：敌对生物、玩家、爆炸、火、虚空……一律免
+        if (Config.CAT_GIRL_INVULNERABLE.get()) {
+            return true;
+        }
         // 直接凶手是敌对生物（近战、僵尸的枪、骷髅的箭、苦力怕爆炸都走这条）
         if (source.getEntity() instanceof LivingEntity attacker && AllyJudge.isHorde(attacker)) {
             return true;
@@ -300,6 +344,10 @@ public class CatGirlEntity extends TamableAnimal implements GeoEntity {
 
     @Override
     public boolean hurt(DamageSource source, float amount) {
+        // 全无敌：连伤害事件都不产生（不会红屏、不会被击退、不会掉血）
+        if (Config.CAT_GIRL_INVULNERABLE.get()) {
+            return false;
+        }
         boolean hurt = super.hurt(source, amount);
         if (hurt && !this.level().isClientSide) {
             // 只有玩家/环境真的造成伤害时才会走到这（敌对生物在上一步就被挡了）

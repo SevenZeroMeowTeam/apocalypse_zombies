@@ -48,6 +48,9 @@ public class CatGirlTradeScreen extends net.minecraft.client.gui.screens.invento
         guiGraphics.fill(x + 5, y + 16, x + this.imageWidth - 5, y + 74, PANEL_INNER);
         // 分隔线
         guiGraphics.fill(x + 5, y + 76, x + this.imageWidth - 5, y + 77, PANEL_BORDER);
+        // 她的区块与下面玩家背包之间再来一条：上半屏是「她的」，下半屏是玩家的
+        guiGraphics.fill(x + 5, y + CatGirlTradeMenu.PLAYER_ROW_Y - 6,
+                x + this.imageWidth - 5, y + CatGirlTradeMenu.PLAYER_ROW_Y - 5, PANEL_BORDER);
         // 交易行 / 库存行 / 玩家背包 的槽位框
         for (net.minecraft.world.inventory.Slot slot : this.menu.slots) {
             if (slot.y >= this.imageHeight) {

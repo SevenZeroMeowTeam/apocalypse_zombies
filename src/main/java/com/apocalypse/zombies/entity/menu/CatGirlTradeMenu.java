@@ -53,13 +53,13 @@ public class CatGirlTradeMenu extends AbstractContainerMenu {
     public static final int CRAFT_RESULT = CRAFT_START + CRAFT_COUNT;
     public static final int GOODS_START = CRAFT_RESULT + 1;
     /** 面板高度（只有她的部分）：界面底部落在快捷栏那一行下面。 */
-    public static final int PANEL_HEIGHT = 166;
+    public static final int PANEL_HEIGHT = 226;
 
-    /** 快捷栏那一行在面板里的 y。 */
-    public static final int HOTBAR_Y = 146;
+    /** 玩家背包第一行的 y：她的区块下面，按原版 9 列 × 18px 排（和玩家背包同款布局）。 */
+    public static final int PLAYER_ROW_Y = 142;
 
-    /** 玩家 27 格的 y 原点：远在面板之下 = 存在但不可见（shift 搬运只走槽位索引）。 */
-    public static final int HIDDEN_PLAYER_Y = 10000;
+    /** 快捷栏那一行在面板里的 y：最后一行背包下留 4px，与原版背包一致。 */
+    public static final int HOTBAR_Y = 200;
 
     public static final int GOODS_COUNT = CatGirlEntity.GOODS_SIZE;
     public static final int PLAYER_START = GOODS_START + GOODS_COUNT;
@@ -172,7 +172,7 @@ public class CatGirlTradeMenu extends AbstractContainerMenu {
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
                 this.addSlot(new Slot(playerInventory, col + row * 9 + 9, 8 + col * 18,
-                        HIDDEN_PLAYER_Y + row * 18));
+                        PLAYER_ROW_Y + row * 18));
             }
         }
         for (int col = 0; col < 9; col++) {

@@ -214,6 +214,8 @@ public final class Config {
 
     // ---- 猫耳娘随从 ----
     /** 伐木 / 挖矿的搜索半径（格）。 */
+    /** 全无敌：任何来源都不掉血、也不会死（敌对生物、玩家、爆炸、虚空都免）。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_INVULNERABLE;
     public static final ForgeConfigSpec.IntValue CAT_GIRL_WORK_RADIUS;
     /** 破坏一根原木的基础耗时（tick），拿着斧头打折。 */
     public static final ForgeConfigSpec.IntValue CAT_GIRL_CHOP_TICKS;
@@ -566,6 +568,8 @@ public final class Config {
                         "Cat girl companion: tame with fish, right-click bare-handed to cycle jobs,",
                         "sneak-right-click to open the barter menu.")
                 .push("cat_girl");
+        CAT_GIRL_INVULNERABLE = b.comment("全无敌：任何来源都不掉血、也不会死（连 /kill 也伤不到她）。")
+                .define("invulnerable", true);
         CAT_GIRL_WORK_RADIUS = b.comment("伐木 / 挖矿时以她为中心的搜索半径（格）。")
                 .defineInRange("work_radius", 12, 4, 32);
         CAT_GIRL_CHOP_TICKS = b.comment("破坏一根原木的基础耗时（tick，20 = 1 秒）。")
