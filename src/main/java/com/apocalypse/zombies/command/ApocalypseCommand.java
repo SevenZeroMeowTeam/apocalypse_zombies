@@ -120,12 +120,18 @@ public final class ApocalypseCommand {
 
         root.then(Commands.literal("catgirl")
                 .then(Commands.literal("craft")
-                        .then(Commands.argument("item", StringArgumentType.word())
+                        // 和 mine 的方块参数同一个理由（见下）：`word()`/`string()` 的不带引号形式
+                        // 只认 [A-Za-z0-9_.+-]，`minecraft:diamond_pickaxe` 直接解析不过去 ——
+                        // 而 catgirlCraft 的失败提示里写的就是「写 id，例如 minecraft:diamond_pickaxe」。
+                        .then(Commands.argument("item",
+                                        net.minecraft.commands.arguments.ResourceLocationArgument.id())
                                 .executes(context -> craftOrder(context.getSource(),
-                                        StringArgumentType.getString(context, "item"), 1))
+                                        net.minecraft.commands.arguments.ResourceLocationArgument
+                                                .getId(context, "item").toString(), 1))
                                 .then(Commands.argument("count", IntegerArgumentType.integer(1, 64))
                                         .executes(context -> craftOrder(context.getSource(),
-                                                StringArgumentType.getString(context, "item"),
+                                                net.minecraft.commands.arguments.ResourceLocationArgument
+                                                        .getId(context, "item").toString(),
                                                 IntegerArgumentType.getInteger(context, "count"))))))
                 .then(Commands.literal("recipes")
                         .executes(context -> recipeReport(context.getSource(), null))
@@ -135,12 +141,22 @@ public final class ApocalypseCommand {
                 .then(Commands.literal("mine")
                         .then(Commands.literal("stop")
                                 .executes(context -> catgirlMineStop(context.getSource())))
-                        .then(Commands.argument("block", StringArgumentType.word())
+                        // 方块参数必须用 ResourceLocationArgument（原版 /setblock 用的就是它）：
+                        // `word()`/`string()`（StringArgumentType）的**不带引号**形式只认 [A-Za-z0-9_.+-]，
+                        // `minecraft:stone` 这种带命名空间的写法 Brigadier 会直接报
+                        // "Expected whitespace to end one argument, but found trailing data"
+                        // （实机撞到的 —— 文档里让你写的 `minecraft:diamond_ore` 压根解析不过去）。
+                        // ResourceLocationArgument 两种写法都收：`minecraft:stone` 与 `stone`
+                        // （默认补 minecraft），顺带还给了原版的 id 补全。
+                        .then(Commands.argument("block",
+                                        net.minecraft.commands.arguments.ResourceLocationArgument.id())
                                 .executes(context -> catgirlMine(context.getSource(),
-                                        StringArgumentType.getString(context, "block"), 1))
+                                        net.minecraft.commands.arguments.ResourceLocationArgument
+                                                .getId(context, "block").toString(), 1))
                                 .then(Commands.argument("count", IntegerArgumentType.integer(1, 4096))
                                         .executes(context -> catgirlMine(context.getSource(),
-                                                StringArgumentType.getString(context, "block"),
+                                                net.minecraft.commands.arguments.ResourceLocationArgument
+                                                        .getId(context, "block").toString(),
                                                 IntegerArgumentType.getInteger(context, "count"))))))
                 .then(Commands.literal("auto")
                         .executes(context -> catgirlAuto(context.getSource())))

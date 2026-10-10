@@ -119,5 +119,15 @@
   "cat_girl.order.no_coins": "爱心币不够付手续费",
   "cat_girl.order.no_recipe": "她不会做这个（没有配方）",
   "cat_girl.trade.title": "猫耳娘的小店",
-  "cat_girl.mine.done": "挖掘订单完成：%s 齐了。"
+  "cat_girl.mine.done": "挖掘订单完成：%s 齐了。",
+  "cat_girl.config.title": "启示录僵尸 · 配置",
+  "cat_girl.config.hint": "滚轮翻页 · 改完点「完成」立刻写进 config/apocalypse_zombies-common.toml",
+  "cat_girl.config.on": "开",
+  "cat_girl.config.off": "关",
+  "cat_girl.config.done": "完成",
+  "cat_girl.config.cancel": "取消",
+  "cat_girl.config.reset": "恢复默认",
+  "cat_girl.config.reset_done": "全部配置已恢复默认并保存。",
+  "cat_girl.config.saved": "已保存 %s 项改动 → config/apocalypse_zombies-common.toml",
+  "cat_girl.config.bad_number": "「%s」这一项要填数字。"
 }

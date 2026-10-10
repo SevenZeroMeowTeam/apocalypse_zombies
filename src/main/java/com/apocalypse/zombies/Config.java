@@ -13,6 +13,35 @@ public final class Config {
     public static final ForgeConfigSpec SPEC;
 
     /**
+     * 声明顺序里的全部配置项（客户端配置界面照着它列）。
+     *
+     * <p>用反射取静态字段而不是 {@code SPEC.getValues()}：后者是 nightconfig 的
+     * {@code UnmodifiableConfig}，叶子到底是不是 {@code ConfigValue} 实例要看 Forge 内部实现，
+     * 而这里要的就是「源码里的字段，按声明顺序」，反射是唯一确定拿得到的。</p>
+     *
+     * <p>顺序 = 源码声明顺序（HotSpot 返回 {@code getDeclaredFields()} 就是声明序），
+     * 所以界面上 {@code mine_radius} 与 {@code mine_max_blocks} 会挨在一起，
+     * 不用再排一遍。</p>
+     */
+    public static java.util.List<ForgeConfigSpec.ConfigValue<?>> values() {
+        java.util.List<ForgeConfigSpec.ConfigValue<?>> out = new java.util.ArrayList<>();
+        for (java.lang.reflect.Field field : Config.class.getDeclaredFields()) {
+            if (!java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
+                continue;
+            }
+            if (!ForgeConfigSpec.ConfigValue.class.isAssignableFrom(field.getType())) {
+                continue;
+            }
+            try {
+                out.add((ForgeConfigSpec.ConfigValue<?>) field.get(null));
+            } catch (IllegalAccessException ignored) {
+                // 公开静态字段，取不到就不列它 —— 不值得为一行配置把界面整个搞崩。
+            }
+        }
+        return out;
+    }
+
+    /**
      * 月亮事件的触发方式。
      *
      * <p>{@code true}（默认）= 按 <b>Crafting Dead 的 28 天日历</b>触发（第 6/7 蓝月、13 血月、
@@ -702,8 +731,8 @@ public final class Config {
                         o -> o instanceof String);
         CAT_GIRL_MINE_RADIUS = b.comment("挖矿时以她为中心的搜索半径（格）。一键挖掘也按这个半径找目标。")
                 .defineInRange("mine_radius", 24, 4, 64);
-        CAT_GIRL_MINE_MAX_BLOCKS = b.comment("一条 /apocalypse catgirl mine 指令最多挖多少块（一键挖掘的数量上限）。")
-                .defineInRange("mine_max_blocks", 256, 1, 4096);
+        CAT_GIRL_MINE_MAX_BLOCKS = b.comment("一条 /apocalypse catgirl mine 指令最多挖多少块（一键挖掘的数量上限，最高 64）。")
+                .defineInRange("mine_max_blocks", 64, 1, 64);
         CAT_GIRL_STATION_USE = b.comment("干活去工作方块：合成去最近的合成台、熔炼去最近的熔炉，走过去再动手。",
                         "关掉 = 像以前一样就地空手做（她的 3×3 一手就能摆）。")
                 .define("station_use", true);

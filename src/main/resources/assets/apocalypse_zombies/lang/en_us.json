@@ -119,5 +119,15 @@
   "cat_girl.order.no_coins": "Not enough love coins",
   "cat_girl.order.no_recipe": "She has no recipe for that",
   "cat_girl.trade.title": "Cat Girl's Shop",
-  "cat_girl.mine.done": "Mining order done: %s collected."
+  "cat_girl.mine.done": "Mining order done: %s collected.",
+  "cat_girl.config.title": "Apocalypse Zombies · config",
+  "cat_girl.config.hint": "Scroll to page · 完成 (Done) writes straight into config/apocalypse_zombies-common.toml",
+  "cat_girl.config.on": "On",
+  "cat_girl.config.off": "Off",
+  "cat_girl.config.done": "Done",
+  "cat_girl.config.cancel": "Cancel",
+  "cat_girl.config.reset": "Defaults",
+  "cat_girl.config.reset_done": "Every value is back to its default and saved.",
+  "cat_girl.config.saved": "Saved %s change(s) → config/apocalypse_zombies-common.toml",
+  "cat_girl.config.bad_number": "\"%s\" needs a number."
 }
