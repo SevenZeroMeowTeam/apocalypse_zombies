@@ -15,6 +15,7 @@ import com.apocalypse.zombies.entity.ai.PreyTargetGoal;
 import com.apocalypse.zombies.entity.ai.SharedAggroGoal;
 import com.apocalypse.zombies.entity.ai.SkirmishGoal;
 import com.apocalypse.zombies.entity.ai.SurroundGoal;
+import com.apocalypse.zombies.entity.ai.VillagerChores;
 import com.apocalypse.zombies.entity.ai.VillagerDefendGoal;
 import com.apocalypse.zombies.moon.MoonEventManager;
 
@@ -284,6 +285,10 @@ public final class MobAiEnhanced {
         if ((villager.tickCount + villager.getId()) % interval != 0) {
             return;
         }
+        // 日常杂活（随手关门 / 白天开门 / 收成熟庄稼并补种）挂在这一支上：同一个节流、同一次
+        // 相位打散，而且都是「站在原地就能干完」的事，不必跟 Brain 的移动抢。恐慌那段照旧往下走。
+        VillagerChores.run(villager, Config.AI_VILLAGER_CHORE_RADIUS.get(),
+                Config.AI_VILLAGER_DOOR_ENABLED.get(), Config.AI_VILLAGER_FARM_ENABLED.get());
         Monster threat = nearestThreat(villager, Config.AI_VILLAGER_ALERT_RADIUS.get());
         if (threat == null) {
             return;

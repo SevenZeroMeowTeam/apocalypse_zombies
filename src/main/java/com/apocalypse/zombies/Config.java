@@ -175,6 +175,12 @@ public final class Config {
     public static final ForgeConfigSpec.DoubleValue AI_VILLAGER_CALL_RADIUS;
     /** 村民出生时拿起武器的概率。拿了的会反击，且不再一味逃跑。 */
     public static final ForgeConfigSpec.DoubleValue AI_VILLAGER_ARM_CHANCE;
+    /** 村民随手管门：白天把门打开、夜里关上（铁门不碰）。 */
+    public static final ForgeConfigSpec.BooleanValue AI_VILLAGER_DOOR_ENABLED;
+    /** 村民收成熟的庄稼并补种（小麦 / 胡萝卜 / 马铃薯 / 甜菜）。 */
+    public static final ForgeConfigSpec.BooleanValue AI_VILLAGER_FARM_ENABLED;
+    /** 上面两件杂活的作用半径（格）。 */
+    public static final ForgeConfigSpec.IntValue AI_VILLAGER_CHORE_RADIUS;
     public static final ForgeConfigSpec.BooleanValue AI_GOLEM_ENABLED;
     public static final ForgeConfigSpec.IntValue AI_GOLEM_FOLLOW_RANGE;
     public static final ForgeConfigSpec.DoubleValue AI_GOLEM_KNOCKBACK;
@@ -638,6 +644,18 @@ public final class Config {
                         "and a monster target goal, and the panic branch is skipped for it.",
                         "0 disables the whole feature (and unarmed villagers behave as before).")
                 .defineInRange("villager_arm_chance", 0.15D, 0.0D, 1.0D);
+        AI_VILLAGER_DOOR_ENABLED = b.comment("Villagers mind the doors around them: open by day, shut by night.",
+                        "Iron doors are left alone (those are the player's lock), and a door with a living",
+                        "thing within 1.5 blocks is not touched, so nobody gets shut into one.")
+                .define("villager_door_enabled", true);
+        AI_VILLAGER_FARM_ENABLED = b.comment("Villagers harvest ripe crops nearby and replant them.",
+                        "Wheat / carrots / potatoes / beetroot. One harvested item is used as the seed,",
+                        "the rest goes into the villager's own inventory (dropped at its feet when full).")
+                .define("villager_farm_enabled", true);
+        AI_VILLAGER_CHORE_RADIUS = b.comment("Radius (blocks) for the two chores above.",
+                        "Scanned once per villager_interval ticks and phase-spread across villagers, so",
+                        "the cost is (villagers / interval) scans per tick, ~845 blocks each at radius 6.")
+                .defineInRange("villager_chore_radius", 6, 2, 24);
         AI_SURE_HIT_CHANCE = b.comment("Chance that a zombie's or skeleton's attack counts as a sure hit:",
                         "the target's hurt cooldown is cleared first, so the blow cannot be eaten by",
                         "invulnerability frames. 0 restores vanilla behaviour.")

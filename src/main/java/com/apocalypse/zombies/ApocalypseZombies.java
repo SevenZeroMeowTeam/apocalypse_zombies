@@ -59,7 +59,7 @@ public class ApocalypseZombies {
                 () -> com.apocalypse.zombies.client.ModConfigScreens::register);
 
         // 启动自检：配置枚举器（= 图形界面列的那几项）在真机上到底数出多少个。
-        // 之所以要往日志里写一行：那枚举器是反射实现的，只在编译期断言「源码里有 151 个字段」
+        // 之所以要往日志里写一行：那枚举器是反射实现的，只在编译期断言「源码里有 154 个字段」
         // 证明不了运行期 —— 实机探针就是靠这行日志钉住这个数。
         LOGGER.info("Config registry: {} entries (exactly what the in-game config screen lists).",
                 Config.values().size());
