@@ -5,6 +5,7 @@ import com.apocalypse.zombies.item.AWMItem;
 import com.apocalypse.zombies.item.CrossbowItem;
 import com.apocalypse.zombies.item.M1GarandItem;
 import com.apocalypse.zombies.item.MosinNagantItem;
+import com.apocalypse.zombies.item.Rsc1917Item;
 import com.apocalypse.zombies.item.Colt1878Item;
 import com.apocalypse.zombies.item.S686Item;
 import com.apocalypse.zombies.item.UziItem;
@@ -36,6 +37,10 @@ public final class ModItems {
 
     public static final RegistryObject<Item> M1_GARAND =
             ITEMS.register("m1_garand", () -> new M1GarandItem(new Item.Properties().stacksTo(1)));
+
+    /** RSC M1917：5 发漏夹从**下方**经弹匣盖压入固定弹匣、半自动、空仓不挂机。 */
+    public static final RegistryObject<Item> RSC_1917 =
+            ITEMS.register("rsc_1917", () -> new Rsc1917Item(new Item.Properties().stacksTo(1)));
 
     public static final RegistryObject<Item> MOSIN_NAGANT =
             ITEMS.register("mosin_nagant", () -> new MosinNagantItem(new Item.Properties().stacksTo(1)));
@@ -120,6 +125,7 @@ public final class ModItems {
         if (event.getTabKey() == CreativeModeTabs.COMBAT) {
             event.accept(AWM);
             event.accept(M1_GARAND);
+            event.accept(RSC_1917);
             event.accept(MOSIN_NAGANT);
             event.accept(CROSSBOW);
             event.accept(UZI);

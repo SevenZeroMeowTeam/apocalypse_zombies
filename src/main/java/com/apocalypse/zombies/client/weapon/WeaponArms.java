@@ -6,6 +6,7 @@ import com.apocalypse.zombies.client.model.Colt1878GeoModel;
 import com.apocalypse.zombies.client.model.CrossbowGeoModel;
 import com.apocalypse.zombies.client.model.M1GarandGeoModel;
 import com.apocalypse.zombies.client.model.MosinNagantGeoModel;
+import com.apocalypse.zombies.client.model.Rsc1917GeoModel;
 import com.apocalypse.zombies.client.model.S686GeoModel;
 import com.apocalypse.zombies.client.model.UziGeoModel;
 import com.apocalypse.zombies.item.AWMItem;
@@ -14,6 +15,7 @@ import com.apocalypse.zombies.item.CrossbowItem;
 import com.apocalypse.zombies.item.GunItem;
 import com.apocalypse.zombies.item.M1GarandItem;
 import com.apocalypse.zombies.item.MosinNagantItem;
+import com.apocalypse.zombies.item.Rsc1917Item;
 import com.apocalypse.zombies.item.S686Item;
 import com.apocalypse.zombies.item.UziItem;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -154,6 +156,22 @@ public final class WeaponArms {
     }
 
     /**
+     * RSC M1917: the <b>right</b> hand holds the wrist with the trigger finger and — unlike the M1's — does
+     * <em>not</em> stay there through a reload. The RSC's magazine opens through a cover hinged at its front,
+     * and the five-round clip goes <em>up</em> into the well from below, so the firing hand has to drop under
+     * the rifle to work the cover and press the clip; then, because the RSC does <b>not</b> hold its bolt open
+     * on the last round, it has to come back up and actually rack the charging handle to chamber the first
+     * round. The <b>left</b> hand supports the fore-end throughout and never leaves it: this rifle has no
+     * clip-latch pin (an M1 part) and the cover is a right-hand job.
+     */
+    public static void renderRsc1917(Minecraft mc, PoseStack pose, MultiBufferSource buffer, int light,
+                                     String action, float progress) {
+        render(mc, pose, buffer, light, Rsc1917GeoModel.frame,
+                Rsc1917GeoModel.rightHand(action, progress, new float[3]),
+                Rsc1917GeoModel.leftHand(action, progress, new float[3]));
+    }
+
+    /**
      * 莫辛-纳甘 M91/30: the <b>right</b> hand holds the wrist with the trigger finger and works the bolt
      * itself — a bolt gun does not cycle on its own, so it leaves the grip every shot, breaks the handle
      * open, drags it back and runs it home. While reloading it lifts over the receiver and presses the rounds
@@ -237,6 +255,8 @@ public final class WeaponArms {
         ItemStack stack = mc.player == null ? ItemStack.EMPTY : mc.player.getMainHandItem();
         if (stack.getItem() instanceof CrossbowItem) {
             renderCrossbow(mc, pose, buffer, light, action, progress);
+        } else if (stack.getItem() instanceof Rsc1917Item) {
+            renderRsc1917(mc, pose, buffer, light, action, progress);
         } else if (stack.getItem() instanceof M1GarandItem) {
             renderM1Garand(mc, pose, buffer, light, action, progress);
         } else if (stack.getItem() instanceof MosinNagantItem) {
@@ -258,6 +278,7 @@ public final class WeaponArms {
     public static void forgetFrames() {
         CrossbowGeoModel.frame.invalidate();
         M1GarandGeoModel.frame.invalidate();
+        Rsc1917GeoModel.frame.invalidate();
         MosinNagantGeoModel.frame.invalidate();
         AWMGeoModel.frame.invalidate();
         UziGeoModel.frame.invalidate();
