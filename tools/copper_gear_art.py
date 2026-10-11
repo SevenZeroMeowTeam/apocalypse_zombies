@@ -40,6 +40,7 @@ PAIRS = [
     ('textures/item/iron_sword.png', 'textures/item/copper_sword.png'),
     ('textures/item/iron_pickaxe.png', 'textures/item/copper_pickaxe.png'),
     ('textures/item/iron_hoe.png', 'textures/item/copper_hoe.png'),
+    ('textures/item/iron_axe.png', 'textures/item/copper_axe.png'),
     ('textures/item/iron_helmet.png', 'textures/item/copper_helmet.png'),
     ('textures/item/iron_chestplate.png', 'textures/item/copper_chestplate.png'),
     ('textures/item/iron_leggings.png', 'textures/item/copper_leggings.png'),

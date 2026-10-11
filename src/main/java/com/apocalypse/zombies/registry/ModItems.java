@@ -10,6 +10,7 @@ import com.apocalypse.zombies.item.Colt1878Item;
 import com.apocalypse.zombies.item.S686Item;
 import com.apocalypse.zombies.item.UziItem;
 import net.minecraft.world.item.ArmorItem;
+import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.HoeItem;
 import net.minecraft.world.item.Item;
@@ -137,6 +138,17 @@ public final class ModItems {
                     () -> new HoeItem(ModTiers.COPPER, -1, -2.0F, new Item.Properties()));
 
     /**
+     * 铜斧：伤害与石斧**完全一致**（同样是 {@code 1 + 7 + 1 = 9} 点），耐久 200 比石斧的 131 高。
+     *
+     * <p>斧头在 1.20.1 的伤害本来就比剑高一大截（石斧 9 点 vs 石剑 5 点），所以这里照抄的是
+     * <b>石斧</b>那一组参数（{@code 7.0F / -3.2F}），不是石剑的 —— 「武器伤害和石制一样」对斧的
+     * 读法就是这一条。耐久 / 效率 / 挖掘等级都跟着 {@link ModTiers#COPPER} 走，与另三件铜工具同档。</p>
+     */
+    public static final RegistryObject<Item> COPPER_AXE =
+            ITEMS.register("copper_axe",
+                    () -> new AxeItem(ModTiers.COPPER, 7.0F, -3.2F, new Item.Properties()));
+
+    /**
      * 铜甲四件：护甲值 2 / 4 / 3 / 1（合计 <b>10</b>）—— 皮革 7 → 高，铁 15 → 低。
      *
      * <p>单看头盔它与铁同为 2：原版护甲值是整数，皮革的 1 与铁的 2 之间没有第三个数，所以
@@ -192,6 +204,7 @@ public final class ModItems {
         if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
             event.accept(COPPER_PICKAXE);
             event.accept(COPPER_HOE);
+            event.accept(COPPER_AXE);
         }
         if (event.getTabKey() == CreativeModeTabs.SPAWN_EGGS) {
             event.accept(SCREAMER_SPAWN_EGG);
