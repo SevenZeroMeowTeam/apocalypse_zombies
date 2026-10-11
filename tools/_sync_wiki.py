@@ -45,8 +45,9 @@ for name in ("_Sidebar.md", "_Footer.md"):
         print("  !! Wiki 缺 %s" % name)
 
 subprocess.run(["git", "-C", str(DST), "add", "-A"], check=True)
-msg = ("同步仓库 docs/wiki：补 1.1.78（全功能工具 + 一键挖掘 + 工作方块）、1.1.79（图形配置界面 + "
-       "一键挖掘上限 64 + id 参数真 bug）、1.1.80（库存 36 格 + 手持物品方向 + 挖矿不垂直下钻/探矿），顺带清过期版本号")
+msg = ("同步仓库 docs/wiki：1.1.81（玩家一键挖掘：配置开关 + 上限/半径）→ 1.1.82（挖掘高亮）→ "
+       "1.1.83（准星下方报「会连挖几格」+ 修潜行谎报）→ 1.1.84（AI 助理接线换 LM Studio，"
+       "response_format 契约与 reasoning_content 兜底）")
 subprocess.run(["git", "-C", str(DST), "commit", "-q", "-m", msg], check=True)
 subprocess.run(["git", "-C", str(DST), "push", "-q", "origin", "HEAD:master"], check=True)
 head = subprocess.run(["git", "-C", str(DST), "rev-parse", "--short", "HEAD"],
