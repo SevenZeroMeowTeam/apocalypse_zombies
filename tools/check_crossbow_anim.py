@@ -55,6 +55,12 @@ TOL_MIRROR = 1e-6               # 镜像：写出层必须精确反号（mod 360
 MIN_FLEX = 15.0                 # draw 段要求的最小满弦屈曲（度）
 HIDDEN = ('hand_l', 'bolt_loaded')
 
+# 静止类片段：这些片段里弦**必须一直挂在牙上**（1.1.91 起的口径）。
+# 弩的常态是「已上弦待发」—— getAmmo 默认就给 MAGAZINE_SIZE=1，射空后 inventoryTick
+# 立刻自动开始装弹链，所以玩家静止时看到的几乎总是一把待发的弩。
+SPANNED_CLIPS = ('static_idle', 'reload_tactical', 'ADS_up', 'ADS_down', 'inspect')
+SPANNED_TOL = 0.15              # 弦心↔牙实体中心；满弦实测 0.0943u，留一点插值余量
+
 # 台账 art/crossbow/DELIVERY.md §已知偏差 在案的值，钉成常量：对不上就说明有人动过，两处都要更新。
 KNOWN = {
     # 偏差 #7（1.1.34 已修）留下的哨兵：牙的实体**不得**落在弦的扫掠区间内。
@@ -118,9 +124,15 @@ def bone_xform(bones, clip_bones, name, t, memo):
 
     单轴旋转在本模型里是常态（弓臂/凸轮/弦绕 Y、body 绕 X），旋转次序无关，
     因此按「先 X 后 Y 再 Z」逐个作用即可，与 model_preview 的软渲染一致。
+
+    ⚠ 缓存键必须**连时间一起**：调用方按片段复用一个 memo 逐帧扫描，
+    而变换是 t 的函数。1.1.91 之前这里只按骨骼名缓存 —— 于是整段动画的每一次求值
+    都拿回**第一帧**那个函数，「弦心最大距离」于是恒等于首帧值，弦缆运动学检查
+    整整一段形同虚设（draw 全程都报 2.98u，看起来"没拉弦"，其实根本没扫帧）。
     """
-    if name in memo:
-        return memo[name]
+    key = (name, round(float(t), 6))
+    if key in memo:
+        return memo[key]
     b = bones[name]
     par = b['parent']
     P = (lambda p: p) if par is None else bone_xform(bones, clip_bones, par, t, memo)
@@ -136,7 +148,7 @@ def bone_xform(bones, clip_bones, name, t, memo):
                 w = rot_axis(w, axis, deg)
         return P([pivot[0] + w[0] + pos[0], pivot[1] + w[1] + pos[1], pivot[2] + w[2] + pos[2]])
 
-    memo[name] = f
+    memo[key] = f
     return f
 
 
@@ -239,10 +251,12 @@ def check_java_contract(anim):
         fails.append(f'java: 第一人称有效缩放 = {fp["scale"][0]} × {cs.get("FIRST_PERSON_SCALE")} = '
                      f'{eff:.3f}，超出 0.6~1.4')
 
-    # 瞄准镜契约：十字弩要的是**透明镜**，三条是一件事，动一条就会从另外两条里露出来。
+    # 瞄准镜契约：十字弩要的是**透明镜**（画法在 ClientEvents 的 CLEAR_SIGHT 分支），三条是一件事。
     #   hasScopeOverlay() = false  ⇒ 右键不画任何镜，只剩原版准星（1.1.35 之前的状态）；
     #   sightStyle() = TELESCOPE   ⇒ 走 AWM 的黑镜筒分支，整屏被 SCOPE_DARKNESS 压黑，透明镜变黑镜；
-    #   hidesModelWhileAimed() = true ⇒ 举镜过半把弩和双手藏掉，而透明镜的前提正是「看得见世界和弩」。
+    #   hidesModelWhileAimed() = false ⇒ **1.1.91 起这就是错的**：满镜时弩身与双手正压在准心环与十字上
+    #     （武器就在屏幕正中），玩家等于在透过自己的手套瞄。置 true 后举镜过半把枪身交给镜片，
+    #     世界照样看得见 —— 藏掉的是弩和手，不是那层镜。
     sight = re.search(r'public\s+boolean\s+hasScopeOverlay\s*\(\s*\)\s*\{\s*return\s+(true|false)\s*;', src)
     style = re.search(r'public\s+GunItem\.SightStyle\s+sightStyle\s*\(\s*\)\s*\{\s*return\s+'
                       r'GunItem\.SightStyle\.(\w+)\s*;', src)
@@ -258,8 +272,9 @@ def check_java_contract(anim):
                      f'TELESCOPE 会落进 AWM 的全屏压黑分支')
     if hides is None:
         fails.append('java: 没找到 hidesModelWhileAimed() 的字面返回')
-    elif hides.group(1) != 'false':
-        fails.append('java: hidesModelWhileAimed() = true —— 举镜过半把弩和手藏掉，透明镜就白做了')
+    elif hides.group(1) != 'true':
+        fails.append('java: hidesModelWhileAimed() = false —— 满镜时弩身与双手压在环/十字上'
+                     '（1.1.91 起置 true，把画面交给镜片）')
 
     # 客户端必须真的认得这个镜种：转发与分派都要在，否则上面三条只是摆设。
     # GunAimState 只负责把问题转给手持枪，所以查的是 sightStyle 转发本身；画法在 ClientEvents。
@@ -379,14 +394,34 @@ def check_kinematics(bones, anim):
             worst = max(worst, math.dist(L(latch_center), S(string_tip)))
         report[f'{clip} 弦心→牙实体中心 最大距离'] = round(worst, 4)
 
-    # 静止态：弦心必须在牙实体**前方**（没拉弦）
+    # 静止类片段：弦必须**一直挂在牙上**（见 SPANNED_CLIPS 的说明）。
+    # 1.1.91 之前这几个片段写的是 bow_pose(0.0)（弦松弛），于是装弹链
+    # draw（拉弦上牙）→ reload_tactical（把弦放回 0.0）里刚拉满的弦又弹了回去 ——
+    # 玩家看到「装了弹却没上弦」。判据跟着改成「不许离开牙」，把这条口径钉死。
+    for clip in SPANNED_CLIPS:
+        if clip not in anim:
+            continue
+        memo = {}
+        worst = 0.0
+        for t in keyframe_times(anim[clip]):
+            S = bone_xform(bones, anim[clip]['bones'], 'string_l', t, memo)
+            L = bone_xform(bones, anim[clip]['bones'], 'latch', t, memo)
+            worst = max(worst, math.dist(S(string_tip), L(latch_center)))
+        report[f'{clip} 弦心→牙 最大偏离 (u)'] = round(worst, 4)
+        if worst > SPANNED_TOL:
+            fails.append(f'运动学: {clip} 的弦离开了牙 {worst:.3f}u（>{SPANNED_TOL}u）'
+                         f' —— 静止类片段的弦必须挂在牙上（1.1.91 起）')
+
+    # 放弦：shoot 末帧必须回到拉动前的静止位（弦离牙 ≥ 1u），否则射完看着还像上着弦
+    _shoot = anim['shoot']
+    _t_end = max(keyframe_times(_shoot))
     memo = {}
-    S = bone_xform(bones, anim['static_idle']['bones'], 'string_l', 0.0, memo)
-    L = bone_xform(bones, anim['static_idle']['bones'], 'latch', 0.0, memo)
-    rest_gap = L(latch_center)[2] - S(string_tip)[2]
-    report['static_idle 弦心在牙实体前 (u)'] = round(rest_gap, 4)
-    if rest_gap < 1.0:
-        fails.append(f'运动学: static_idle 弦心在牙实体后方 {rest_gap:.3f}u —— 静止态像是没拉到位')
+    S = bone_xform(bones, _shoot['bones'], 'string_l', _t_end, memo)
+    L = bone_xform(bones, _shoot['bones'], 'latch', _t_end, memo)
+    _fired = math.dist(S(string_tip), L(latch_center))
+    report['shoot 末帧 弦心→牙实体中心 (u)'] = round(_fired, 4)
+    if _fired < 1.0:
+        fails.append(f'运动学: shoot 末帧弦仍挂在牙上（{_fired:.3f}u）—— 放弦没做，射完看着还上着弦')
 
     # draw 末帧：弦心必须落在牙的枢轴点（解算器 LATCH_Z）
     draw = anim['draw']

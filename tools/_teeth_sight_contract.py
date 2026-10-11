@@ -20,8 +20,8 @@ CASES = [
      'public boolean hasScopeOverlay() {\n        return false;', 'hasScopeOverlay() = false'),
     ('sightStyle 退回望远镜', CB, 'GunItem.SightStyle.CLEAR_SIGHT;', 'GunItem.SightStyle.TELESCOPE;',
      'sightStyle() = TELESCOPE'),
-    ('打开 hidesModelWhileAimed', CB, 'public boolean hidesModelWhileAimed() {\n        return false;',
-     'public boolean hidesModelWhileAimed() {\n        return true;', 'hidesModelWhileAimed() = true'),
+    ('关掉 hidesModelWhileAimed', CB, 'public boolean hidesModelWhileAimed() {\n        return true;',
+     'public boolean hidesModelWhileAimed() {\n        return false;', 'hidesModelWhileAimed() = false'),
 ]
 
 ok = True

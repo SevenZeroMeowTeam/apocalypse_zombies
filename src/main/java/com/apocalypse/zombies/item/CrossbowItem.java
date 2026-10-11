@@ -311,14 +311,19 @@ public class CrossbowItem extends Item implements GeoItem, GunItem {
     }
 
     /**
-     * The optic: the scope's eyepiece <em>is</em> the aim point, so the weapon has to stay in the frame —
-     * hiding it would leave the player aiming at a bare crosshair. Unchanged by {@link #sightStyle()}, and for
-     * the same reason: a clear sight is looked <em>past</em>, so the crossbow and the hands belong in the
-     * picture.
+     * Aiming hands the frame to the optic: the crossbow and both hands stop being drawn, and the sight's own
+     * glass ({@link GunItem.SightStyle#CLEAR_SIGHT}, drawn by {@code ClientEvents}) is what is left.
+     *
+     * <p>This used to answer {@code false}, on the reasoning that a clear sight is looked <em>past</em> rather
+     * than through, so the weapon belongs in the picture. What that missed is what the picture costs: at full
+     * aim the crossbow sits on the centre of the screen, and its own receiver and both hands cover the very
+     * place the ring and cross are drawn — the player is aiming through their own gloves. Handing the frame
+     * over at {@code SCOPE_HIDE_MODEL_AT} (see {@link ClientEvents#sightOwnsFrame}) keeps the raise readable
+     * and then gets out of the way, which is what the rifles with real optics already do.</p>
      */
     @Override
     public boolean hidesModelWhileAimed() {
-        return false;
+        return true;
     }
 
     @Override

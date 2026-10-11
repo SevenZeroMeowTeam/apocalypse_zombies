@@ -82,27 +82,40 @@ public final class AmmoEffects {
      * 在目标身上炸开一小片。只结算伤害，不破坏方块、不点火 —— 一颗子弹不该改变地形。
      */
     private static void detonate(ServerLevel level, Player player, LivingEntity target) {
-        Vec3 at = target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D);
-        level.sendParticles(ParticleTypes.EXPLOSION_EMITTER, at.x, at.y, at.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
-        level.playSound(null, at.x, at.y, at.z, SoundEvents.GENERIC_EXPLODE,
-                SoundSource.PLAYERS, 1.0F, 1.0F);
+        // ★ 合闸的那一半在这里。「检查」在上面的 onLivingHurt 里，而这一句是让它真正生效的前提：
+        // 少了它，闸就只是个摆设 —— 爆炸拿 player 当伤害来源，紧接着的每一次 hurt 都会再次满足
+        // 「手里是爆炸弹」，于是自己引爆自己，一路递归到栈溢出；而栈溢出发生时粒子与声音早已发完、
+        // 原本那一下命中伤害却还没落地。玩家看到的就是「只有特效、一点血都不掉」。
+        if (detonating) {
+            return;
+        }
+        detonating = true;
+        try {
+            Vec3 at = target.position().add(0.0D, target.getBbHeight() * 0.5D, 0.0D);
+            level.sendParticles(ParticleTypes.EXPLOSION_EMITTER, at.x, at.y, at.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            level.playSound(null, at.x, at.y, at.z, SoundEvents.GENERIC_EXPLODE,
+                    SoundSource.PLAYERS, 1.0F, 1.0F);
 
-        // 原版的爆炸伤害类型：死亡消息与免疫规则都跟着走，不必自造一套
-        DamageSource source = player.damageSources().explosion(player, player);
-        double radius = AmmoType.EXPLOSION_RADIUS;
-        for (LivingEntity victim : level.getEntitiesOfClass(LivingEntity.class,
-                new AABB(at, at).inflate(radius))) {
-            if (victim == player || !(victim instanceof Enemy)) {
-                continue;
+            // 原版的爆炸伤害类型：死亡消息与免疫规则都跟着走，不必自造一套
+            DamageSource source = player.damageSources().explosion(player, player);
+            double radius = AmmoType.EXPLOSION_RADIUS;
+            for (LivingEntity victim : level.getEntitiesOfClass(LivingEntity.class,
+                    new AABB(at, at).inflate(radius))) {
+                if (victim == player || !(victim instanceof Enemy)) {
+                    continue;
+                }
+                double distance = victim.position().distanceTo(at);
+                float damage = AmmoType.EXPLOSION_DAMAGE * (float) Math.max(0.0D, 1.0D - distance / radius);
+                if (damage <= 0.0F) {
+                    continue;
+                }
+                // 弹丸刚打中的那个目标正处于受击无敌帧里，不清掉的话爆炸对它一点用没有
+                victim.invulnerableTime = 0;
+                victim.hurt(source, damage);
             }
-            double distance = victim.position().distanceTo(at);
-            float damage = AmmoType.EXPLOSION_DAMAGE * (float) Math.max(0.0D, 1.0D - distance / radius);
-            if (damage <= 0.0F) {
-                continue;
-            }
-            // 弹丸刚打中的那个目标正处于受击无敌帧里，不清掉的话爆炸对它一点用没有
-            victim.invulnerableTime = 0;
-            victim.hurt(source, damage);
+        } finally {
+            // 用 finally 收口，而不是写在末尾：中途任何异常都不该把闸永久锁死，否则爆炸弹从此彻底哑火
+            detonating = false;
         }
     }
 }

@@ -593,6 +593,20 @@ mirror_side('limb_r', 'limb_l')
 def build_anims():
     anims = {}
 
+    # 静止类片段（static_idle / reload_tactical / ADS_up / ADS_down / inspect）的弦位。
+    #
+    # 1.0 = 弦挂在牙上（拉满）。弩的**常态就是「已上弦待发」**：getAmmo 默认返回 MAGAZINE_SIZE=1
+    # （新弩拿到手就是上弦的），射空后 inventoryTick 又立刻自动开始装弹链 —— 所以玩家静止时
+    # 看到的几乎永远是一把待发的弩，弦必须在牙上。
+    #
+    # 1.1.91 之前这里写的是 0.0（弦松弛），于是出现两个症状：
+    #   · 装弹链是 draw（拉弦到牙）→ reload_tactical，而 reload_tactical 把弦放回了 0.0 ——
+    #     刚拉满的弦在装箭时又弹了回去，玩家看到「装了弹却没上弦」；
+    #   · static_idle 也是 0.0，于是拉完弦、装完箭，一松手（切回 idle）弦再次弹回。
+    # 真正会经过 0.0 的只有两个片段：draw 的起点（空弦拉起）与 shoot 的终点（放弦弹回），
+    # 它们各自用 ease 表达，不走这个常量。
+    SPANNED = 1.0
+
     # -- static_idle：静止待机（呼吸 + 镜身摇曳；弦在静止位）--
     keys = []
     for i in range(41):
@@ -602,7 +616,7 @@ def build_anims():
         p['move'] = ((0, 0, 0), (0, round(0.090 * math.sin(ph), 4), 0), (1, 1, 1))
         p['body'] = ((round(2.40 * math.sin(ph), 4), 0, 0), (0, 0, 0), (1, 1, 1))
         p['scope'] = ((0, 0, round(1.50 * math.sin(ph + 0.9), 4)), (0, 0, 0), (1, 1, 1))
-        bow_pose(p, 0.0)
+        bow_pose(p, SPANNED)
         keys.append((round(t, 4), p))
     anims['static_idle'] = {'animation_length': 2.0, 'loop': True, 'bones': merge(keys)}
 
@@ -655,7 +669,7 @@ def build_anims():
     for i in range(int(T * 24) + 1):
         t = i / 24.0
         p = base_pose()
-        bow_pose(p, 0.0)
+        bow_pose(p, SPANNED)
         lift = min(1.0, max(0.0, (t - 0.08) / 0.34))        # 0.08~0.42 抬起（越过导轨/机匣）
         push = min(1.0, max(0.0, (t - 0.46) / 0.42))        # 0.46~0.88 送到箭道正上方
         ret = min(1.0, max(0.0, (t - 0.94) / 0.42))         # 0.94~1.36 抽手收回
@@ -682,7 +696,7 @@ def build_anims():
             u = min(1.0, i / 4.0)
             e = u if up else 1.0 - u
             p = base_pose()
-            bow_pose(p, 0.0)
+            bow_pose(p, SPANNED)
             p['move'] = ((0, 0, 0), (0, round(0.42 * e, 4), round(-0.26 * e, 4)), (1, 1, 1))
             p['body'] = ((round(-3.6 * e, 3), 0, 0), (0, 0, 0), (1, 1, 1))
             keys.append((t, p))
@@ -694,7 +708,7 @@ def build_anims():
     for i in range(int(INS * 24) + 1):
         t = i / 24.0
         p = base_pose()
-        bow_pose(p, 0.0)
+        bow_pose(p, SPANNED)
         y = -180.0 * (t / INS)
         p['root'] = ((0, round(y, 3), 0), (0, 0, 0), (1, 1, 1))
         p['scope'] = ((0, 0, round(2.0 * math.sin(2 * math.pi * t / INS), 3)), (0, 0, 0), (1, 1, 1))
