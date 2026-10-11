@@ -143,6 +143,23 @@ function loft(bone, z0mm, z1mm, topF, botF, xh, mat, step) {
   }
 }
 
+/** 沿 Z 的薄墙/薄杆：x 只占一层皮，上下缘按函数走（箱侧加强筋、卡榫长杆一类）。
+ *  与 loft 同规矩：段内变化超过 MAX_SLOPE 就二分细分 —— 只按端点给常量会在陡坡处戳出十几毫米。 */
+function wallZ(bone, x0, x1, z0mm, z1mm, topF, botF, mat, step) {
+  const st = step || 8;
+  const n = Math.max(1, Math.ceil((z1mm - z0mm) / st));
+  const rec = (a, b, d) => {
+    const yb = Math.min(botF(a), botF(b));
+    const yt = Math.max(topF(a), topF(b));
+    if (yt - yb < 0.6) return;
+    if (b - a > LOFT_MIN_SEG && d < 7 &&
+      (Math.abs(topF(b) - topF(a)) > LOFT_MAX_SLOPE || Math.abs(botF(b) - botF(a)) > LOFT_MAX_SLOPE)) {
+      rec(a, (a + b) / 2, d + 1); rec((a + b) / 2, b, d + 1);
+    } else box(bone, [x0, Yu(yb), Zb(a)], [x1, Yu(yt), Zb(b)], mat);
+  };
+  for (let i = 0; i < n; i++) rec(z0mm + i * (z1mm - z0mm) / n, z0mm + (i + 1) * (z1mm - z0mm) / n, 0);
+}
+
 /** 圆柱（沿 Z）：实心芯 + 外圈棱（只贴一圈壳会变镂空管） */
 const CORE = 0.68;
 function tubeZ(bone, cx, cy, z0, z1, r, n, mat, coreScale) {
@@ -250,16 +267,16 @@ box('bolt', [-0.145, Yu(3), Zb(Z_RECV_A + 30)], [-0.10, Yu(9), Zb(Z_RECV_A + 50)
 /* ================================================================ 5. 弹匣箱 / 弹匣盖 / 漏夹
  * 真机：5 发漏夹从**下方**插进固定弹匣；松卡榫后弹匣盖**向前下方敞开**；
  * 无自动空仓挂机（M1918 才有）。实测箱底 −88.6 在 z 940~960。 */
-loft('body', Z_MAG_A, Z_MAG_B, () => -22, (z) => Math.min(pB(z) + 5, -30), W_MAG, 'steel', 14);
-for (const sx of [-1, 1]) {                       // 箱侧壁加强筋
-  box('body', [sx * W_MAG - 0.006, Yu(pB(940) + 14), Zb(Z_MAG_A + 18)],
-    [sx * W_MAG + 0.006, Yu(-26), Zb(Z_MAG_B - 14)], 'blued');
+loft('body', Z_MAG_A, Z_MAG_B, () => -22, (z) => Math.min(pB(z) + 5, -30), W_MAG, 'steel', 8);
+for (const sx of [-1, 1]) {                       // 箱侧壁加强筋（下缘跟实测箱底走：z 876 的 −37 与 z 950 的 −75 不同列）
+  wallZ('body', sx * W_MAG - 0.006, sx * W_MAG + 0.006, Z_MAG_A + 18, Z_MAG_B - 14,
+    () => -26, (z) => pB(z) + 14, 'blued', 8);
 }
 /* 弹匣盖（bone: mag_cover）—— 铰链在**前端**（z 最小处），向下前方敞开 */
-loft('mag_cover', Z_MAG_A + 6, Z_MAG_B - 4, (z) => pB(z) + 6.0, (z) => pB(z) + 0.5, W_MAG + 0.012, 'steel', 16);
-loft('mag_cover', Z_MAG_A + 12, Z_MAG_B - 10, (z) => pB(z) + 5.0, (z) => pB(z) + 2.0, W_MAG - 0.02, 'dark', 22);
-mbox('mag_cover', 0.05, pB(Z_MAG_B - 16) - 2, Z_MAG_B - 26, pB(Z_MAG_B - 16) + 7, Z_MAG_B - 6, 'pol');   // 卡榫
-mbox('mag_cover', W_MAG + 0.03, pB(Z_MAG_A + 8), Z_MAG_A - 2, pB(Z_MAG_A + 8) + 8, Z_MAG_A + 12, 'pol'); // 铰链
+loft('mag_cover', Z_MAG_A + 6, Z_MAG_B - 4, (z) => pB(z) + 6.0, (z) => pB(z) + 0.5, W_MAG + 0.012, 'steel', 6);
+loft('mag_cover', Z_MAG_A + 12, Z_MAG_B - 10, (z) => pB(z) + 5.0, (z) => pB(z) + 2.0, W_MAG - 0.02, 'dark', 10);
+wallZ('mag_cover', -0.05, 0.05, Z_MAG_B - 26, Z_MAG_B - 6, (z) => pB(z) + 7, (z) => pB(z) - 2, 'pol', 6);   // 卡榫（下缘跟实测）
+wallZ('mag_cover', -(W_MAG + 0.03), W_MAG + 0.03, Z_MAG_A - 2, Z_MAG_A + 12, (z) => pB(z) + 8, (z) => pB(z), 'pol', 6); // 铰链
 
 /* 漏夹（bone: clip）—— 5 发 8mm 勒贝尔，弹头朝 −Z，竖着叠在匣里。
  * 注意：所有弹药件都必须**待在弹匣箱内腔里**（不能戳穿箱底），所以下缘统一跟着
@@ -295,15 +312,16 @@ loft('clip_empty', Z_MAG_A + 6, Z_MAG_B - 4, () => MAG_TOP - 2.5, FLOOR, CLIP_W 
 
 /* ================================================================ 6. 扳机组（bone: trigger / safety）
  * 实测：护圈底 −48（z 1000~1030），后面的长杆 −75（z 1060~1080）。 */
-mbox('body', 5.0 / 62.5, Y_RECV_FLOOR, Z_GUARD_A, pB(1006), Z_GUARD_A + 12, 'blued');
-mbox('body', 5.0 / 62.5, pB(1020) - 2, Z_GUARD_A + 8, pB(1020) + 5, Z_GUARD_B - 8, 'blued');
-mbox('body', 5.0 / 62.5, Y_RECV_FLOOR, Z_GUARD_B - 14, pB(1036), Z_GUARD_B, 'blued');
+mbox('body', 5.0 / 62.5, Y_RECV_FLOOR, Z_GUARD_A, pB(1006), Z_GUARD_A + 8, 'blued');   // 前柱
+/* 底圈：下缘照实测表走（z 1010 是 −46、z 1030 掉到 −59，拿定点常量拉满会浅 9 mm） */
+loft('body', Z_GUARD_A + 6, Z_GUARD_B, () => -40, (z) => pB(z), 5.0 / 62.5, 'blued', 6);
+mbox('body', 5.0 / 62.5, Y_RECV_FLOOR, Z_GUARD_B - 6, pB(Z_GUARD_B - 2), Z_GUARD_B, 'blued');  // 后柱
 mbox('body', 0.14, Y_RECV_FLOOR, Z_MAG_B - 4, -19, Z_GUARD_B, 'steel');
 /* 扳机片（bone: trigger） */
 mbox('trigger', 4.0 / 62.5, pB(1014) + 2, Z_GUARD_A + 12, -24, Z_GUARD_A + 19, 'pol');
 mbox('trigger', 3.0 / 62.5, pB(1014) + 2, Z_GUARD_A + 19, -29, Z_GUARD_A + 25, 'pol');
 /* 弹匣盖卡榫长杆 + 保险（bone: safety）：实测 −75 */
-mbox('safety', 5.5 / 62.5, pB(1064) + 1, Z_LEVER_A, -26, Z_LEVER_B, 'pol');
+loft('safety', Z_LEVER_A, Z_LEVER_B, () => -26, (z) => pB(z) + 1, 5.5 / 62.5, 'pol', 8);
 mbox('safety', 3.0 / 62.5, pB(1064) + 1, Z_LEVER_A - 2, pB(1064) + 7, Z_LEVER_A + 8, 'pol');
 box('safety', [-0.31, Yu(-4), Zb(Z_LEVER_B - 26)], [-0.255, Yu(11), Zb(Z_LEVER_B + 6)], 'pol');
 
@@ -396,6 +414,19 @@ if (Math.abs(lenZ - (Z_BUTT / 62.5)) > 0.05) fails.push(`全长 ${lenZ.toFixed(2
 if (Math.abs(widX - W_BUTT * 2) > 0.14) fails.push(`宽 ${widX.toFixed(2)}u 与木托宽 ${(W_BUTT * 2).toFixed(2)}u 差太多`);
 const heiExp = (Math.max(pT(840), pT(1000)) - Math.min(pB(1220), pB(1240))) / 62.5;
 if (Math.abs(heiY - heiExp) > 0.35) fails.push(`高 ${heiY.toFixed(2)}u 与实测轮廓 ${heiExp.toFixed(2)}u 差太多`);
+
+/* 弹药件收口：clip / clip_empty 的每一块，下缘不得低于它跨度内的弹匣内底
+ * （否则会从箱底或前脸戳出来 —— 曾有一排 5 发的底缘在 z 892 处低出真值 22 mm）。 */
+for (let i = cubes.length - 1; i >= 0; i--) {
+  const c = cubes[i];
+  if (c.bone !== 'clip' && c.bone !== 'clip_empty') continue;
+  const z0 = (c.origin[2] - Z_MUZZLE) / MM, z1 = (c.origin[2] + c.size[2] - Z_MUZZLE) / MM;
+  let f = -1e9;
+  for (let z = z0; z <= z1 + 1e-6; z += 1) f = Math.max(f, FLOOR(z));
+  const yb = Yu(f);
+  if (c.origin[1] < yb) { const d = yb - c.origin[1]; c.origin[1] = yb; c.size[1] -= d; }
+  if (c.size[1] < 0.004) cubes.splice(i, 1);
+}
 
 module.exports = {
   cubes, bones, MAT, SHADE, fails,
