@@ -28,6 +28,10 @@ src/main/resources/data/easy_npc/default_preset/villager/weapon_merchant.npc.snb
 > 教训：**别按类结构反推 SNBT 再直接发**。`javap` 能告诉你字段名，但告诉不了你**层级**与**嵌套**。
 > 正确做法是先找一个官方同类预设当模板。
 
+**已实机验证**（2026-10-11）：修好后重新导入，七条商品都正常出现在交易界面里 —— `Offers` 与
+`TradingData` 这段结构确实是对的。`security.cfg` 抬到 `OWNERS` 之后，导入提示里也不再出现
+`Action permission levels were reduced`（`Owner data was updated` 仍会打，那是每个预设都会有的）。
+
 ## 预设自带的商品
 
 七条交易，全部**装满弹**（弹量写在物品 NBT 的 `Ammo` 键里），货币是绿宝石：
