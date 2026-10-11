@@ -270,6 +270,14 @@ public final class Config {
     /** 标记持续时间（tick），每次命中都会刷新。 */
     public static final ForgeConfigSpec.IntValue DEATH_MARK_DURATION;
 
+    // ---- 子弹与方块 ----
+    /** 子弹穿过树叶（不掉伤害、不减速）。 */
+    public static final ForgeConfigSpec.BooleanValue BULLETS_PASS_LEAVES;
+    /** 子弹打碎玻璃（玻璃 / 玻璃板 / 染色 / 遮光，认声音类型不认方块 id）。 */
+    public static final ForgeConfigSpec.BooleanValue BULLETS_BREAK_GLASS;
+    /** 打碎玻璃之后子弹继续往前飞（false = 碎在玻璃上停下，跟打墙一样）。 */
+    public static final ForgeConfigSpec.BooleanValue BULLETS_PASS_GLASS;
+
     // ---- 猫耳娘随从 ----
     /** 伐木 / 挖矿的搜索半径（格）。 */
     /** 订做一件成品的手续费（爱心币）。0 = 不收。 */
@@ -334,13 +342,6 @@ public final class Config {
 
     /** 每个探点大概走多远（格）。 */
     public static final ForgeConfigSpec.IntValue CAT_GIRL_PROSPECT_STEP;
-
-    /**
-     * 她手里那件东西要不要按镜像摆（默认 false = 原版右手拿法）。
-     *
-     * <p>只影响贴图的左右朝向（镐 / 斧的头朝里还是朝外），倾角与摆位两者相同。</p>
-     */
-    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_HELD_ITEM_MIRROR;
 
     /** 干活去找工作方块：合成去合成台、熔炼去熔炉（走过去再动手）。 */
     public static final ForgeConfigSpec.BooleanValue CAT_GIRL_STATION_USE;
@@ -768,6 +769,21 @@ public final class Config {
                 .defineInRange("death_mark_duration", 200, 20, 6000);
         b.pop();
 
+        b.comment("子弹打方块：树叶放行、玻璃打碎，其余照旧挡住。",
+                        "How bullets treat blocks: leaves let them through, glass gets shattered.",
+                        "玩家 8 把枪的射线与怪物的实体子弹共用这一份口径。")
+                .push("bullets");
+        BULLETS_PASS_LEAVES = b.comment("子弹穿过树叶：不掉伤害、不减速，不再被路上一片叶子挡下来。",
+                        "叶子上会蹭出一小撮绿粒子。只认原版 leaves 标签，模组树叶带这个标签一样生效。")
+                .define("pass_leaves", true);
+        BULLETS_BREAK_GLASS = b.comment("子弹打碎玻璃（玻璃板、染色玻璃、遮光玻璃都算）。",
+                        "碎法走原版掉落表 —— 原版玻璃本来就什么都不掉，等于「碎了但不掉东西」。")
+                .define("break_glass", true);
+        BULLETS_PASS_GLASS = b.comment("打碎玻璃之后子弹继续飞（默认 false：碎在玻璃上，跟打墙一样停下）。",
+                        "只在 break_glass=true 时有意义。")
+                .define("pass_glass", false);
+        b.pop();
+
         b.comment("猫耳娘随从：喂鱼驯服，空手右键切任务，潜行右键交易。",
                         "Cat girl companion: tame with fish, right-click bare-handed to cycle jobs,",
                         "sneak-right-click to open the barter menu.")
@@ -838,10 +854,6 @@ public final class Config {
                 .defineInRange("prospect_tries", 6, 1, 32);
         CAT_GIRL_PROSPECT_STEP = b.comment("每个探点大概走多远（格）。探点在 mine_radius 内随机取，且不会走离主人超过 autonomy_radius。")
                 .defineInRange("prospect_step", 8, 2, 32);
-        CAT_GIRL_HELD_ITEM_MIRROR = b.comment("她手里那件东西按镜像摆（贴图左右反过来）。",
-                        "默认 false：与原版玩家右手拿东西完全同一条摆放链（倾角、朝向都跟玩家一致）。",
-                        "只有当你看她手上的镐 / 斧头朝里侧、跟玩家拿反了才开这个。")
-                .define("held_item_mirror", false);
         CAT_GIRL_STATION_USE = b.comment("干活去工作方块：合成去最近的合成台、熔炼去最近的熔炉，走过去再动手。",
                         "关掉 = 像以前一样就地空手做（她的 3×3 一手就能摆）。")
                 .define("station_use", true);

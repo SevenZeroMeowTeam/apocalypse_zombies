@@ -28,7 +28,6 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
@@ -387,8 +386,7 @@ public class AWMItem extends Item implements GeoItem, GunItem {
         Vec3 direction = player.getLookAngle();
         Vec3 reach = eye.add(direction.scale(MAX_RANGE));
 
-        BlockHitResult blockHit = level.clip(
-                new ClipContext(eye, reach, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
+        BlockHitResult blockHit = BulletRay.trace(level, player, eye, reach);
         double wallDistance = blockHit.getType() == HitResult.Type.MISS
                 ? MAX_RANGE
                 : eye.distanceTo(blockHit.getLocation());

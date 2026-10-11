@@ -1,6 +1,7 @@
 package com.apocalypse.zombies.entity;
 
 import com.apocalypse.zombies.ApocalypseZombies;
+import com.apocalypse.zombies.item.BulletRay;
 import com.apocalypse.zombies.item.GunProfile;
 import net.minecraft.core.Holder;
 import net.minecraft.core.particles.ParticleTypes;
@@ -101,6 +102,10 @@ public class BulletProjectile extends ThrowableItemProjectile {
     protected void onHitBlock(BlockHitResult result) {
         super.onHitBlock(result);
         if (this.level().isClientSide()) {
+            return;
+        }
+        // 叶子放行 / 玻璃碎完想继续飞：同一个口径见 BulletRay，这一发不算命中、别消散
+        if (BulletRay.resolveProjectileHit(this.level(), this, result)) {
             return;
         }
         this.burst(result.getLocation());

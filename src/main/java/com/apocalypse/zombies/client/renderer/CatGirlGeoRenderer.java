@@ -14,7 +14,6 @@ import software.bernie.geckolib.renderer.GeoEntityRenderer;
 import software.bernie.geckolib.renderer.GeoRenderer;
 import software.bernie.geckolib.renderer.layer.BlockAndItemGeoLayer;
 
-import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.client.model.CatGirlGeoModel;
 import com.apocalypse.zombies.entity.CatGirlEntity;
 
@@ -26,9 +25,8 @@ import com.apocalypse.zombies.entity.CatGirlEntity;
  * {@link BlockAndItemGeoLayer} 把 {@code entity.getMainHandItem()} 挂到
  * 骨骼 {@code item_righthand} 上。</p>
  *
- * <p>物品的摆放补齐了原版第三人称「手」的那一步基准旋转，见
- * {@link HeldItemLayer#renderStackForBone} —— 缺它的时候物品会按自己的坐标系直立站着，
- * 看起来就是「手上的东西方向不对」。</p>
+ * <p>物品的摆放见 {@link HeldItemLayer#renderStackForBone} —— 她那套模型空间与原版实体不是同一个
+ * 坐标系（她的 geo 按原版「翻转之后」的空间画的），该转几次、往哪转，推导都写在那一个方法上。</p>
  */
 public class CatGirlGeoRenderer extends GeoEntityRenderer<CatGirlEntity> {
 
@@ -59,32 +57,33 @@ public class CatGirlGeoRenderer extends GeoEntityRenderer<CatGirlEntity> {
          * <p><b>为什么要自己写这一遍</b>：GeckoLib 的 {@code BlockAndItemGeoLayer} 对物品只做
          * 「平移到骨骼 pivot + 骨骼自身旋转」，然后就调 {@code ItemRenderer.renderStatic}；
          * 而原版实体拿东西走的是 {@code ItemInHandLayer.renderArmWithItem} —— 它在骨骼变换之后
-         * <b>先额外转两下</b>再交给物品：<br>
-         * {@code mulPose(XP, -90)} → {@code mulPose(YP, 180)} →
-         * {@code translate(±1/16, 0.125, -0.625)}（从手臂枢轴挪到手心）。</p>
+         * 还要先补一次基准旋转才交给物品。</p>
          *
-         * <p>缺少前两步的直接后果：平物品（方块、锭、食物）会<b>立着</b>摆在她手里当一张牌子，
-         * 工具（镐 / 斧 / 剑，父模型 {@code item/handheld}）也少一截倾角 —— 这就是「手持物品
-         * 方向不对」。所以这里补上这两次旋转，再走原版的 display 变换。</p>
+         * <p><b>补哪一次、为什么只剩半截</b>：原版那一步是
+         * {@code mulPose(XP,-90)} → {@code mulPose(YP,180)} → {@code translate(±1/16, 0.125, -0.625)}，
+         * 可它是写给<b>翻转前</b>那个模型空间的 —— 原版实体渲染器在模型之外还压了一次
+         * {@code scale(-1,-1,1)}（把模型里「Y 向下」翻成世界向上，顺带把模型 +X 映射到世界 -X）。
+         * 她的 geo 是按<b>翻转之后</b>那个空间画的（{@code right_arm} 在 +X、头在 +Y 上方、刘海在 -Z、
+         * 尾巴在 +Z），GeckoLib 又不像原版那样补那次翻转 —— 于是她的模型空间本身就是原版的
+         * <b>已翻转空间</b>。记 F = {@code scale(-1,-1,1)} 代进去算：</p>
          *
-         * <p>第三行的平移<b>故意不加</b>：那是照原版「手臂枢轴在肩」算的 0.625 格位移，而我们的
-         * 挂点骨骼 {@code item_righthand} 的 pivot（{@code [2.75, 10.4, 0]}）本来就落在她手心，
-         * 再补一段会把手里的东西顶到小臂上去。</p>
+         * <pre>F · XP(-90) · YP(180) ≡ XP(-90)   ← 物品的上 / 面 / 右三根基向量逐个验过</pre>
          *
-         * <p>{@link Config#CAT_GIRL_HELD_ITEM_MIRROR} = true 时改走原版<b>左手</b>那一条
-         * （{@code leftHand} 位取反 ry/rz），只翻贴图的左右朝向，倾角与摆位不变。</p>
+         * <p>所以她这里<b>只需要 XP -90 这一次</b>。多补那个 YP 180 等于给手里的东西又套了一层 F：
+         * 物品的「面」从朝上翻成朝下、自身右轴从她的右翻到她的左 —— 看起来就是「倒着的、跟玩家拿反了」，
+         * 斧刃朝里也是同一条因。1.1.90 修掉的就是这个（1.1.80 那次多加了）。</p>
+         *
+         * <p>第三行的平移照旧不加：那是照原版「手臂枢轴在肩」算的 0.625 格位移，而我们的挂点骨骼
+         * {@code item_righthand} 的 pivot 本来就落在她手心，再补一段会把东西顶到小臂上去。</p>
          */
         @Override
         protected void renderStackForBone(PoseStack poseStack, GeoBone bone, ItemStack stack, CatGirlEntity animatable,
                 MultiBufferSource bufferSource, float partialTick, int packedLight, int packedOverlay) {
-            boolean mirror = Config.CAT_GIRL_HELD_ITEM_MIRROR.get();
             poseStack.pushPose();
             poseStack.mulPose(Axis.XP.rotationDegrees(-90.0F));
-            poseStack.mulPose(Axis.YP.rotationDegrees(180.0F));
             Minecraft.getInstance().getItemRenderer().renderStatic(animatable, stack,
-                    mirror ? ItemDisplayContext.THIRD_PERSON_LEFT_HAND : ItemDisplayContext.THIRD_PERSON_RIGHT_HAND,
-                    mirror, poseStack, bufferSource, animatable.level(), packedLight, packedOverlay,
-                    animatable.getId());
+                    ItemDisplayContext.THIRD_PERSON_RIGHT_HAND, false, poseStack, bufferSource,
+                    animatable.level(), packedLight, packedOverlay, animatable.getId());
             poseStack.popPose();
         }
     }
