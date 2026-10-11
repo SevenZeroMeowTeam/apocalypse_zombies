@@ -108,7 +108,7 @@ def main():
 
     if args.build:
         print('=== 0/8 构建 ===')
-        rc = subprocess.call(['./gradlew', 'build', '--console=plain'], cwd='F:/mcmod')
+        rc = subprocess.call(['cmd', '/c', 'gradlew.bat', 'build', '--console=plain'], cwd='F:/mcmod')
         check(rc == 0, './gradlew build exit 0', 'exit %d' % rc)
 
     print('=== 1/8 产物与版本 ===')

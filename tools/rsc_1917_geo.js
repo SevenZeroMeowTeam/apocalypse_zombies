@@ -36,27 +36,48 @@ const Yu = (ymm) => ymm / 62.5;              // 相对膛线轴的 mm -> 模型 
 /* ---------------------------------------------------------------- 实测轮廓 */
 const profDoc = JSON.parse(fs.readFileSync(PROFILE, 'utf8'));
 const MM_PER_PX = profDoc.mm_per_px;
-const P_top = new Float32Array(1400);
-const P_bot = new Float32Array(1400);
-{
-  const cs = profDoc.cols.slice().sort((a, b) => a.z_mm - b.z_mm);
-  let k = 0;
-  for (let z = 0; z < 1400; z++) {
-    while (k + 1 < cs.length && cs[k + 1].z_mm <= z) k++;
-    P_top[z] = cs[k].top;
-    P_bot[z] = cs[k].bot;
-  }
+/* 轮廓表 = 按测量列线性插值（与 tools/rsc_1917_silhouette.py 的对表口径完全一致）。
+ * 别再用「1 mm 台阶表」：台阶把整毫米格取成上一列的值，竖直断崖整整滞后 1 mm，
+ * 每条断崖都会假报一列 20+ mm 超差（1.1.87 为止的 6 处离群值根源就在这）。 */
+const _colsS = profDoc.cols.slice().sort((a, b) => a.z_mm - b.z_mm);
+const _cz = Float64Array.from(_colsS, (c) => c.z_mm);
+const _ct = Float64Array.from(_colsS, (c) => c.top);
+const _cb = Float64Array.from(_colsS, (c) => c.bot);
+function interpCol(ys, zmm) {
+  const n = _cz.length;
+  if (zmm <= _cz[0]) return ys[0];
+  if (zmm >= _cz[n - 1]) return ys[n - 1];
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (_cz[m] <= zmm) lo = m; else hi = m; }
+  const f = (zmm - _cz[lo]) / (_cz[hi] - _cz[lo]);
+  return ys[lo] * (1 - f) + ys[hi] * f;
 }
 /** 实测上缘（mm，相对膛线轴） */
-const pT = (zmm) => P_top[Math.max(0, Math.min(1399, Math.round(zmm)))];
+const pT = (zmm) => interpCol(_ct, zmm);
+/* 实测列里的「竖直断崖」（相邻测量列落差 > 8 mm）：放样必须正好劈在这里。
+ * 二分中点劈不准竖直边，台阶会比真值晚 0.2~0.3 mm，那一列就假报 10+ mm 超差。 */
+const KNEE = [];
+for (let k = 1; k < _cz.length; k++) {
+  if (Math.abs(_ct[k] - _ct[k - 1]) > 8 || Math.abs(_cb[k] - _cb[k - 1]) > 8) KNEE.push(_cz[k]);
+}
+function kneeIn(a, b) {
+  for (const z of KNEE) { if (z > a + 0.05) return z < b - 0.05 ? z : null; }
+  return null;
+}
 /** 实测下缘（mm） */
-const pB = (zmm) => P_bot[Math.max(0, Math.min(1399, Math.round(zmm)))];
+const pB = (zmm) => interpCol(_cb, zmm);
+/* 木料下缘：实测下缘里混着「挂在木托腹下的钢件」（前段拖曳钩、中段前背带环）。
+ * 木托本身不该跟着这些件一起下探 —— 那些下探由专门的件画，否则一列 20+ mm 的假误差。
+ * 前段拖曳钩区（z 104~192）木托还没开始（Z_FORE_A≈192），只需处理中段前背带环。 */
+const STRAP_A = 688, STRAP_B = 708.5, STRAP_BOT = -38.9;
+const pBw = (zmm) =>
+  (zmm > STRAP_A && zmm < STRAP_B ? Math.max(pB(zmm), STRAP_BOT) : pB(zmm));
 
 /* ---------------------------------------------------- 特征分界（照片判读 + 实测交叉确认） */
 const Z_TIP = 0;                            // 枪口断面
-const Z_SIGHT_A = 20, Z_SIGHT_B = 34;       // 前准星（实测：z 21~33，刃尖 +21.8）
+const Z_SIGHT_A = 15.3, Z_SIGHT_B = 34;       // 前准星（实测上缘 z 16 起就抬到 +20.9，刃尖 +21.8）
 const Z_LUG_A = 20, Z_LUG_B = 32;           // 枪口下方的刺刀座挡块（实测 z 21~31，下缘 −15.1）
-const Z_HOOK_A = 102, Z_HOOK_B = 192;       // 枪管下方拖曳钩（z 100~192，底 −42）
+const Z_HOOK_A = 103.6, Z_HOOK_B = 192;       // 枪管下方拖曳钩（实测下探从 z 104 那一列才开始：103 列仍是 −8.9）
 const Z_BAND_F_A = 171, Z_BAND_F_B = 197;   // 前枪箍（照片：木前端那圈金属）
 const Z_FORE_A = 192, Z_FORE_B = 865;       // 前托木
 const Z_HAND_A = 492, Z_HAND_B = 862;       // 上手木（照片 z≈490 顶面 +13→+22）
@@ -120,7 +141,7 @@ function mbox(bone, xh, y0mm, z0mm, y1mm, z1mm, mat) {
  *  例如机匣后端 z≈1130 处上缘从 +21 掉到 −22，粗步长会把整段填到 +21）。
  *  两端各留 0.4 mm 重叠，避免相邻方块之间露缝。 */
 const LOFT_MAX_SLOPE = 5.0;   // mm/段
-const LOFT_MIN_SEG = 1.0;     // mm
+const LOFT_MIN_SEG = 0.15;    // mm（断崖处细分到 0.15 mm：实测竖直边落差 27 mm/0.5 mm，粗了就会在断崖那一列假报超差）
 function loft(bone, z0mm, z1mm, topF, botF, xh, mat, step) {
   const st = step || 12;
   const emit = (a, b) => {
@@ -132,9 +153,8 @@ function loft(bone, z0mm, z1mm, topF, botF, xh, mat, step) {
   const rec = (a, b, d) => {
     if (b - a > LOFT_MIN_SEG && d < 7 &&
       (Math.abs(topF(b) - topF(a)) > LOFT_MAX_SLOPE || Math.abs(botF(b) - botF(a)) > LOFT_MAX_SLOPE)) {
-      const m = (a + b) / 2;
-      rec(a, m, d + 1);
-      rec(m, b, d + 1);
+      const m = kneeIn(a, b) || (a + b) / 2;
+      if (m > a + 0.02 && m < b - 0.02) { rec(a, m, d + 1); rec(m, b, d + 1); } else emit(a, b);
     } else emit(a, b);
   };
   const n = Math.max(1, Math.ceil((z1mm - z0mm) / st));
@@ -154,7 +174,8 @@ function wallZ(bone, x0, x1, z0mm, z1mm, topF, botF, mat, step) {
     if (yt - yb < 0.6) return;
     if (b - a > LOFT_MIN_SEG && d < 7 &&
       (Math.abs(topF(b) - topF(a)) > LOFT_MAX_SLOPE || Math.abs(botF(b) - botF(a)) > LOFT_MAX_SLOPE)) {
-      rec(a, (a + b) / 2, d + 1); rec((a + b) / 2, b, d + 1);
+      { const m = kneeIn(a, b) || (a + b) / 2;
+        if (m > a + 0.02 && m < b - 0.02) { rec(a, m, d + 1); rec(m, b, d + 1); } else box(bone, [x0, Yu(yb), Zb(a)], [x1, Yu(yt), Zb(b)], mat); }
     } else box(bone, [x0, Yu(yb), Zb(a)], [x1, Yu(yt), Zb(b)], mat);
   };
   for (let i = 0; i < n; i++) rec(z0mm + i * (z1mm - z0mm) / n, z0mm + (i + 1) * (z1mm - z0mm) / n, 0);
@@ -186,7 +207,7 @@ function tubeZ(bone, cx, cy, z0, z1, r, n, mat, coreScale) {
 loft('barrel', 5, Z_FORE_A, (z) => BARREL_TOP(z), (z) => BARREL_BOT(z), W_BARREL(0), 'blued', 16);
 tubeZ('barrel', 0, BARREL_CY, Zb(Z_FORE_A), Zb(Z_RECV_A + 30), 10.3 / 62.5, 8, 'blued');   // 藏在木头/机匣里
 /* 膛口：一圈抛光钢帽 + 里面的黑洞（真枪从枪口能看到膛线） */
-tubeZ('barrel', 0, BARREL_CY, Zb(-0.4), Zb(8), 9.8 / 62.5, 10, 'pol');
+tubeZ('barrel', 0, BARREL_CY, Zb(0), Zb(8), 9.8 / 62.5, 10, 'pol');   // 帽沿必须止于 z=0：多出的 0.4 mm 会让整张对表网格整体偏 0.4 mm（每条断崖都假报 1 列）
 box('barrel', [-4 / 62.5, BARREL_CY - 4 / 62.5, Zb(0)], [4 / 62.5, BARREL_CY + 4 / 62.5, Zb(4)], 'dark');
 
 /* 前准星：底座楔 + 刃片（刃尖 +21.5 mm）+ 两侧护耳 */
@@ -209,8 +230,8 @@ mbox('barrel', 2.6 / 62.5, -12.6, 66, BARREL_BOT(70) + 1, 76, 'steel');
 
 /* ================================================================ 2. 前托（bone: forend）
  * 照片：木护木 z 192~865，底 −34~−42；z 490 起枪管上方多一条上手木（顶 +22~+25）。 */
-loft('forend', Z_FORE_A, Z_FORE_B, (z) => BARREL_BOT(z) + 1.2, (z) => pB(z), W_FORE, 'wood', 14);
-loft('forend', Z_FORE_A, Z_FORE_B, (z) => pB(z) + 3.2, (z) => pB(z), W_FORE - 0.02, 'woodd', 26);
+loft('forend', Z_FORE_A, Z_FORE_B, (z) => BARREL_BOT(z) + 1.2, (z) => pBw(z), W_FORE, 'wood', 14);
+loft('forend', Z_FORE_A, Z_FORE_B, (z) => pBw(z) + 3.2, (z) => pBw(z), W_FORE - 0.02, 'woodd', 26);
 /* 上手木（盖住枪管上方） */
 loft('forend', Z_HAND_A, Z_HAND_B, (z) => pT(z), (z) => BARREL_TOP(z) - 1.6, W_HAND, 'wood', 16);
 loft('forend', Z_HAND_A, Z_HAND_B, (z) => pT(z), (z) => pT(z) - 2.4, W_HAND - 0.018, 'woodl', 26);
@@ -219,9 +240,10 @@ mbox('forend', W_HAND + 0.012, BARREL_BOT(500) + 1, Z_HAND_A - 5, pT(Z_HAND_A) +
 /* 前枪箍（木前端那圈金属，实测 z 171~197） */
 mbox('forend', W_FORE + 0.014, pB(184) - 1.5, Z_BAND_F_A, BARREL_TOP(184) - 1, Z_BAND_F_B, 'blued');
 /* 中枪箍 + 前背带环（实测 z 690~726 下探到 −58） */
-loft('forend', Z_BAND_M_A, Z_BAND_M_B, (z) => BARREL_TOP(708) - 1, (z) => pB(z), W_FORE + 0.014, 'blued', 10);
+loft('forend', Z_BAND_M_A, Z_BAND_M_B, (z) => BARREL_TOP(708) - 1, (z) => pBw(z), W_FORE + 0.014, 'blued', 9);
 /* 前背带环（实测 z 688~707 一条向下收成尖的细环，底 −64；之后木托底回到 −38.7） */
-loft('forend', 688, 707, () => -38.0, (z) => -42 - (z - 688) / 19 * 22, 3.2 / 62.5, 'steel', 4);
+loft('forend', 688, 707.4, () => -38.0,
+  (z) => (z <= 706.5 ? -42 - (z - 688) / 18.5 * 22 : -64 + (z - 706.5) / 0.9 * 26.1), 3.2 / 62.5, 'steel', 2);
 /* 前托中段的穿钉 */
 mbox('forend', W_FORE + 0.008, BARREL_BOT(560) - 5, 556, BARREL_BOT(560) - 1, 566, 'pol');
 
@@ -239,7 +261,7 @@ for (const sx of [-1, 1]) {
 /* 抛壳口（射手右侧 +X 的凹腔） */
 box('body', [W_RECV - 0.05, Yu(-12), Zb(Z_RECV_A + 60)], [W_RECV + 0.006, Yu(14), Zb(Z_RECV_A + 190)], 'dark');
 /* 节套/尾板（z 1110~1138，顶面从 +16 跌到 −25） */
-loft('body', Z_RECV_B - 24, Z_RECV_B + 6, (z) => Math.max(pT(z), -24), () => Y_RECV_FLOOR, W_RECV - 0.02, 'steel', 6);
+loft('body', Z_RECV_B - 24, Z_RECV_B + 6, (z) => Math.max(pT(z), -24), () => Y_RECV_FLOOR, W_RECV - 0.02, 'steel', 3);
 /* 机匣顶面的枪机通道 */
 mbox('body', 13.0 / 62.5, Math.max(pT(1000), -20) - 5, Z_RECV_A + 40, Math.max(pT(1000), -20) + 0.6, Z_RECV_B - 30, 'blued');
 /* 手动保险（真枪在机匣左侧 −X） */
@@ -351,7 +373,7 @@ loft('body', Z_BUTT - 3, Z_BUTT, (z) => pT(z) + 1, (z) => pB(z) - 1, W_BUTT - 0.
 mbox('body', 3.0 / 62.5, -112, 1214, -104, 1244, 'steel');
 for (const sx of [-1, 1]) {
   box('body', [sx * 3.0 / 62.5 - 1.2 / 62.5, Yu(-114), Zb(1216)],
-    [sx * 3.0 / 62.5 + 1.2 / 62.5, Yu(pB(1230) + 3), Zb(1242)], 'steel');
+    [sx * 3.0 / 62.5 + 1.2 / 62.5, Yu(pB(1230) + 3), Zb(1237)], 'steel');
 }
 /* 节套尾板螺钉 + 握把帽 */
 mbox('body', 0.10, -28, Z_RECV_B - 6, -23, Z_RECV_B + 10, 'pol');

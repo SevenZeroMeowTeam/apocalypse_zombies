@@ -48,6 +48,13 @@ def model_columns(geo_path, z_step_mm, skip=()):
             continue
         top[i0:i1] = np.maximum(top[i0:i1], hi[1])
         bot[i0:i1] = np.minimum(bot[i0:i1], lo[1])
+    # 端列兜底：最后一列常正好落在模型的收尾面上（点测落空），补上最近列的值，
+    # 免得整条 RMS 被一个「没有方块」的哨兵列顶到 1e9。
+    miss = (top < -1e8) | (bot > 1e8)
+    if miss.any() and (~miss).any():
+        good = np.where(~miss)[0]
+        top[miss] = top[good[np.clip(np.searchsorted(good, np.where(miss)[0]), 0, len(good) - 1)]]
+        bot[miss] = bot[good[np.clip(np.searchsorted(good, np.where(miss)[0]), 0, len(good) - 1)]]
     return zs, top / MM, bot / MM, (z0, z1)
 
 
@@ -89,6 +96,8 @@ def main():
     ap.add_argument('--tol', type=float, default=3.0, help='上缘 RMS 上限（mm）')
     ap.add_argument('--tol-bot', type=float, default=5.0, help='下缘 RMS 上限（mm）')
     ap.add_argument('--min-iou', type=float, default=0.90, help='IoU 下限')
+    ap.add_argument('--edge-tol', type=float, default=10.0,
+                    help='单列最大偏差上限 mm（竖直断崖两侧的单列跳变不算：见下方说明）')
     ap.add_argument('--verbose', action='store_true')
     ap.add_argument('--ascii', action='store_true', help='打印剪影 ASCII 对照图')
     a = ap.parse_args()
@@ -108,15 +117,21 @@ def main():
 
     zs, mt, mb, (mz0, mz1) = model_columns(a.geo, step, skip=skip)
     mz_mm = (zs - mz0) / MM                      # 模型列 → 距枪口 mm
-    # 采样到参考列
-    mt_i = np.interp(rz, mz_mm, mt)
-    mb_i = np.interp(rz, mz_mm, mb)
+    # 采样到参考列：取**最近列**，不插值。
+    # 模型是方块台阶几何，插值会在竖直断崖两侧造出根本不存在的中间高度，
+    # 一条断崖就假报一列 20+ mm 超差（且两列永远不会同时对上）。真值本身也是逐列量取的。
+    _idx = np.clip(np.searchsorted(mz_mm, rz), 0, len(mz_mm) - 1)
+    _lf = np.clip(_idx - 1, 0, len(mz_mm) - 1)
+    _take = np.where(np.abs(mz_mm[_lf] - rz) <= np.abs(mz_mm[_idx] - rz), _lf, _idx)
+    mt_i = mt[_take]
+    mb_i = mb[_take]
     d_top = mt_i - rt
     d_bot = mb_i - rb
     rms_t = float(np.sqrt(np.mean(d_top ** 2)))
     rms_b = float(np.sqrt(np.mean(d_bot ** 2)))
     mx_t = float(np.max(np.abs(d_top)))
     mx_b = float(np.max(np.abs(d_bot)))
+    n_over = int(np.sum((np.abs(d_top) > a.edge_tol) | (np.abs(d_bot) > a.edge_tol)))
 
     def iou():
         n = len(rz)
@@ -131,6 +146,7 @@ def main():
           % (mz0, mz1, mz1 - mz0, (mz1 - mz0) / MM, ref['total_mm']))
     print('轮廓交并比 IoU = %.3f    上缘 RMS %.2f mm（最大 %.2f）   下缘 RMS %.2f mm（最大 %.2f）'
           % (iou(), rms_t, mx_t, rms_b, mx_b))
+    print('单列最大偏差 > %.0f mm 的列数：%d' % (a.edge_tol, n_over))
     print()
     print('%-10s %8s %8s %8s %8s' % ('距枪口mm', '真值上', '模型上', '真值下', '模型下'))
     seg = np.arange(0, ref['total_mm'], 100.0)
@@ -156,9 +172,10 @@ def main():
     # 判据：IoU 下限 + 上下缘 RMS 上限（点状特征——拖曳钩/背带环的尖——离散化后
     # 会贡献几列 20~36 mm 的离群值，故上缘/下缘分开定阈值；最大误差只作参考打印）
     i_val = iou()
-    bad = not (i_val >= a.min_iou and rms_t <= a.tol and rms_b <= a.tol_bot)
+    bad = not (i_val >= a.min_iou and rms_t <= a.tol and rms_b <= a.tol_bot and n_over == 0)
     print('\n判据：IoU ≥ %.2f（实测 %.3f）  上缘 RMS ≤ %.1f mm（实测 %.2f）  下缘 RMS ≤ %.1f mm（实测 %.2f）'
           % (a.min_iou, i_val, a.tol, rms_t, a.tol_bot, rms_b))
+    print('单列 >%.0f mm 的列数 = %d（要求 0）' % (a.edge_tol, n_over))
     print('%s' % ('*** 轮廓对不上' if bad else '轮廓在容差内'))
     raise SystemExit(1 if bad else 0)
 

@@ -2,9 +2,10 @@
 /* ============================================================================
  * RSC M1917 —— 通过 blockbench-mcp 下发建模（几何 + 逐面 UV 图集 + 导出）
  *
- * 用法: node tools/rsc_1917_build.js [--reset] [--no-export]
+ * 用法: node tools/rsc_1917_build.js [--reset] [--no-export] [--eval]
  *   几何定义在 tools/rsc_1917_geo.js；本脚本负责 UV 打包 / 贴图绘制 / MCP 下发 / 导出。
  *   --reset  先清空当前 Blockbench 项目里的元素与骨骼（幂等重跑用）
+ *   --eval   用 risky_eval 在进程内批量建方块（500+ 元素时逐颗 place_cube 会撞桥超时，推荐）
  *
  * 产出（与短管喷同一套口径，便于 check_rsc_1917_art.py 直接吃）:
  *   build/rsc_1917_tex.png       512x512 逐面 UV 图集
@@ -91,6 +92,7 @@ async function main() {
   const argv = process.argv.slice(2);
   const reset = argv.includes('--reset');
   const noExport = argv.includes('--no-export');
+  const evalMode = argv.includes('--eval');
   fs.mkdirSync(BUILD, { recursive: true });
 
   const { cubes, bones, fails } = geoMod;
@@ -148,32 +150,78 @@ async function main() {
   report.steps.push(`add_group x${bones.length}`);
   console.log(`[mcp] add_group x${bones.length}`);
 
-  const BATCH = 40;
-  let placed = 0;
-  for (let i = 0; i < cubes.length; i += BATCH) {
-    const slice = cubes.slice(i, i + BATCH);
-    /* cube 级的 rotation/pivot 必须一起下发：枪托每段的 droop 就是靠它，漏了就退化成台阶 */
-    const elements = slice.map((c, k) => ({
-      name: `${c.bone}_${i + k}`,
+  /* 每颗方块的字段（逐颗下发与批量下发两条路共用） */
+  const items = cubes.map((c, k) => {
+    const uv = {};
+    for (const f of FACES) {
+      const o = faces.find((q) => q.c === c && q.f === f);
+      uv[f] = o.rect;
+    }
+    return {
+      bone: c.bone,
+      name: `${c.bone}_${k}`,
       from: [c.origin[0] - GAP_FIX, c.origin[1] - GAP_FIX, c.origin[2] - GAP_FIX].map((v) => +v.toFixed(5)),
       to: [c.origin[0] + c.size[0] + GAP_FIX, c.origin[1] + c.size[1] + GAP_FIX,
         c.origin[2] + c.size[2] + GAP_FIX].map((v) => +v.toFixed(5)),
       origin: (c.pivot || c.origin).map((v) => +v.toFixed(5)),
       rotation: (c.rot || [0, 0, 0]).map((v) => +v.toFixed(4)),
-    }));
-    const faceArgs = slice.map((c) => FACES.map((f) => {
-      const o = faces.find((q) => q.c === c && q.f === f);
-      return { face: f, uv: o.rect };
-    }));
-    const calls = slice.map((c, k) => bb.t('place_cube', {
-      group: c.bone,
-      texture: TEX_NAME,
-      elements: [elements[k]],
-      faces: faceArgs[k],
-    }).then((rr) => { report.steps.push(`place_cube: ${rr.text.slice(0, 100)}`); }));
-    for (let j = 0; j < calls.length; j += 8) await Promise.all(calls.slice(j, j + 8));
-    placed += slice.length;
-    console.log(`[mcp] place_cube ${placed}/${cubes.length}`);
+      uv,
+    };
+  });
+
+  if (evalMode) {
+    /* --eval：一次 risky_eval 在进程内批量建方块（插件同款 API）。
+     * 为什么要有这条路：逐颗 place_cube 到 500+ 元素时 Blockbench 视口掉到 1 FPS，
+     * 桥的每次调用都会撞 75 s 超时 —— 1.1.88 构建连挂两次（480/577 处 FATAL），
+     * 而这一步本该是「一次性灌几何」，没有理由走 577 次往返。 */
+    const BATCH = 120;
+    for (let i = 0; i < items.length; i += BATCH) {
+      const slice = items.slice(i, i + BATCH);
+      const code = `(function(){
+  var FACES = ${JSON.stringify(FACES)};
+  var data = ${JSON.stringify(slice)};
+  var tex = (Texture.all || []).find(function (t) { return t.name === ${JSON.stringify(TEX_NAME)}; });
+  if (!tex) throw new Error('texture missing: ${TEX_NAME}');
+  var n = 0, skipped = 0;
+  Undo.initEdit({ elements: [], outliner: true });
+  for (var i = 0; i < data.length; i++) {
+    var d = data[i];
+    var g = (Group.all || []).find(function (x) { return x.name === d.bone; });
+    if (!g) throw new Error('group missing: ' + d.bone);
+    var c = new Cube({ name: d.name, from: d.from, to: d.to, origin: d.origin, rotation: d.rotation, autouv: 0 });
+    c.box_uv = false;
+    c.init().addTo(g);
+    if (c.parent !== g) throw new Error('parent rejected: ' + d.name);
+    c.applyTexture(tex, FACES);
+    for (var j = 0; j < FACES.length; j++) c.faces[FACES[j]].uv = d.uv[FACES[j]];
+    n++;
+  }
+  Undo.finishEdit('bulk place cubes');
+  Canvas.updateAll();
+  return JSON.stringify({ placed: n, cubes: (Cube.all || []).length, skipped: skipped });
+})()`;
+      const rr = await bb.t('risky_eval', { code });
+      report.steps.push('bulk_eval: ' + rr.text.slice(0, 200));
+      console.log(`[mcp] bulk_eval ${Math.min(i + BATCH, items.length)}/${items.length} -> ${rr.text.slice(0, 120)}`);
+    }
+  } else {
+    const BATCH = 40;
+    let placed = 0;
+    for (let i = 0; i < items.length; i += BATCH) {
+      const slice = items.slice(i, i + BATCH);
+      /* cube 级的 rotation/pivot 必须一起下发：枪托每段的 droop 就是靠它，漏了就退化成台阶 */
+      const elements = slice.map((c) => ({ name: c.name, from: c.from, to: c.to, origin: c.origin, rotation: c.rotation }));
+      const faceArgs = slice.map((c) => FACES.map((f) => ({ face: f, uv: c.uv[f] })));
+      const calls = slice.map((c, k) => bb.t('place_cube', {
+        group: c.bone,
+        texture: TEX_NAME,
+        elements: [elements[k]],
+        faces: faceArgs[k],
+      }).then((rr) => { report.steps.push(`place_cube: ${rr.text.slice(0, 100)}`); }));
+      for (let j = 0; j < calls.length; j += 8) await Promise.all(calls.slice(j, j + 8));
+      placed += slice.length;
+      console.log(`[mcp] place_cube ${placed}/${items.length}`);
+    }
   }
 
   await bb.t('geckolib_set_project_settings', { modid: 'apocalypse_zombies', model_type: 'Item', model_identifier: TEX_NAME });

@@ -57,14 +57,15 @@ import java.util.function.Consumer;
  * <em>below</em> into a fixed magazine with a hinged floor/top cover.
  *
  * <p>Geometry and animation live in {@code assets/apocalypse_zombies/geo/rsc_1917.geo.json} and
- * {@code animations/rsc_1917.animation.json}, on the 17-bone rig the geo defines
- * ({@code root, move, body, barrel, forend, cover, bolt, mag_cover, clip, casing, trigger, safety,
- * magazine, additional_magazine, hand_l, camera, constraint}). This class triggers four of the eight clips —
- * {@value #ANIM_SHOOT}, {@value #ANIM_BOLT}, {@value #ANIM_RELOAD_TACTICAL}, {@value #ANIM_RELOAD_EMPTY}
- * ({@value #ANIM_IDLE} is the resting loop, {@value #ANIM_DRAW} / {@value #ANIM_SHOOT_LAST} /
- * {@value #ANIM_SINGLE_LOAD} are driven by the draw、末发与补弹路径，而开镜由渲染器直接 aim，**没有**
- * {@code ADS_up}/{@code ADS_down} 片段）。The model is 1.34 blocks long
- * (21.42 u = 1339 mm；真枪 1331 mm)；every pose is per-bone rotation/translation, nothing scales the model,
+ * {@code animations/rsc_1917.animation.json}, on the 19-bone rig the geo defines
+ * ({@code root, move, body, barrel, forend, hand_l, cover, bolt, mag_cover, clip, clip_empty, casing,
+ * round_in, trigger, safety, magazine, additional_magazine, camera, constraint}). This class wires seven
+ * of the eight clips — {@value #ANIM_IDLE} (the resting loop), {@value #ANIM_SHOOT},
+ * {@value #ANIM_SHOOT_LAST} (fifth round, clip runs dry), {@value #ANIM_BOLT},
+ * {@value #ANIM_RELOAD_TACTICAL}, {@value #ANIM_RELOAD_EMPTY} and {@value #ANIM_SINGLE_LOAD} (top up a
+ * partly-full magazine by hand); {@value #ANIM_DRAW} is played by the shared draw path. Aiming is done by
+ * the renderer directly there are no {@code ADS_up}/{@code ADS_down} clips. The model is 1.32 blocks long
+ * (21.11 u = 1319 mm；真枪 1331 mm)；every pose is per-bone rotation/translation, nothing scales the model,
  * per 美术规范.md §5.</p>
  *
  * <p><b>What the RSC does differently from the M1 (the three things the action logic encodes):</b></p>
