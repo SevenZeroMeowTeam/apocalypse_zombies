@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.97` |
+| **当前版本** | `1.1.98` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.26） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -276,6 +276,40 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 1.1.98 — 2026-10-11
+
+**修好 EasyNPC 武器商预设：它以前是个空商店。**
+
+实机导入后暴露了两个真问题，都是「按类结构反推 SNBT」的代价：
+
+- **`TradingDataSet` 挂错了层**：原来直接写在 `data:` 下，而 EasyNPC 读的是
+  **`data.TradingData.TradingDataSet`**（字段表见 `TradingDataCapable`）—— 写在顶层等于
+  **交易设置整段被忽略**。
+- **商品表 `Offers` 整个缺失**：右键能打开交易界面，但**里面什么都没有**。
+
+修法是照 EasyNPC 官方带交易的预设（`default_preset/villager/welcome_coin_trader.npc.snbt`）
+逐字段对齐，并补齐自己漏掉的 `Offers` / `PresetUUID` / `Profession` / `SkinData` / `SoundData` /
+`EntityAttribute`。预设也从 `api/preset/apocalypse_zombies/`（不是 EasyNPC 的约定路径）挪到
+**`default_preset/villager/`**（与官方 24 个默认预设同级）。
+
+现在预设自带**七条交易**，六把枪全部装满弹、绿宝石定价，每 30 分钟自动补货：
+
+| 商品 | 弹量 | 价格 | maxUses |
+|---|---|---|---|
+| Uzi | 32 | 18 绿宝石 | 16 |
+| 十字弩 | 1 | 20 | 16 |
+| S686 | 2 | 24 | 12 |
+| 莫辛纳甘 | 5 | 32 | 12 |
+| M1 加兰德 | 8 | 36 | 12 |
+| RSC M1917 | 5 | 40 | 8 |
+| AWM | 5 | 48 | 8 |
+
+**导入时那两条提示不是错误**：`Owner data was updated` / `Action permission levels were reduced`
+是 EasyNPC 对**每个**预设都做的净化，官方内置预设导入时一字不差地打同样两条。第二条是动作权限被夹到
+`security.cfg` 的 `creativePlayerCommandLevel`（默认 `MODERATORS`）；抬到 `OWNERS` 就不再夹。
+
+细节与「怎么改商品」见 [`docs/EasyNPC-武器商.md`](docs/EasyNPC-武器商.md)。
 
 ### 1.1.97 — 2026-10-11
 
