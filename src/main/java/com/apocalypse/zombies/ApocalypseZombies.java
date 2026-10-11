@@ -87,6 +87,15 @@ public class ApocalypseZombies {
      * 所以配置文件里可能还写着越界的数，只有运行期真值算数。
      */
     private void onConfigLoaded(ModConfigEvent.Loading event) {
+        // 老实例磁盘上还躺着 1.1.76~1.1.83 的 Ollama 端点和模型名（Forge 从不覆盖已存在的值），
+        // 这里一次性换成 LM Studio 口径并让 Forge 重写文件；没改到东西时返回 null。
+        if (event.getConfig().getSpec() == Config.SPEC) {
+            String migrated = Config.migrateLegacyAiConfig();
+            if (migrated != null) {
+                LOGGER.info("Migrated legacy cat_girl.ai config: {} (Forge never overwrites existing values).",
+                        migrated);
+            }
+        }
         LOGGER.info("Cat girl mining: mine_max_blocks={} (domain 1..64), mine_radius={} (domain 4..64).",
                 Config.CAT_GIRL_MINE_MAX_BLOCKS.get(), Config.CAT_GIRL_MINE_RADIUS.get());
     }

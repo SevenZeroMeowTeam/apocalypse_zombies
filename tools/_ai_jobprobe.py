@@ -1,17 +1,26 @@
 # -*- coding: utf-8 -*-
 """拿**线上那份** CatGirlAiPrompt 的 SYSTEM/FEWSHOT（直接从 .java 里抠字符串字面量，
-所以不可能和 Java 侧漂移）去问真 Ollama：玩家真会说的那几种「派活」话，1.5B 认不认。
+所以不可能和 Java 侧漂移）去问**真 LM Studio**：玩家真会说的那几种「派活」话，模型认不认。
 
-只读源码 + 发 HTTP，纯标准库。
+请求体/回包解析直接复用 `tools/_ai_probe.py`（与 `LmStudioWire` 同一套），
+免得两个探针各写一份、改一处漏一处。
+
+只读源码 + 发 HTTP，纯标准库。端点与模型走 AI_ENDPOINT / AI_MODEL 环境变量。
 """
 import json
+import os
 import re
+import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _ai_probe as wire  # noqa: E402  （同一个目录：探针共用的线）
+
 SRC = Path("F:/mcmod/src/main/java/com/apocalypse/zombies/ai/CatGirlAiPrompt.java")
-ENDPOINT = "http://127.0.0.1:11434"
-MODEL = "fableforge-ai/nexus-coder:q4_k_m"
+ENDPOINT = wire.ENDPOINT
+MODEL = os.environ.get("AI_MODEL", wire.PREFERRED)
 
 LIT = re.compile(r'"((?:[^"\\]|\\.)*)"')
 ESC = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\", "'": "'"}
@@ -63,13 +72,13 @@ def ask(phrase, state):
         messages.append({"role": "assistant", "content": a})
     messages.append({"role": "user", "content":
                      "可做的东西列表: []\n她当前：%s\n玩家说：%s" % (state, phrase)})
-    body = json.dumps({"model": MODEL, "stream": False, "format": "json", "think": False,
-                       "keep_alive": "10m", "messages": messages,
-                       "options": {"temperature": 0.2, "num_ctx": 4096, "num_predict": 300}}).encode()
-    req = urllib.request.Request(ENDPOINT + "/api/chat", data=body,
+    body = json.dumps({"model": MODEL, "stream": False, "temperature": 0.2, "max_tokens": 300,
+                       "context_length": 4096, "chat_template_kwargs": {"enable_thinking": False},
+                       "response_format": wire.response_format(), "messages": messages}).encode()
+    req = urllib.request.Request(wire.chat_url(ENDPOINT), data=body,
                                  headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=120) as r:
-        raw = json.loads(r.read().decode("utf-8"))["message"]["content"]
+        raw = wire.strip_think(wire.content_of(json.loads(r.read().decode("utf-8"))))
     try:
         got = json.loads(re.search(r"\{.*\}", raw, re.S).group())
     except Exception:
@@ -93,6 +102,14 @@ CASES = [
 want = {"去砍点树回来": "LUMBER", "砍点树": "LUMBER", "让她去砍树": "LUMBER",
         "帮我挖点矿": "MINE", "你去挖矿吧": "MINE", "有僵尸，上": "FIGHT", "打僵尸": "FIGHT",
         "跟着我": "FOLLOW", "回来": "FOLLOW", "别砍了": "FOLLOW"}
+
+ids = wire.list_models(ENDPOINT)
+if ids is None:
+    sys.exit(1)
+if ids and MODEL not in ids:
+    print("⚠ 模型名 %s 不在服务端在册列表里（GET /v1/models）：%s" % (MODEL, ", ".join(ids)))
+    print("  —— 名字要对得上，或 AI_MODEL=<id> py tools/_ai_jobprobe.py")
+print()
 
 ok = 0
 for phrase, state in CASES:

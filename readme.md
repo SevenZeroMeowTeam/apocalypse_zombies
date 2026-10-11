@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.88` |
+| **当前版本** | `1.1.89` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.26） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -273,6 +273,28 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 1.1.89 — 2026-10-11
+
+**老实例的本地 AI 端点自动迁移：Ollama 口径 → LM Studio 口径**
+
+1.1.84 把她换成 LM Studio（`http://127.0.0.1:1234/v1`）之后，老实例还在报
+「连不上本地模型 `http://127.0.0.1:11434`」——**不是接线没换，是配置文件里的值没人换**：
+Forge 的配置**只写默认值、从不覆盖已经存在的值**（连越界值都只在读取时校正，文件里照旧写着越界的数），
+所以 `apocalypse_zombies-common.toml` 里 1.1.76 写下的 `endpoint = "http://127.0.0.1:11434"`
+和 Ollama 形状的模型名（`fableforge-ai/nexus-coder:q4_k_m`）一直躺到今天，注释是新的、值是旧的。
+
+- **一次性迁移**：`Config.migrateLegacyAiConfig()`，在 `ModConfigEvent.Loading` 里跑（配置进内存**之后**才读得出值；
+  构造阶段读会抛 `Cannot get config value before config is loaded`）。改完调 `SPEC.save()` 让 Forge 把文件按新值重写。
+- **判定故意收窄**：端点只认那套旧默认值（`127.0.0.1/localhost:11434`，含 `/api/chat`、`/api/generate` 尾巴的写法），
+  自己填的地址 —— 哪怕也带 11434、或是别人机器的 Ollama —— 形状对不上就不碰；
+  模型名只认「旧默认那个」或 Ollama 惯用的 `:量化标签` 尾巴，LM Studio 的 `作者/模型` 名字一律不动。
+- **日志**：迁移发生时会写一行 `Migrated legacy cat_girl.ai config: … → …`（实机探针认这一行）。
+- **顺手改齐**：`tools/_ai_probe.py` 从 Ollama 的 `/api/chat`（`options.num_ctx` / `format:"json"` / `eval_count`）
+  改成 LM Studio 的 `/v1/chat/completions`（`chat_template_kwargs` / `json_schema` / `usage.completion_tokens`），
+  与 `LmStudioWire` 同一套请求体与回包兜底；**不传模型名会自动从 `GET /v1/models` 挑**（优先模组默认那个），
+  端点没起来时只回一句「LM Studio 起了吗」，不再是栈回溯。
+- **出货**：`py tools/_deploy_189.py --build`。
 
 ### 1.1.88 — 2026-10-11
 
@@ -577,6 +599,8 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
   `/apocalypse catgirl ai status` 看端点/模型/熔断状态。
 - **跑在你机器上的模型**：默认 `http://127.0.0.1:11434` + `fableforge-ai/nexus-coder:q4_k_m`（qwen2 1.5B），
   不联网、不花钱。实测（RTX 3060 6GB）：**0.2~0.6 秒一轮、约 150 token/s**。
+  *（这是 1.1.76 当版的口径；**1.1.84 起默认已换成 LM Studio `http://127.0.0.1:1234/v1`，
+  1.1.89 起老实例的配置会自动迁过去** —— 见 1.1.89 条目。）*
   「思考标签」会被剥掉，模型返回的每个字段都会被<b>重新校验</b>：动作只认 none/say/set_job/craft，
   物品必须真在配方表里、还得是她会做的那几类 —— 不可信的字段一律降级成聊天，绝不透传到执行层。
 - **不会因为 AI 而崩**：请求在工作线程跑、结果回投主线程；连不上/超时/回包是垃圾 → 一句中文提示；

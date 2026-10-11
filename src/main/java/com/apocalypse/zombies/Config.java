@@ -968,6 +968,71 @@ public final class Config {
         SPEC = b.build();
     }
 
+    /**
+     * 一次性配置迁移：把 1.1.76~1.1.83 那套 <b>Ollama 口径</b>写进磁盘的旧值换成 LM Studio 口径。
+     *
+     * <p>为什么非做不可：Forge 的配置文件<b>只写默认值、从不覆盖已经存在的值</b>（连越界值都只在
+     * 读取时校正，文件里照旧写着越界的数）。所以从 1.1.84 把接线换成 LM Studio（1234/v1）之后，
+     * 老实例的 {@code apocalypse_zombies-common.toml} 里仍然躺着
+     * {@code endpoint = "http://127.0.0.1:11434"} 和 Ollama 形状的模型名
+     * （{@code fableforge-ai/nexus-coder:q4_k_m}）—— 代码里改默认值对它们一点用都没有，
+     * 表现就是「注释是新的、值是旧的」，她每次都回「连不上本地模型 http://127.0.0.1:11434」。</p>
+     *
+     * <p>判定故意收窄：只有<b>确实是那套旧默认值</b>才改写。用户自己填的地址（哪怕也带 11434、
+     * 或是别人机器的 Ollama）形状对不上就不碰；模型名只认「旧默认那个」或「Ollama 的 {@code :量化标签}
+     * 尾巴」，LM Studio 的 {@code 作者/模型} 名字一律不动。</p>
+     *
+     * <p>调用点：{@code ApocalypseZombies#onConfigLoaded} —— 配置读进内存之后才读得出值，
+     * 在构造阶段读会抛 {@code Cannot get config value before config is loaded}。</p>
+     *
+     * @return 改了什么（给日志用的一行描述）；什么都没改则返回 {@code null}
+     */
+    public static String migrateLegacyAiConfig() {
+        StringBuilder done = new StringBuilder();
+
+        String raw = CAT_GIRL_AI_ENDPOINT.get();
+        String norm = raw == null ? "" : raw.trim().toLowerCase(java.util.Locale.ROOT);
+        while (norm.endsWith("/")) {
+            norm = norm.substring(0, norm.length() - 1);
+        }
+        if (norm.equals("http://127.0.0.1:11434") || norm.equals("http://localhost:11434")
+                || norm.equals("http://127.0.0.1:11434/api/chat") || norm.equals("http://localhost:11434/api/chat")
+                || norm.equals("http://127.0.0.1:11434/api/generate") || norm.equals("http://localhost:11434/api/generate")) {
+            CAT_GIRL_AI_ENDPOINT.set("http://127.0.0.1:1234/v1");
+            done.append("endpoint ").append(raw).append(" → http://127.0.0.1:1234/v1");
+        }
+
+        String model = CAT_GIRL_AI_MODEL.get();
+        if (model != null && isOllamaShapedModel(model.trim())) {
+            CAT_GIRL_AI_MODEL.set("qwen3.5-4b-claude-4.6-opus-reasoning-distilled");
+            if (done.length() > 0) {
+                done.append("; ");
+            }
+            done.append("model ").append(model).append(" → qwen3.5-4b-claude-4.6-opus-reasoning-distilled");
+        }
+
+        if (done.length() == 0) {
+            return null;
+        }
+        // 值改在内存里还不够：得让 Forge 把这份文件按新值重写，否则下次启动又是旧的。
+        SPEC.save();
+        return done.toString();
+    }
+
+    /** 旧默认模型名，以及 Ollama 惯用的量化标签尾巴（LM Studio 的 id 不长这样）。 */
+    private static boolean isOllamaShapedModel(String model) {
+        if (model.equals("fableforge-ai/nexus-coder:q4_k_m")) {
+            return true;
+        }
+        int colon = model.lastIndexOf(':');
+        if (colon < 0 || colon == model.length() - 1) {
+            return false;
+        }
+        String tag = model.substring(colon + 1);
+        return java.util.List.of("q4_k_m", "q4_k_s", "q4_0", "q4_1", "q5_k_m", "q5_k_s", "q5_0",
+                "q6_k", "q8_0", "q3_k_m", "q3_k_s", "q2_k", "fp16", "f16", "latest").contains(tag);
+    }
+
     private Config() {
     }
 }

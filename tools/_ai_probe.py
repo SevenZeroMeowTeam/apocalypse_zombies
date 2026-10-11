@@ -1,17 +1,29 @@
 # -*- coding: utf-8 -*-
 """本地模型「能不能当游戏内助理」体检：JSON 约束 / 中文 / 速度 / 会不会编物品 id。
 
-用法：py tools/_ai_probe.py [模型名 ...]
-不传模型就用下面的 DEFAULT_MODELS。纯标准库，不依赖 requests。
+走的是 **LM Studio 的 OpenAI 兼容口**（`POST /v1/chat/completions`），跟模组里
+`LmStudioWire.java` 同一套请求体、同一套回包解析 —— 1.1.76~1.1.83 那版探针打的是
+Ollama 的 `/api/chat`（`options.num_ctx` / `format:"json"` / `eval_count`），
+LM Studio 一个都不认，本版改齐。
+
+用法：
+    py tools/_ai_probe.py                  # 模型名留空 → 从 GET /v1/models 里挑
+    py tools/_ai_probe.py <模型id> [...]    # 指定一或多个模型，逐个体检
+    AI_ENDPOINT=http://127.0.0.1:1234/v1   # 端点不是本机默认时（环境变量，或改下面 ENDPOINT）
+
+纯标准库，不依赖 requests。端点没起来会直接告诉你（不是一堆栈回溯）。
 """
 import json
+import os
 import sys
 import time
 import urllib.error
 import urllib.request
 
-ENDPOINT = "http://127.0.0.1:11434/api/chat"
-DEFAULT_MODELS = ["fableforge-ai/nexus-coder:q4_k_m", "gemma-e4b"]
+# 和模组默认一致：LM Studio 的 OpenAI 兼容口根。写主机、写 /v1、写整条补全路径都认。
+ENDPOINT = os.environ.get("AI_ENDPOINT", "http://127.0.0.1:1234/v1")
+# 没指定模型时，服务端在册的列表里优先挑模组默认那个蒸馏版。
+PREFERRED = "qwen3.5-4b-claude-4.6-opus-reasoning-distilled"
 
 # 和 Java 侧 CatGirlAiPrompt 里要用的系统提示保持一致（改一处改两处）
 SYSTEM = (
@@ -24,7 +36,7 @@ SYSTEM = (
     "就把 action 设成 say 并在 reply 里说明做不到。"
 )
 
-# 小模型的救命稻草：少样本示范（1.5B 级模型没有例子就会把玩家的话原样抄回来）
+# 小模型的救命稻草：少样本示范（小模型没有例子就会把玩家的话原样抄回来）
 FEWSHOT = [
     ('可做的东西列表: []\n她当前：闲着（FOLLOW），背包空。\n玩家说：让她去砍点树回来',
      '{"reply":"好的，我这就去砍树。","action":"set_job","job":"LUMBER","item":"","count":0}'),
@@ -83,34 +95,115 @@ CASES = [
 ]
 
 
+def base_of(endpoint):
+    return (endpoint or "").strip().rstrip("/")
+
+
+def chat_url(endpoint):
+    """端点 → 补全 URL（与 LmStudioWire.chatUrl 同一套规则）。"""
+    base = base_of(endpoint)
+    if base.endswith("/chat/completions"):
+        return base
+    return base + "/chat/completions" if base.endswith("/v1") else base + "/v1/chat/completions"
+
+
+def models_url(endpoint):
+    base = base_of(endpoint)
+    return base + "/models" if base.endswith("/v1") else base + "/v1/models"
+
+
+def response_format():
+    """与 LmStudioWire.responseFormat 同一张契约。LM Studio 只认 json_schema / text。"""
+    def s(desc):
+        return {"type": "string", "description": desc}
+
+    def enum(values):
+        return {"type": "string", "enum": values}
+
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "cat_girl_reply",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "reply": s("给玩家看的中文一句话"),
+                    "action": enum(["none", "say", "set_job", "craft"]),
+                    "job": enum(["", "LUMBER", "MINE", "FIGHT", "FOLLOW"]),
+                    "item": s("只能取「可做的东西列表」里的 id，没有就空串"),
+                    "count": {"type": "integer", "minimum": 0, "maximum": 64,
+                              "description": "数量，不涉及就 0"},
+                },
+                "required": ["reply", "action", "job", "item", "count"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def get_json(url, timeout=20):
+    with urllib.request.urlopen(url, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def list_models(endpoint):
+    """GET /v1/models —— 顺带当成「服务起来了没」的探针。"""
+    url = models_url(endpoint)
+    try:
+        d = get_json(url)
+    except (urllib.error.URLError, OSError) as e:
+        print("连不上 %s —— LM Studio 起了吗？Developer → Start Server 打开了吗？（%s）" % (url, e))
+        return None
+    except ValueError as e:
+        print("%s 回的不是 JSON（%s）—— 端点指到别处了？" % (url, e))
+        return None
+    return [m.get("id") for m in (d.get("data") or []) if m.get("id")]
+
+
 def ask(model, system, user, timeout=60):
     body = json.dumps({
         "model": model,
-        "think": False,
         "stream": False,
-        "format": "json",
+        "temperature": 0.2,
+        "max_tokens": 300,
+        "context_length": 4096,
+        "chat_template_kwargs": {"enable_thinking": False},
+        "response_format": response_format(),
         "messages": ([{"role": "system", "content": system}]
                      + [m for pair in FEWSHOT for m in (
                          {"role": "user", "content": pair[0]},
                          {"role": "assistant", "content": pair[1]})]
                      + [{"role": "user", "content": user}]),
-        "options": {"temperature": 0.2, "num_predict": 300, "num_ctx": 4096},
-        "keep_alive": "10m",
     }).encode("utf-8")
-    req = urllib.request.Request(ENDPOINT, data=body, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(chat_url(ENDPOINT), data=body,
+                                 headers={"Content-Type": "application/json"})
     t0 = time.time()
     with urllib.request.urlopen(req, timeout=timeout) as r:
         d = json.loads(r.read().decode("utf-8"))
     return d, time.time() - t0
 
 
+def content_of(body):
+    """与 LmStudioWire.contentOf 同一套兜底：content → reasoning_content → text。"""
+    choices = body.get("choices") or []
+    if choices:
+        msg = choices[0].get("message") or {}
+        if (msg.get("content") or "").strip():
+            return msg["content"]
+        if (msg.get("reasoning_content") or "").strip():
+            return msg["reasoning_content"]
+        return choices[0].get("text") or ""
+    return (body.get("message") or {}).get("content") or body.get("response") or ""
+
+
 def strip_think(text):
     """qwen 系的思考标签：<think ...>…</think>（有时没闭合）。"""
     out = text
-    for tag in ("</think>", "</thinking>"):
+    for tag in ("</think>", "</thinking>", "</reasoning>"):
         while tag in out:
             out = out.split(tag, 1)[1]
-    for tag in ("<think", "<thinking"):
+    for tag in ("<think", "<thinking", "<reasoning"):
         i = out.find(tag)
         if i >= 0:
             j = out.find(">", i)
@@ -123,7 +216,17 @@ def is_chinese(s):
 
 
 def main():
-    models = sys.argv[1:] or DEFAULT_MODELS
+    models = sys.argv[1:]
+    if not models:
+        ids = list_models(ENDPOINT)
+        if ids is None:
+            return 1
+        print("服务端在册模型 %d 个：%s" % (len(ids), ", ".join(ids) or "（空）"))
+        picked = PREFERRED if PREFERRED in ids else (ids[0] if ids else "")
+        if not picked:
+            print("没得测：先让 LM Studio 加载一个模型（或把模型 id 当参数传进来）。")
+            return 1
+        models = [picked]
     for model in models:
         print("=" * 72)
         print("模型：" + model)
@@ -133,15 +236,19 @@ def main():
                    + c["state"] + "\n玩家说：" + c["user"])
             try:
                 d, wall = ask(model, SYSTEM, ctx)
-            except urllib.error.URLError as e:
+            except urllib.error.HTTPError as e:
+                detail = e.read().decode("utf-8", "replace")[:200]
+                print("  [%s] HTTP %d：%s" % (c["name"], e.code, detail))
+                print("       （404 多半是模型名不对 —— 用 GET /v1/models 的 id 一字不差；"
+                      "400 试把 ai.json_schema 关掉）")
+                continue
+            except (urllib.error.URLError, OSError) as e:
                 print("  [%s] 请求失败：%s" % (c["name"], e))
                 continue
-            msg = d.get("message") or {}
-            raw = msg.get("content") or ""
+            raw = content_of(d)
             content = strip_think(raw)
-            eval_tok = d.get("eval_count") or 0
-            eval_ns = d.get("eval_duration") or 1
-            speed = eval_tok / (eval_ns / 1e9)
+            toks = (d.get("usage") or {}).get("completion_tokens") or 0
+            speed = toks / wall if wall > 0 else 0
             print("  [%s]  %.1fs 墙钟 | %.1f tok/s | 原始 %d 字" % (c["name"], wall, speed, len(raw)))
             if raw.strip().startswith("<think"):
                 print("       ⚠ 思考标签泄漏（Java 侧必须 strip）")
