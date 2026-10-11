@@ -29,7 +29,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 连接本机 Ollama 的桥。
+ * 连接本机 LM Studio 的桥（OpenAI 兼容口 {@code /v1/chat/completions}）。
  *
  * <p><b>三条纪律</b>：
  * <ol>
@@ -39,8 +39,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   <li><b>熔断</b>：连续失败 3 次就歇 5 分钟，避免玩家每点一次都在等一个没起来的服务。</li>
  * </ol>
  *
- * <p>模型和端点都走配置；默认是玩家点名的 {@code qwen2 1.5B}（Ollama 里叫
- * {@code fableforge-ai/nexus-coder:q4_k_m}）。</p>
+ * <p>模型和端点都走配置；默认是玩家点名的 Qwen3.5-4B 蒸馏版（LM Studio 里叫
+ * {@code qwen3.5-4b-claude-4.6-opus-reasoning-distilled}），端点默认
+ * {@code http://127.0.0.1:1234/v1}。</p>
  */
 public final class LocalAiClient {
 
@@ -135,7 +136,7 @@ public final class LocalAiClient {
         if (coolingDown()) {
             player.sendSystemMessage(Component.literal("[猫耳娘] ").withStyle(ChatFormatting.LIGHT_PURPLE)
                     .append(Component.literal("……我刚连不上脑子，歇 " + remainingCooldownSeconds()
-                            + " 秒再叫我。（检查一下 ollama 起没起）").withStyle(ChatFormatting.GRAY)));
+                            + " 秒再叫我。（检查一下 LM Studio 起没起）").withStyle(ChatFormatting.GRAY)));
             return;
         }
         if (!IN_FLIGHT.add(player.getUUID())) {
@@ -150,13 +151,14 @@ public final class LocalAiClient {
         String userTurn = CatGirlAiPrompt.userTurn(cat, player, said, candidates);
         List<String[]> history = new ArrayList<>(HISTORY.getOrDefault(player.getUUID(), new ArrayDeque<>()));
 
-        String body = OllamaWire.requestBody(
+        String body = LmStudioWire.requestBody(
                 Config.CAT_GIRL_AI_MODEL.get(), CatGirlAiPrompt.SYSTEM, CatGirlAiPrompt.FEWSHOT,
                 history, userTurn,
-                Config.CAT_GIRL_AI_NUM_CTX.get(), 0.2D, 300, false);
+                Config.CAT_GIRL_AI_NUM_CTX.get(), 0.2D, 300, false,
+                Config.CAT_GIRL_AI_JSON_SCHEMA.get());
 
         String endpoint = Config.CAT_GIRL_AI_ENDPOINT.get();
-        String url = endpoint.endsWith("/") ? endpoint + "api/chat" : endpoint + "/api/chat";
+        String url = LmStudioWire.chatUrl(endpoint);
         int timeoutMs = Config.CAT_GIRL_AI_TIMEOUT_MS.get();
         UUID playerId = player.getUUID();
         UUID catId = cat.getUUID();
@@ -195,7 +197,7 @@ public final class LocalAiClient {
                         + "（模型名写错？" + Config.CAT_GIRL_AI_MODEL.get() + "）");
                 return;
             }
-            OllamaWire.Reply reply = OllamaWire.parse(response.body());
+            LmStudioWire.Reply reply = LmStudioWire.parse(response.body());
             if (!reply.ok()) {
                 fail(server, playerId, reply.error());
                 return;
@@ -243,13 +245,14 @@ public final class LocalAiClient {
             return "等太久了（超过 " + Config.CAT_GIRL_AI_TIMEOUT_MS.get() + " 毫秒）";
         }
         if (cause instanceof java.net.ConnectException) {
-            return "连不上本地模型 " + Config.CAT_GIRL_AI_ENDPOINT.get() + "（ollama 起了吗？）";
+            return "连不上本地模型 " + Config.CAT_GIRL_AI_ENDPOINT.get()
+                    + "（LM Studio 起了吗？开发页里加载模型了吗？）";
         }
         String msg = cause.getMessage();
         return msg == null || msg.isBlank() ? cause.getClass().getSimpleName() : msg;
     }
 
-    private static String replyJson(OllamaWire.Reply reply) {
+    private static String replyJson(LmStudioWire.Reply reply) {
         return "{\"reply\":\"" + reply.say().replace("\\", "").replace("\"", "")
                 + "\",\"action\":\"" + reply.action() + "\",\"job\":\"" + reply.job()
                 + "\",\"item\":\"" + reply.item() + "\",\"count\":" + reply.count() + "}";

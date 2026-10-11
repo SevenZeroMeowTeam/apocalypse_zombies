@@ -7,14 +7,21 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 本地模型的「线」：负责拼请求体、剥思考标签、把回包解析成一个受约束的 {@link Reply}。
+ * 本地模型的「线」：LM Studio 的 OpenAI 兼容脸（{@code POST /v1/chat/completions}）。
+ *
+ * <p><b>和上一版（Ollama）差在哪</b>：请求体与回包形状都换了 —— LM Studio 收
+ * {@code temperature / max_tokens / response_format / chat_template_kwargs}，回包走
+ * {@code choices[0].message}；Ollama 那套 {@code options.num_ctx / format / think} 和
+ * {@code message.content} 它一个也不认（{@code format:"json"} 会被无视，
+ * {@code response_format.type:"json_object"} 直接 400，它只认 {@code json_schema} 或 {@code text}）。</p>
  *
  * <p><b>为什么单独一个类</b>：这里面<b>不碰任何 Minecraft 类</b>，所以可以拿一台普通 JVM
- * 加一个 gson.jar 直接对着真 Ollama 跑（见 {@code tools/ai_wire_test/OllamaWireTest.java}）——
+ * 加一个 gson.jar 直接对着真 LM Studio 跑（见 {@code tools/ai_wire_test/LmStudioWireTest.java}）——
  * 门禁里跑的是同一份字节码，不是「看起来一样」的另一份实现。</p>
  *
  * <p><b>设计底线</b>：模型说什么都只是「提议」。{@link Reply#action} 只可能是
@@ -22,7 +29,7 @@ import java.util.regex.Pattern;
  * item 必须是合法的命名空间 id，count 被夹到 1..64；任何不合规的字段一律降级清空，
  * 而不是把模型的原文直接交给执行层。</p>
  */
-public final class OllamaWire {
+public final class LmStudioWire {
 
     /** 她能被指派的工种（与 {@code CatGirlEntity.Job} 同步）。 */
     public static final List<String> JOBS = List.of("LUMBER", "MINE", "FIGHT", "FOLLOW");
@@ -33,7 +40,13 @@ public final class OllamaWire {
     /** 合法物品 id 形状：{@code namespace:path}。 */
     private static final Pattern ITEM_ID = Pattern.compile("^[a-z0-9_.-]+:[a-z0-9_./-]+$");
 
-    private OllamaWire() {
+    /** OpenAI 兼容的补全路径。 */
+    public static final String CHAT_PATH = "/chat/completions";
+
+    /** OpenAI 兼容口挂的前缀（LM Studio 默认就是这个）。 */
+    public static final String V1 = "/v1";
+
+    private LmStudioWire() {
     }
 
     /**
@@ -61,20 +74,105 @@ public final class OllamaWire {
     }
 
     /**
-     * 拼 {@code /api/chat} 的请求体。
+     * 端点 → 真正的补全 URL。三种写法都吃，省得玩家在配置里写错一个斜杠就以为坏了：
+     * <pre>
+     *   http://127.0.0.1:1234            → http://127.0.0.1:1234/v1/chat/completions
+     *   http://127.0.0.1:1234/v1         → http://127.0.0.1:1234/v1/chat/completions   （推荐的写法）
+     *   http://127.0.0.1:1234/v1/chat/completions → 原样
+     * </pre>
+     */
+    public static String chatUrl(String endpoint) {
+        String base = endpoint == null ? "" : endpoint.trim();
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        if (base.endsWith(CHAT_PATH)) {
+            return base;
+        }
+        return base.endsWith(V1) ? base + CHAT_PATH : base + V1 + CHAT_PATH;
+    }
+
+    /**
+     * 结构化输出契约：LM Studio 的 {@code response_format} <b>只认</b> {@code json_schema} 与
+     * {@code text}（照搬 Ollama 的 {@code "type":"json_object"} 会被 400 顶回来，实测过）。
      *
-     * @param fewshot 少样本示范，每个元素是 {@code {用户串, 助手串}}；1.5B 级模型没有它就只会复读玩家的话
+     * <p>把五个键连类型一起钉死，小模型就没法用「少写一个键」「count 写成文字」蒙混过关 ——
+     * 不合规的字段仍然是解析层兜着，这只是把出错的概率先压下去。</p>
+     */
+    public static JsonObject responseFormat() {
+        JsonObject props = new JsonObject();
+        props.add("reply", stringProp("给玩家看的中文一句话"));
+        props.add("action", enumProp(List.of("none", "say", "set_job", "craft")));
+        props.add("job", enumProp(List.of("", "LUMBER", "MINE", "FIGHT", "FOLLOW")));
+        props.add("item", stringProp("只能取「可做的东西列表」里的 id，没有就空串"));
+        JsonObject count = new JsonObject();
+        count.addProperty("type", "integer");
+        count.addProperty("minimum", 0);
+        count.addProperty("maximum", 64);
+        count.addProperty("description", "数量，不涉及就 0");
+        props.add("count", count);
+
+        JsonArray required = new JsonArray();
+        for (String key : new String[]{"reply", "action", "job", "item", "count"}) {
+            required.add(key);
+        }
+
+        JsonObject schema = new JsonObject();
+        schema.addProperty("type", "object");
+        schema.add("properties", props);
+        schema.add("required", required);
+        schema.addProperty("additionalProperties", false);
+
+        JsonObject named = new JsonObject();
+        named.addProperty("name", "cat_girl_reply");
+        named.addProperty("strict", true);
+        named.add("schema", schema);
+
+        JsonObject format = new JsonObject();
+        format.addProperty("type", "json_schema");
+        format.add("json_schema", named);
+        return format;
+    }
+
+    private static JsonObject stringProp(String description) {
+        JsonObject p = new JsonObject();
+        p.addProperty("type", "string");
+        p.addProperty("description", description);
+        return p;
+    }
+
+    private static JsonObject enumProp(List<String> values) {
+        JsonObject p = new JsonObject();
+        p.addProperty("type", "string");
+        JsonArray arr = new JsonArray();
+        for (String v : values) {
+            arr.add(v);
+        }
+        p.add("enum", arr);
+        return p;
+    }
+
+    /**
+     * 拼 {@code /v1/chat/completions} 的请求体。
+     *
+     * @param fewshot 少样本示范，每个元素是 {@code {用户串, 助手串}}；小模型没有它就只会复读玩家的话
      * @param history 最近几轮 {@code {用户串, 助手串}}，可为空
+     * @param contextLength KV 缓存长度；{@code <= 0} 表示不提，交给 LM Studio 加载时的设置
+     * @param think 是否允许她先想再说：默认 false（思考只会拖慢小模型并污染那行 JSON）
+     * @param jsonSchema 是否用结构化输出把回包钉成五键 JSON（服务端不认时由配置关掉）
      */
     public static String requestBody(String model, String system, List<String[]> fewshot,
                                      List<String[]> history, String user,
-                                     int numCtx, double temperature, int numPredict, boolean think) {
+                                     int contextLength, double temperature, int maxTokens,
+                                     boolean think, boolean jsonSchema) {
         JsonObject root = new JsonObject();
         root.addProperty("model", model);
         root.addProperty("stream", false);
-        root.addProperty("format", "json");
-        root.addProperty("think", think);
-        root.addProperty("keep_alive", "10m");
+        root.addProperty("temperature", temperature);
+        root.addProperty("max_tokens", maxTokens);
+        if (contextLength > 0) {
+            root.addProperty("context_length", contextLength);
+        }
 
         JsonArray messages = new JsonArray();
         messages.add(message("system", system));
@@ -89,11 +187,15 @@ public final class OllamaWire {
         messages.add(message("user", user));
         root.add("messages", messages);
 
-        JsonObject options = new JsonObject();
-        options.addProperty("temperature", temperature);
-        options.addProperty("num_ctx", numCtx);
-        options.addProperty("num_predict", numPredict);
-        root.add("options", options);
+        // 关思考：Qwen 系（含 Qwen3.5 蒸馏版）默认会先吐一大段思考。模板里没有这个变量时
+        // LM Studio 直接忽略（实测不报错），所以对不认它的模型也是安全的。
+        JsonObject template = new JsonObject();
+        template.addProperty("enable_thinking", think);
+        root.add("chat_template_kwargs", template);
+
+        if (jsonSchema) {
+            root.add("response_format", responseFormat());
+        }
         return root.toString();
     }
 
@@ -105,7 +207,7 @@ public final class OllamaWire {
     }
 
     /**
-     * 剥掉思考标签。qwen 系的量化模型即使 {@code think:false} 也会在正式答案前吐
+     * 剥掉思考标签。Qwen 系的量化模型即使被要求「只输出 JSON」，有时仍会在正式答案前吐
      * {@code ...}（有时还忘了闭合），不剥掉就会污染 JSON 解析。
      */
     public static String stripThink(String raw) {
@@ -132,7 +234,13 @@ public final class OllamaWire {
         return out.trim();
     }
 
-    /** 从模型的回包（HTTP 响应体）里抠出 {@code message.content}。 */
+    /**
+     * 从模型的回包（HTTP 响应体）里抠出正文。
+     *
+     * <p>主路是 OpenAI 形状的 {@code choices[0].message.content}；两条兜底是为了「端点被指到
+     * 别处」时不至于整轮白跑：思考型模型把话说在 {@code reasoning_content} 里（content 空），
+     * 以及补全式回包的 {@code choices[0].text}。</p>
+     */
     public static String contentOf(String httpBody) {
         if (httpBody == null || httpBody.isBlank()) {
             return "";
@@ -142,15 +250,42 @@ public final class OllamaWire {
             if (!root.isJsonObject()) {
                 return "";
             }
-            JsonElement message = root.getAsJsonObject().get("message");
-            if (message == null || !message.isJsonObject()) {
-                // 某些路径会把内容放在 response 字段（/api/generate 风格）
-                JsonElement response = root.getAsJsonObject().get("response");
-                return response == null || response.isJsonNull() ? "" : response.getAsString();
+            JsonObject body = root.getAsJsonObject();
+            JsonElement choices = body.get("choices");
+            if (choices != null && choices.isJsonArray() && !choices.getAsJsonArray().isEmpty()) {
+                JsonElement first = choices.getAsJsonArray().get(0);
+                if (first.isJsonObject()) {
+                    JsonObject choice = first.getAsJsonObject();
+                    JsonElement message = choice.get("message");
+                    if (message != null && message.isJsonObject()) {
+                        JsonObject msg = message.getAsJsonObject();
+                        String content = asText(msg.get("content"));
+                        if (!content.isBlank()) {
+                            return content;
+                        }
+                        return asText(msg.get("reasoning_content"));
+                    }
+                    return asText(choice.get("text"));
+                }
             }
-            JsonElement content = message.getAsJsonObject().get("content");
-            return content == null || content.isJsonNull() ? "" : content.getAsString();
+            // 兜底：老式 /api/chat 与 /api/generate 的形状
+            JsonElement message = body.get("message");
+            if (message != null && message.isJsonObject()) {
+                return asText(message.getAsJsonObject().get("content"));
+            }
+            return asText(body.get("response"));
         } catch (RuntimeException e) {
+            return "";
+        }
+    }
+
+    private static String asText(JsonElement e) {
+        if (e == null || e.isJsonNull()) {
+            return "";
+        }
+        try {
+            return e.getAsString();
+        } catch (RuntimeException ex) {
             return "";
         }
     }
@@ -193,11 +328,11 @@ public final class OllamaWire {
         if (say.isEmpty()) {
             say = optString(o, "say");
         }
-        String action = optString(o, "action").toLowerCase(java.util.Locale.ROOT);
+        String action = optString(o, "action").toLowerCase(Locale.ROOT);
         if (!ACTIONS.contains(action)) {
             action = say.isEmpty() ? "none" : "say"; // 不认识的动作 → 当聊天处理
         }
-        String job = optString(o, "job").toUpperCase(java.util.Locale.ROOT);
+        String job = optString(o, "job").toUpperCase(Locale.ROOT);
         if (!JOBS.contains(job)) {
             job = "";
         }

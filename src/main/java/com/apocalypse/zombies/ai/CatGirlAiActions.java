@@ -43,7 +43,7 @@ public final class CatGirlAiActions {
      *
      * @param candidates 这一轮喂给模型的候选 id —— 合成必须落在这个集合里
      */
-    public static void apply(CatGirlEntity cat, ServerPlayer player, OllamaWire.Reply reply,
+    public static void apply(CatGirlEntity cat, ServerPlayer player, LmStudioWire.Reply reply,
                              List<String> candidates) {
         if (player == null || cat == null) {
             return;

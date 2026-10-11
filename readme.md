@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.83` |
+| **当前版本** | `1.1.84` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.26） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -261,11 +261,11 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 | `hordes` | 尸潮波次规模、触发条件 |
 | `specials` | 特殊敌对生物：`elite_natural_spawn` / `elite_spawn_weight` / `elite_horde_from_wave` / `elite_horde_max_per_wave` |
 | `cat_girl` | 猫耳娘：`auto`（自主模式）、`mine_radius` / `mine_max_blocks`（一键挖掘的范围 / 上限）、`universal_tool`（全功能工具）、`mine_all` / `mine_protected`（挖什么 / 绝不挖什么）、`station_use` / `station_radius` / `station_self_craft`（工作方块） |
-| `ai` | 本机 Ollama 助理：`enabled` / `model` / `endpoint` / `timeout_ms` 等 |
+| `ai` | 本机 **LM Studio** 助理（1.1.84 起）：`enabled` / `model` / `endpoint`（默认 `http://127.0.0.1:1234/v1`）/ `timeout_ms` / `num_ctx` / `json_schema` |
 | `player_mine` | **玩家一键挖掘**（1.1.81 起）：`enabled`（默认开）、`targets`（连带哪些方块：0 只矿石 / 1 矿石+自然方块 / 2 任何可挖方块）、`radius` / `max_blocks`（范围 / 上限 64）、`vein_only`（只连带连通矿脉）、`require_correct_tool`（工具不对口不连带）、`consume_durability`（扣耐久）、`sneak_disables`（潜行只挖一格）、`to_inventory`（产物进背包）、`protected`（追加保护名单）、`highlight`（瞄准时把会连带的方块描边画出来，默认开）、`count`（瞄准时在准星下方显示「会连挖几格」，默认开） |
 
 > **图形界面**：`模组列表 → 选中 Apocalypse Zombies → 配置`（1.1.79 起真能用了）——
-> 列出**全部 169 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
+> 列出**全部 170 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
 > 也就是说：界面和手改是**同一份配置**，不存在两套。
 
 > `specials.elite_spawn_weight` 改完要**重进世界**才生效 —— biome modifier 在加载时烘焙。
@@ -273,6 +273,31 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 1.1.84 — 2026-10-11
+
+**她的脑子换成 LM Studio 了：本机 `1234/v1` 上那个 Qwen3.5-4B 蒸馏版（GGUF / Q4_K_S），不再走 Ollama。**
+
+- **接线层重写**：`ai/OllamaWire` → `ai/LmStudioWire`，请求改走 OpenAI 兼容的
+  `POST /v1/chat/completions`（Ollama 那套 `/api/chat` + `options.num_ctx` + `format:"json"` 它一个也不认）。
+  端点写法宽容：填主机、填 `/v1`、填整条 `/v1/chat/completions` 都能拼对。
+- **两个实测撞出来的坑**（都钉进门禁了，免得下次换模型再撞一遍）：
+  - `response_format` LM Studio **只认 `json_schema` / `text`** —— 照搬 Ollama 的
+    `{"type":"json_object"}` 会被 **HTTP 400** 顶回来（原话：`'response_format.type' must be
+    'json_schema' or 'text'`）。现在五个键连类型与取值范围一起钉死，小模型没法用
+    「少写一个键」「count 写成文字」蒙混。
+  - 回包可能把话放在 **`reasoning_content`** 里而 `content` 是空的（思考型模型），
+    只读 `message.content` 会白跑一轮 —— 现在按 content → reasoning_content → `choices[0].text` 依次兜底。
+- **不用先在 LM Studio 里手动加载模型**：它会按需把模型拉起来（首次多等几秒），所以
+  `ai.timeout_ms` 默认 20000 → **30000**。
+- **新增开关 `ai.json_schema`**（默认 true）：极少数版本 / 模型不收 json_schema 的那种情况，
+  关掉即退回「提示词约束 + 容错解析」，她照样说话，只是格式偶尔要返工。
+- **默认配置**：`ai.endpoint = http://127.0.0.1:1234/v1`、
+  `ai.model = qwen3.5-4b-claude-4.6-opus-reasoning-distilled`。
+- **门禁**：`tools/ai_wire_test/LmStudioWireTest.java` 拿**真 LM Studio** 跑 17 项
+  （白名单 + 各类坏回包降级 + 回包三种形状 + 端点拼接 + `response_format` 契约 + 真模型实跑）。
+- 不回归：`server.execute` 回主线程 / 连续失败 3 次熔断 5 分钟 / 每玩家最近 6 轮历史 /
+  动作只认 `none|say|set_job|craft` / 合成仍要过「配方表 + 她的白名单」两道 —— 一条没动。
 
 ### 1.1.83 — 2026-10-10
 
