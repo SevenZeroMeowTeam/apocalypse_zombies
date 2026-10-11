@@ -226,17 +226,17 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 // ---------------------------------------------------------------------------
-// 分发产物：TaCZ 不随本模组走
+// 分发产物：第三方内容不随本模组走
 //
-// 默认的 jar 是开发/自用包，里面含"临时借用"的 TaCZ 音效与转录动画，仅限本地使用 ——
-// TaCZ 不是本模组的依赖，也不随它分发。要发布时用下面两个任务：
-//   cleanJar     剥掉全部 TaCZ 派生内容的 jar（动画退回完全原创的手工版）
+// 默认的 jar 是开发/自用包。**1.1.93 起它里面只剩一项借用资产**：AWM 的转录动画 ——
+// 音效已在 1.1.93 全部换成项目自备的录音（见 registry/ModSounds 的类注释），
+// 所以 sounds/** 与 sounds.json 已从下面这份清单移出，纯净包从此也有声音。
+// 要发布时用下面两个任务：
+//   cleanJar     剥掉借用内容的 jar（动画退回完全原创的手工版）
 //   borrowedPack 把那部分内容装成本地资源包，自己机器上启用后恢复原样
-// 资源包是客户端覆盖：服务器只需装 cleanJar，装不装包只影响声音与动画观感。
+// 资源包是客户端覆盖：服务器只需装 cleanJar，装不装包只影响动画观感。
 // ---------------------------------------------------------------------------
 def borrowedEntries = [
-        'assets/apocalypse_zombies/sounds/**',
-        'assets/apocalypse_zombies/sounds.json',
         'assets/apocalypse_zombies/animations/awm.animation.json',
 ]
 
@@ -259,14 +259,17 @@ def cleanMeta = tasks.register('cleanMeta') {
 
 本项目（Apocalypse Zombies）自身代码采用 **GPL-3.0-or-later**，全文见同目录 `LICENSE`。
 
-**本分发包不含任何第三方（TaCZ / Timeless & Classics Guns: Zero）内容**：音效与转录动画
+**本分发包不含任何第三方（TaCZ / Timeless & Classics Guns: Zero）内容**：AWM 的转录动画
 已从分发版中剥离，动画使用的是本项目完全原创的手工版本。因此本包不受 TaCZ 资产
 CC BY-NC-ND 4.0 的非商业条款约束。
 
+音效是**本项目自备的录音**（`assets/apocalypse_zombies/sounds/guns/`，17 个文件），随本包分发 ——
+1.1.93 起枪械音效不再借用 TaCZ，所以纯净包也有枪声与背景音乐。
+
 本包以 **GeckoLib 4.8.4** 为硬依赖（MIT，随包不含），声明见 `META-INF/mods.toml` 的 `[[dependencies]]` 段。
 
-开发/自用包（不带 `-clean` 后缀）里确实含有临时借用的 TaCZ 音效与转录动画，
-那部分按 CC BY-NC-ND 4.0 处理、仅限本地使用。
+开发/自用包（不带 `-clean` 后缀）里含有临时借用的 TaCZ 转录动画，那部分按 CC BY-NC-ND 4.0
+处理、仅限本地使用。
 
 完整清单（依赖、构建环境、开源发布对照）见仓库根目录的 `NOTICE.md`。
 """, 'UTF-8')
@@ -303,19 +306,14 @@ tasks.register('cleanJar', Zip) {
 
 tasks.register('borrowedPack', Zip) {
     group = 'build'
-    description = '把借来的 TaCZ 音效 + 转录动画装成本地资源包（自用，勿分发）'
+    description = '把借来的 TaCZ 转录动画装成本地资源包（自用，勿分发）'
     archiveFileName = 'apocalypse_zombies-borrowed-assets.zip'
     destinationDirectory = layout.buildDirectory.dir('libs')
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
     from('art/awm/borrowed_pack/pack.mcmeta')
     from('art/awm/borrowed_pack/README.txt')
-    from('src/main/resources/assets/apocalypse_zombies/sounds') {
-        into 'assets/apocalypse_zombies/sounds'
-    }
-    from('src/main/resources/assets/apocalypse_zombies/sounds.json') {
-        into 'assets/apocalypse_zombies'
-    }
+    // 1.1.93 起音效不再借用，资源包只剩动画这一项 —— 之前它还要把整套 AWM 音效盖回去。
     from('art/awm/awm.animation.json') {
         rename { 'awm.animation.json' }
         into 'assets/apocalypse_zombies/animations'

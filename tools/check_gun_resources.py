@@ -123,10 +123,15 @@ def png_pixels(path: Path) -> tuple[int, int, bytes] | None:
 registry = read(JAVA / "registry/ModItems.java")
 # 刷怪蛋同样是 ITEMS.register(...) -> new ForgeSpawnEggItem(...)，但它们没有 GeoModel，
 # 不是本脚本的检查对象 —— 不过滤掉会稳定报 4 条假失败，把真问题淹没掉。
+#
+# 1.1.92 起还要排掉**原版物品类**：铜装备（SwordItem / PickaxeItem / HoeItem / ArmorItem）
+# 走的是原版那套模型（models/item/*.json + 普通 16×16 贴图），与 GeckoLib 的
+# geo/animation 毫无关系；不排掉就是 7 条假失败（每个类一条，ArmorItem 四条）。
+VANILLA_ITEM_CLASSES = {"ForgeSpawnEggItem", "SwordItem", "PickaxeItem", "HoeItem", "ArmorItem"}
 guns = [
     entry
     for entry in re.findall(r'ITEMS\.register\("([a-z0-9_]+)",\s*\(\)\s*->\s*new\s+(\w+Item)\(', registry)
-    if entry[1] != "ForgeSpawnEggItem"
+    if entry[1] not in VANILLA_ITEM_CLASSES
 ]
 check(bool(guns), "ModItems.java 里没解析到任何枪械注册")
 notes.append(f"注册的枪：{', '.join(f'{i}({c})' for i, c in guns)}")

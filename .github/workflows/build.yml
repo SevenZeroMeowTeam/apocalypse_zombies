@@ -93,7 +93,7 @@ jobs:
           set -e
           DEV=$(ls build/libs/apocalypse_zombies-*.jar | grep -v -- '-clean\.jar$' | head -1)
           CLEAN=$(ls build/libs/*-clean.jar | head -1)
-          NOTES=$(printf '最新构建（预览版），每次提交自动刷新。\n\n- 开发包：`%s`\n- 纯净包：`%s`\n- `mod_version`：`%s`　分支：`%s`　提交：`%s`\n\n> 开发包含临时借用的 TaCZ 音效与转录动画，**仅供本地预览/自用**；\n> 要发布请用 `v*` **正式版**里附的 -clean 包。\n' "$(basename "$DEV")" "$(basename "$CLEAN")" "$VERSION" "$BRANCH" "$GITHUB_SHA")
+          NOTES=$(printf '最新构建（预览版），每次提交自动刷新。\n\n- 开发包：`%s`\n- 纯净包：`%s`\n- `mod_version`：`%s`　分支：`%s`　提交：`%s`\n\n> 开发包含临时借用的 TaCZ **转录动画**，**仅供本地预览/自用**（枪械音效自 1.1.93 起是项目自备录音，纯净包也有声音）；\n> 要发布请用 `v*` **正式版**里附的 -clean 包。\n' "$(basename "$DEV")" "$(basename "$CLEAN")" "$VERSION" "$BRANCH" "$GITHUB_SHA")
           echo "preview: $DEV + $CLEAN"
           if gh release view preview >/dev/null 2>&1; then
             gh release upload preview "$DEV" "$CLEAN" --clobber

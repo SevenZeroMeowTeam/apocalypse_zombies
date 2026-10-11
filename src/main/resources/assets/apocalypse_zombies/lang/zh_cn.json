@@ -134,5 +134,12 @@
   "cat_girl.config.reset": "恢复默认",
   "cat_girl.config.reset_done": "全部配置已恢复默认并保存。",
   "cat_girl.config.saved": "已保存 %s 项改动 → config/apocalypse_zombies-common.toml",
-  "cat_girl.config.bad_number": "「%s」这一项要填数字。"
+  "cat_girl.config.bad_number": "「%s」这一项要填数字。",
+  "item.apocalypse_zombies.copper_sword": "铜剑",
+  "item.apocalypse_zombies.copper_pickaxe": "铜镐",
+  "item.apocalypse_zombies.copper_hoe": "铜锄",
+  "item.apocalypse_zombies.copper_helmet": "铜头盔",
+  "item.apocalypse_zombies.copper_chestplate": "铜胸甲",
+  "item.apocalypse_zombies.copper_leggings": "铜护腿",
+  "item.apocalypse_zombies.copper_boots": "铜靴"
 }

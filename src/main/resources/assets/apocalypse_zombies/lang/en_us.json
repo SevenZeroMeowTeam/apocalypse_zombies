@@ -134,5 +134,12 @@
   "cat_girl.config.reset": "Defaults",
   "cat_girl.config.reset_done": "Every value is back to its default and saved.",
   "cat_girl.config.saved": "Saved %s change(s) → config/apocalypse_zombies-common.toml",
-  "cat_girl.config.bad_number": "\"%s\" needs a number."
+  "cat_girl.config.bad_number": "\"%s\" needs a number.",
+  "item.apocalypse_zombies.copper_sword": "Copper Sword",
+  "item.apocalypse_zombies.copper_pickaxe": "Copper Pickaxe",
+  "item.apocalypse_zombies.copper_hoe": "Copper Hoe",
+  "item.apocalypse_zombies.copper_helmet": "Copper Helmet",
+  "item.apocalypse_zombies.copper_chestplate": "Copper Chestplate",
+  "item.apocalypse_zombies.copper_leggings": "Copper Leggings",
+  "item.apocalypse_zombies.copper_boots": "Copper Boots"
 }

@@ -52,12 +52,13 @@ public record GunProfile(
     public static final float MOB_DAMAGE_SCALE = 0.5F;
 
     /**
-     * 枪械声音只有一套（TaCZ 的 AWM 录音，四把枪共用），所以四把枪的枪声都指这里。
-     * 换弹声按机构挑：栓动听拉栓、加兰德听漏夹、弩听上弦。
+     * 枪声分两种口径（1.1.93 起）：狙击与半自动那几把共用 {@code AWM_SHOOT}（一支 .338 的录音），
+     * 十字弩用自己的 {@code CROSSBOW_SHOOT}（三支弦声随机）。换弹声一律按机构挑：
+     * 栓动听拉栓、加兰德听漏夹、弩听上弦。
      */
     public static final GunProfile CROSSBOW = new GunProfile(
             ModItems.CROSSBOW.get(), 6.0F, 32.0D, 3.0F, 45, 55, 3.0F,
-            "crossbow_bullet", ModSounds.AWM_SHOOT_3P, ModSounds.AWM_RECHAMBER_IN);
+            "crossbow_bullet", ModSounds.CROSSBOW_SHOOT, ModSounds.AWM_RECHAMBER_IN);
 
     public static final GunProfile MOSIN = new GunProfile(
             ModItems.MOSIN_NAGANT.get(), 8.5F, 40.0D, 3.5F, 40, 60, 3.5F,

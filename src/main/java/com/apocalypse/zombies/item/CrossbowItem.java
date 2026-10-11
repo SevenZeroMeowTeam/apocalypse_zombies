@@ -494,8 +494,8 @@ public class CrossbowItem extends Item implements GeoItem, GunItem {
 
     /** The report: close mix for the shooter, distant one for everyone in earshot. */
     private void playShot(ServerPlayer player, ServerLevel level) {
-        player.playNotifySound(ModSounds.AWM_SHOOT.get(), SoundSource.PLAYERS, 1.0F, 1.05F);
-        SoundEvent distant = ModSounds.AWM_SHOOT_3P.get();
+        player.playNotifySound(ModSounds.CROSSBOW_SHOOT.get(), SoundSource.PLAYERS, 1.0F, 1.05F);
+        SoundEvent distant = ModSounds.CROSSBOW_SHOOT.get();
         for (ServerPlayer other : level.players()) {
             if (other != player && other.distanceToSqr(player) < SHOT_HEARD_SQR) {
                 other.playNotifySound(distant, SoundSource.PLAYERS, 2.0F, 1.05F);

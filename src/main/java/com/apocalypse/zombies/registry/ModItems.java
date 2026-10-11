@@ -9,8 +9,12 @@ import com.apocalypse.zombies.item.Rsc1917Item;
 import com.apocalypse.zombies.item.Colt1878Item;
 import com.apocalypse.zombies.item.S686Item;
 import com.apocalypse.zombies.item.UziItem;
+import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.CreativeModeTabs;
+import net.minecraft.world.item.HoeItem;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.PickaxeItem;
+import net.minecraft.world.item.SwordItem;
 import net.minecraftforge.common.ForgeSpawnEggItem;
 import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -112,6 +116,53 @@ public final class ModItems {
     public static final RegistryObject<Item> LOVE_COIN =
             ITEMS.register("love_coin", () -> new Item(new Item.Properties().stacksTo(64)));
 
+    // ------------------------------------------------------------------ 铜装备
+
+    /**
+     * 铜剑：伤害与石剑**完全一致** —— 两者 Tier 的攻击加成都是 +1，剑自身 +3、基础 +1，
+     * 最终都是 5 点。耐久 200 比石剑的 131 高。
+     */
+    public static final RegistryObject<Item> COPPER_SWORD =
+            ITEMS.register("copper_sword",
+                    () -> new SwordItem(ModTiers.COPPER, 3, -2.4F, new Item.Properties()));
+
+    /** 铜镐：挖掘等级同石（挖得动铁矿石、挖不动钻石），效率 5.0 略高于石镐的 4.0。 */
+    public static final RegistryObject<Item> COPPER_PICKAXE =
+            ITEMS.register("copper_pickaxe",
+                    () -> new PickaxeItem(ModTiers.COPPER, 1, -2.8F, new Item.Properties()));
+
+    /** 铜锄：与石锄同一组手感参数（攻击修正 -1 / 攻速 -2.0）。 */
+    public static final RegistryObject<Item> COPPER_HOE =
+            ITEMS.register("copper_hoe",
+                    () -> new HoeItem(ModTiers.COPPER, -1, -2.0F, new Item.Properties()));
+
+    /**
+     * 铜甲四件：护甲值 2 / 4 / 3 / 1（合计 <b>10</b>）—— 皮革 7 → 高，铁 15 → 低。
+     *
+     * <p>单看头盔它与铁同为 2：原版护甲值是整数，皮革的 1 与铁的 2 之间没有第三个数，所以
+     * 「比皮革高、比铁低」这条落在整套<b>总和</b>上。耐久系数 11（皮革 5 / 铁 15）。
+     * 穿戴贴图名由 {@link ModArmorMaterials#getName()} 决定，与那两张 layer 贴图一一对应。</p>
+     */
+    public static final RegistryObject<Item> COPPER_HELMET =
+            ITEMS.register("copper_helmet",
+                    () -> new ArmorItem(ModArmorMaterials.COPPER, ArmorItem.Type.HELMET,
+                            new Item.Properties()));
+
+    public static final RegistryObject<Item> COPPER_CHESTPLATE =
+            ITEMS.register("copper_chestplate",
+                    () -> new ArmorItem(ModArmorMaterials.COPPER, ArmorItem.Type.CHESTPLATE,
+                            new Item.Properties()));
+
+    public static final RegistryObject<Item> COPPER_LEGGINGS =
+            ITEMS.register("copper_leggings",
+                    () -> new ArmorItem(ModArmorMaterials.COPPER, ArmorItem.Type.LEGGINGS,
+                            new Item.Properties()));
+
+    public static final RegistryObject<Item> COPPER_BOOTS =
+            ITEMS.register("copper_boots",
+                    () -> new ArmorItem(ModArmorMaterials.COPPER, ArmorItem.Type.BOOTS,
+                            new Item.Properties()));
+
     private ModItems() {
     }
 
@@ -131,6 +182,16 @@ public final class ModItems {
             event.accept(UZI);
             event.accept(S686);
             event.accept(COLT_1878);
+            // 铜装备：剑与四件甲归战斗页，与它们要替代的石/铁装备同页
+            event.accept(COPPER_SWORD);
+            event.accept(COPPER_HELMET);
+            event.accept(COPPER_CHESTPLATE);
+            event.accept(COPPER_LEGGINGS);
+            event.accept(COPPER_BOOTS);
+        }
+        if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
+            event.accept(COPPER_PICKAXE);
+            event.accept(COPPER_HOE);
         }
         if (event.getTabKey() == CreativeModeTabs.SPAWN_EGGS) {
             event.accept(SCREAMER_SPAWN_EGG);
