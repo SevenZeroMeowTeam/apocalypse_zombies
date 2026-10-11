@@ -12,7 +12,7 @@
 | 运行器 | `tools/uzi_bb_run.py`（剥注释后送 `risky_eval`，顺手落贴图 PNG 并导出 geo） |
 | 视图工具 | `tools/bb_shot.py`（MCP 视图抓图）、`tools/uzi_anim_appshot.py`（整窗截图，**带实时骨骼变形**） |
 | 门禁 | `tools/check_uzi_art.py` PASS、`tools/check_uzi_anim.py` PASS；全仓库 **13/13** 个 `check_*.py` 全部 exit 0 |
-| Java 同步 | **未做** —— `UziItem` / `GeoModel` / `ANIM_*` 常量尚未落地，动画只是资源侧就位 |
+| Java 同步 | **已做**（本条曾长期停在"未做"，2026-10-11 重核更正）—— `UziItem` / `UziGeoModel` / `ANIM_*` 常量都已落地：八个 clip 里 `static_idle` / `draw` / `shoot` / `bolt` / `reload_*` 都在用。**1.1.93** 起枪声换成项目自备的 `uzi_shoot`（四支 AK 录音随机挑，不再共用 AWM） |
 
 ### 动画清单
 

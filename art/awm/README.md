@@ -16,7 +16,7 @@
 | `tools/awm_bb_gen.js` | 几何 + 贴图生成器（在 Blockbench 内经 MCP `risky_eval` 执行） |
 | `tools/awm_bb_anim.js` | 动画生成器（同上） |
 | `tools/awm_anim_export.py` | 关键帧 dump → GeckoLib animation.json |
-| `art/awm/sounds/*.ogg` | 音效归档（22 个，TaCZ 原文件逐字节副本，见「来源与许可」） |
+| `art/awm/sounds/*.ogg` | 音效**归档**（22 个，TaCZ 原文件逐字节副本，见「来源与许可」）。⚠ **1.1.93 起模组已不再使用它们**（换成项目自备录音 `sounds/guns/`），但作为历史留档仍在仓库中 —— 也就是说这些 NC 资产**仍在公开仓库里**，与转录动画属于同一类待处理项 |
 
 ## 规范对齐（`美术规范.md`）
 
@@ -172,6 +172,15 @@ src/main/resources/assets/apocalypse_zombies/
 
 ## 待办
 
+> **2026-10-11 重核（截至 1.1.96）** —— 下面几条多是早期写的，逐条核过一遍，别照着旧结论干活：
+> - 第 1 条（`WeaponMount` 常量类）**仍未做**：全仓库没有这个类，`WeaponMount.` 一处引用都没有。
+> - 第 2 条（射击系统）**已完成**，原文已自行标注。
+> - 第 6 条里那 5 段 clip（`draw` / `put_away` / `inspect` / `inspect_empty` / `static_bolt_caught`）
+>   **仍未接线**：`AWMItem` 里没有任何 `ANIM_DRAW` / `ANIM_INSPECT` 常量。对比之下 Uzi / S686 /
+>   莫辛 / 加兰德 / 十字弩 / 柯尔特都已接上 `draw`（莫辛与十字弩还接了 `inspect`）。
+> - 第 7 条（持枪程序化微动）**仍未做**；第 8 条（`美术规范.md` 手性那行）也还在。
+> - 另：**1.1.93 已把 22 个借用的 TaCZ 音效全部换掉**（见上文署名表），本仓只剩转录动画一项借用内容。
+
 1. `WeaponMount` 常量类，与几何 pivot 一一对应（`美术规范.md` 要求同步）：
 
    | 常量 | 值（geo.json 中为 X 取反后的值） |
@@ -230,7 +239,7 @@ TaCZ 的**代码**是 GPL-3.0，**资产**另有声明 —— 依据是其 mod j
 `README.txt` 只讲配置），别去那儿找。
 
 **TaCZ 不是本模组的依赖，也不随本模组分发。** 它只是开发期的参照：持枪 / 换弹 / 拉栓的姿态参考
-其 `ai_awp`，音效是临时借用的原样副本。本项目自身代码是 **GPL-3.0-or-later**（仓库根 `LICENSE`），
+其 `ai_awp`（**音效已不再是借用**：1.1.93 起整套换成项目自备录音，见上文署名表）。本项目自身代码是 **GPL-3.0-or-later**（仓库根 `LICENSE`），
 借用内容只在**开发自用包**里，分发用的 `-clean.jar` 一点没有 —— 完整说明见仓库根 **`NOTICE.md`**。
 
 三个产物（`./gradlew clean build cleanJar borrowedPack`）：
@@ -244,7 +253,7 @@ TaCZ 的**代码**是 GPL-3.0，**资产**另有声明 —— 依据是其 mod j
 | 内容 | 来源 | 许可 | 我们的处置 |
 |---|---|---|---|
 | 动画数据（角度、位移、时间轴、`sound_effects`） | TaCZ `assets/tacz/animations/ai_awp.animation.json` 逐键转录 | CC BY-NC-ND 4.0 | **派生作品** —— 只留在自用包里，不进分发产物 |
-| 22 个 `.ogg` 音效 | 同枪包 `tacz_sounds/ai_awp/` | CC BY-NC-ND 4.0 | **未修改副本**（md5 与原件逐一相同），同样只留在自用包 |
+| ~~22 个 `.ogg` 音效~~ | ~~同枪包 `tacz_sounds/ai_awp/`~~ | — | **1.1.93 起已全部替换**：枪械音效换成项目自备的 `assets/apocalypse_zombies/sounds/guns/`（17 个），TaCZ 那 22 个副本已从仓库删除。因此本仓现在**只剩转录动画一项**借用内容，见 `NOTICE.md` |
 | 几何、贴图、UV 图集、蒙皮划分 | 本项目自己生成 | 本项目自己的许可 | — |
 | 手感数值（`ammo_amount 5`、`aim_time 0.25`、`zoom_model_fov 35`、`head_shot_multiplier 2`、`pierce 4`、分档距离 80/160） | 枪包数据 + 作者自己的 `hexalunar_gun_pack` 的 `awp_data.json` | 数值本身不受版权保护 | — |
 

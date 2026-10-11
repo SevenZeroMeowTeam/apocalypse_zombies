@@ -223,7 +223,7 @@ v2 的几何是**估的**，实测后误差很大。v3 全部坐标来自 `ref_m
 | 名称 | 时长 | 循环 | 说明 |
 |---|---|---|---|
 | `static_idle` | 2.0 s | loop | 持枪待机 |
-| `draw` | 1.0 s | once | 掏枪（尚未接线） |
+| `draw` | 1.0 s | once | 掏枪（**已接线**：`M1GarandItem.ANIM_DRAW`，2026-10-11 重核更正） |
 | `shoot` | 0.6 s | once | 后坐 + **枪机自循环**：真加兰德半自动，导气杆随每发自己前后走一遍（**全行程 1.36u**）再自行回位 |
 | `shoot_last` | 1.2 s | once | **末发**（v7 新增）：同一套后坐/机体/弹壳曲线，但导气杆退到底即被**挂机爪咬住、整段不回位**，空漏夹在**这一拍当场**被抛夹弹簧顶出井口（那声「叮」）—— 真机 FM 23-5 的 "the empty clip is automatically ejected and the bolt remains to the rear" |
 | `bolt` | 1.1 s | once | 手动拉导气杆（纯平移，**全行程 1.36u**） |
@@ -420,7 +420,8 @@ left thumb"），右手压夹后同样甩开。门禁把这两条时刻对齐关
    （画面右缘 = +1.78、下缘 = −1.00）；当前值让右手与换弹动作刚好在画面边缘露出来。
    别处不要再加缩放（`美术规范.md` §5：动骨骼，不动整模）。
 3. 加兰德音色（见「声音」）。
-4. `draw` / `put_away` / `inspect` 未做（AWM 有十段，M1 目前**八段**：v6 加 `single_load`、v7 加 `shoot_last`）；
+4. ~~`draw` / `put_away` / `inspect` 未做~~ —— **2026-10-11 重核**：其中 `draw` **已接线**
+   （`M1GarandItem.ANIM_DRAW`）；`put_away` / `inspect` 仍未做（AWM 有十段，M1 目前**八段**：v6 加 `single_load`、v7 加 `shoot_last`）；
    `static_idle` 是静止的，持枪摆动同样缺一套程序化微动（同 AWM 待办 7）。
 5. `美术规范.md` 手性那行待修订（同 AWM 待办 8）。
 
@@ -430,7 +431,7 @@ left thumb"），右手压夹后同样甩开。门禁把这两条时刻对齐关
 |---|---|---|---|
 | 几何、贴图、UV 图集、蒙皮划分 | 本项目自己生成（`tools/m1_garand_bb_gen.js`） | 本项目自己的许可 | 可进分发产物 |
 | 七段动画数据 | 本项目自己编（按真机机构，动作集取名沿用 TaCZ 惯例） | 本项目自己的许可 | **可进分发产物**（与 AWM 的 ai_awp 转录不同） |
-| `M1GarandItem` 触发的音效 | TaCZ 枪包 `tacz_sounds/ai_awp/` 原样副本 | CC BY-NC-ND 4.0 | **未修改副本**，只留在开发自用包，不进 `-clean.jar` |
+| ~~`M1GarandItem` 触发的音效~~ | ~~TaCZ 枪包 `tacz_sounds/ai_awp/` 原样副本~~ | — | **1.1.93 起已全部替换**：枪械音效换成项目自备的 `assets/apocalypse_zombies/sounds/guns/`（17 个），TaCZ 那 22 个副本已从仓库删除。**所以 `-clean.jar` 现在也有声音了**（此前为了剥掉它们，把 `sounds/**` 整个排除了）；本仓只剩转录动画一项借用内容 |
 | 手感/弹道数值（8 发、aim 0.2 s、FOV 50、伤害 15/13/10、穿透 2） | 本项目自定 + 参考枪械常识 | 数值本身不受版权保护 | — |
 
 **TaCZ 不是本模组的依赖，也不随本模组分发**：它只是开发期参照与临时借音。
