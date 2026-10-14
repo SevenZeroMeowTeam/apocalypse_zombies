@@ -165,6 +165,30 @@ public final class LmStudioWire {
                                      List<String[]> history, String user,
                                      int contextLength, double temperature, int maxTokens,
                                      boolean think, boolean jsonSchema) {
+        return requestBody(model, system, fewshot, history, user, contextLength, temperature,
+                maxTokens, think, jsonSchema, false);
+    }
+
+    /**
+     * 同上，多一个「把答案的头一个字先写好」的开关。
+     *
+     * <p><b>{@code prefillJson} 为什么是这版的关键</b>：思考型模型（DeepSeek-R1 蒸馏那类）
+     * 的 {@code enable_thinking} 是<b>模板里写死</b>的 —— 请求里那个参数它当没看见。实测
+     * {@code DeepSeek-R1-Distill-Qwen-1.5B}：{@code max_tokens=300} 时思考能吃满 300 个 token，
+     * {@code content} 交回空串、正文全在 {@code reasoning_content} 里，于是整轮白跑。
+     * 在 messages 末尾追加一条内容就是一个 <code>{</code> 的 assistant 消息后，服务端把它当
+     * <b>已经开好的头</b>接着往下写，模型没有"先想一段"的机会：同一句话从「299 token / 14 秒 /
+     * 空答案」变成「36 token / 1.6 秒 / 合法 JSON」（2026-10-13 在 llama.cpp b11572 +
+     * 该模型上实测）。</p>
+     *
+     * <p>代价是有的：不是所有服务端都收「以 assistant 收尾」的请求（LM Studio 与 llama.cpp
+     * 收，个别实现回 400）。所以调用方必须能在 4xx 时退回去掉这一条的版本重来一次 ——
+     * 见 {@code LocalAiClient}。</p>
+     */
+    public static String requestBody(String model, String system, List<String[]> fewshot,
+                                     List<String[]> history, String user,
+                                     int contextLength, double temperature, int maxTokens,
+                                     boolean think, boolean jsonSchema, boolean prefillJson) {
         JsonObject root = new JsonObject();
         root.addProperty("model", model);
         root.addProperty("stream", false);
@@ -185,6 +209,10 @@ public final class LmStudioWire {
             messages.add(message("assistant", pair[1]));
         }
         messages.add(message("user", user));
+        if (prefillJson) {
+            // 「答案的第一个字」替她写好：思考型模型被这一段顶住，没有机会先吐思考。
+            messages.add(message("assistant", "{"));
+        }
         root.add("messages", messages);
 
         // 关思考：Qwen 系（含 Qwen3.5 蒸馏版）默认会先吐一大段思考。模板里没有这个变量时
@@ -235,20 +263,27 @@ public final class LmStudioWire {
     }
 
     /**
-     * 从模型的回包（HTTP 响应体）里抠出正文。
-     *
-     * <p>主路是 OpenAI 形状的 {@code choices[0].message.content}；两条兜底是为了「端点被指到
-     * 别处」时不至于整轮白跑：思考型模型把话说在 {@code reasoning_content} 里（content 空），
-     * 以及补全式回包的 {@code choices[0].text}。</p>
+     * 回包里那三类「正文」的原文 —— 分开拿着，因为<b>它们不是一回事</b>：
+     * {@code content} 是答案，{@code reasoning_content} 是思考。另外记一下
+     * {@code finish_reason} 是不是 {@code length}（被 {@code max_tokens} 截断）。
      */
-    public static String contentOf(String httpBody) {
+    private record Body(String content, String reasoning, String text, boolean truncated) {
+
+        boolean allBlank() {
+            return this.content.isBlank() && this.reasoning.isBlank() && this.text.isBlank();
+        }
+    }
+
+    /** 按 OpenAI 形状拆回包；拆不动就回一份全空的（解析层照旧降级，不抛异常）。 */
+    private static Body readBody(String httpBody) {
+        Body empty = new Body("", "", "", false);
         if (httpBody == null || httpBody.isBlank()) {
-            return "";
+            return empty;
         }
         try {
             JsonElement root = JsonParser.parseString(httpBody);
             if (!root.isJsonObject()) {
-                return "";
+                return empty;
             }
             JsonObject body = root.getAsJsonObject();
             JsonElement choices = body.get("choices");
@@ -256,27 +291,41 @@ public final class LmStudioWire {
                 JsonElement first = choices.getAsJsonArray().get(0);
                 if (first.isJsonObject()) {
                     JsonObject choice = first.getAsJsonObject();
+                    boolean truncated = "length".equalsIgnoreCase(asText(choice.get("finish_reason")));
                     JsonElement message = choice.get("message");
                     if (message != null && message.isJsonObject()) {
                         JsonObject msg = message.getAsJsonObject();
-                        String content = asText(msg.get("content"));
-                        if (!content.isBlank()) {
-                            return content;
-                        }
-                        return asText(msg.get("reasoning_content"));
+                        return new Body(asText(msg.get("content")), asText(msg.get("reasoning_content")),
+                                asText(choice.get("text")), truncated);
                     }
-                    return asText(choice.get("text"));
+                    return new Body("", "", asText(choice.get("text")), truncated);
                 }
             }
             // 兜底：老式 /api/chat 与 /api/generate 的形状
             JsonElement message = body.get("message");
             if (message != null && message.isJsonObject()) {
-                return asText(message.getAsJsonObject().get("content"));
+                return new Body(asText(message.getAsJsonObject().get("content")), "", "", false);
             }
-            return asText(body.get("response"));
+            return new Body(asText(body.get("response")), "", "", false);
         } catch (RuntimeException e) {
-            return "";
+            return empty;
         }
+    }
+
+    /**
+     * 从模型的回包（HTTP 响应体）里抠出正文 —— <b>只用来给人看/给日志看</b>，
+     * 解析走 {@link #parse(String)}（那边对「思考」有专门的判定）。
+     *
+     * <p>主路是 OpenAI 形状的 {@code choices[0].message.content}；两条兜底是为了「端点被指到
+     * 别处」时不至于整轮白跑：思考型模型把话说在 {@code reasoning_content} 里（content 空），
+     * 以及补全式回包的 {@code choices[0].text}。</p>
+     */
+    public static String contentOf(String httpBody) {
+        Body body = readBody(httpBody);
+        if (!body.content().isBlank()) {
+            return body.content();
+        }
+        return body.reasoning().isBlank() ? body.text() : body.reasoning();
     }
 
     private static String asText(JsonElement e) {
@@ -290,38 +339,105 @@ public final class LmStudioWire {
         }
     }
 
-    /** 取最外层的第一个 {@code {} 块（模型常在 JSON 前后带注释）。 */
+    /**
+     * 取文本里第一个 {@code {} 块。
+     *
+     * <p><b>为什么不是「第一个 { 到最后那个 }」</b>：模型常在 JSON 前后带注释，而思考型模型的
+     * 思考里往往还草拟过一两个半截的 JSON —— 取最外层会把两段拼成一段必然解析失败的怪东西。
+     * 现在按<b>括号配平</b>切（字符串里的花括号不算），再到末尾那条兜底：括号压根没配平
+     * （被 {@code max_tokens} 截断），就把从 {@code {} 起剩下的原文交上去，让解析层判死。</p>
+     */
     public static String extractJson(String text) {
         String s = stripThink(text);
         int start = s.indexOf('{');
-        int end = s.lastIndexOf('}');
-        if (start < 0 || end <= start) {
+        if (start < 0) {
             return "";
         }
-        return s.substring(start, end + 1);
+        int end = matchBrace(s, start);
+        return end < 0 ? s.substring(start) : s.substring(start, end + 1);
+    }
+
+    /** 从 {@code start}（必须是 <code>{</code>）起找配对的 <code>}</code>；找不到返回 -1。 */
+    private static int matchBrace(String s, int start) {
+        int depth = 0;
+        boolean inString = false;
+        boolean escaped = false;
+        for (int i = start; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (c == '\\') {
+                    escaped = true;
+                } else if (c == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+            if (c == '"') {
+                inString = true;
+            } else if (c == '{') {
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * 文本 → <b>第一个真能解析成对象的</b> JSON；挖不出来返回 {@code null}。
+     *
+     * <p>逐个 {@code {} 起点试：思考里的花括号、半截草稿都会被跳过，直到遇见那个整段合法的。</p>
+     */
+    private static JsonObject findJsonObject(String text) {
+        String s = stripThink(text);
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) != '{') {
+                continue;
+            }
+            int end = matchBrace(s, i);
+            String chunk = end < 0 ? s.substring(i) : s.substring(i, end + 1);
+            try {
+                JsonElement el = JsonParser.parseString(chunk);
+                if (el.isJsonObject()) {
+                    return el.getAsJsonObject();
+                }
+            } catch (RuntimeException ignored) {
+                // 这一段不是 JSON（思考里的花括号节奏），接着往下找
+            }
+            if (end < 0) {
+                break; // 后面已经没有配平的括号了
+            }
+            i = end;
+        }
+        return null;
     }
 
     /**
      * 把模型的回包解析成受约束的 {@link Reply}。<b>任何一步不合规都降级</b>，不抛异常。
+     *
+     * <p><b>这版最要紧的一条纪律</b>：只认<b>真答案</b>。{@code content} 是答案，
+     * {@code reasoning_content} 是思考 —— 思考里恰好草拟过一整段合法 JSON 时可以拿来救命
+     * （有些实现把正文塞在 reasoning 里），但<b>思考本身绝不能当回话</b>。旧版是
+     * 「content 空就直接把 reasoning_content 当正文」，于是思考型模型（DeepSeek-R1 蒸馏那类，
+     * 它不认 {@code enable_thinking}）在 {@code max_tokens} 被思考吃满时，屏幕上就只剩一句
+     * 玩家看不懂的「……我又想不明白了（没有 JSON）」。</p>
      */
     public static Reply parse(String httpBody) {
-        String content = contentOf(httpBody);
-        if (content.isBlank()) {
-            return degraded("空回包");
+        Body body = readBody(httpBody);
+        JsonObject o = findJsonObject(body.content());
+        if (o == null) {
+            o = findJsonObject(body.reasoning()); // 救命：思考里草拟过完整 JSON
         }
-        String json = extractJson(content);
-        if (json.isEmpty()) {
-            return degraded("没有 JSON");
+        if (o == null) {
+            o = findJsonObject(body.text());
         }
-        JsonObject o;
-        try {
-            JsonElement el = JsonParser.parseString(json);
-            if (!el.isJsonObject()) {
-                return degraded("回包不是对象");
-            }
-            o = el.getAsJsonObject();
-        } catch (RuntimeException e) {
-            return degraded("JSON 解析失败");
+        if (o == null) {
+            return degraded(noJsonReason(body));
         }
 
         String say = optString(o, "reply");
@@ -358,6 +474,26 @@ public final class LmStudioWire {
             return degraded("回包里什么都没有");
         }
         return new Reply(say, action, job, item, count, "");
+    }
+
+    /**
+     * 挖不出 JSON 时，尽量说清「是哪一种没有」—— 玩家看得懂才有得改，
+     * 而不是甩一句「没有 JSON」把人晾在那儿（2026-10-13 那张截图上刷屏的就是它）。
+     */
+    private static String noJsonReason(Body body) {
+        if (body.allBlank()) {
+            return "空回包（服务端一个字都没回）";
+        }
+        if (body.content().isBlank() && !body.reasoning().isBlank()) {
+            return body.truncated()
+                    ? "她的思考把 max_tokens 用光了，答案还没开始写就被截断 —— 把 ai.max_tokens 调大，"
+                            + "或换一个不吐思考的模型"
+                    : "她只顾着想，没给出 JSON 答案 —— 把 ai.max_tokens 调大试试";
+        }
+        if (body.truncated()) {
+            return "回包被 max_tokens 截断了，JSON 没写完 —— 把 ai.max_tokens 调大";
+        }
+        return "没有 JSON";
     }
 
     private static String optString(JsonObject o, String key) {

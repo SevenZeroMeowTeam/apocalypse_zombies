@@ -109,6 +109,9 @@ public final class CatGirlAiPrompt {
         Set<String> out = new LinkedHashSet<>();
         String lower = text == null ? "" : text.toLowerCase(Locale.ROOT);
         if (level != null) {
+            // 配方表是懒加载的（以前只有 /apocalypse catgirl recipes 那条命令会喂它）：
+            // 一进游戏就跟她说话时表是空的，候选恒空 → 她只会回「列表为空，无法执行任何任务」。
+            CatGirlRecipeTable.ensureLoaded(level.getServer());
             CatGirlCrafting.ensureGraph(level);
         }
 
@@ -139,14 +142,16 @@ public final class CatGirlAiPrompt {
                     }
                 }
             }
-            if (out.isEmpty()) {
-                for (String id : FALLBACK) {
-                    if (out.size() >= MAX_CANDIDATES) {
-                        break;
-                    }
-                    if (makeable(id)) {
-                        out.add(id);
-                    }
+        }
+        if (out.isEmpty()) {
+            // 兜底清单**不依赖配方表**：表没载入（或玩家的关键词一个都没命中）时，
+            // 候选也不能是空的 —— 空了小模型只会回一句「列表为空，无法执行任何任务」。
+            for (String id : FALLBACK) {
+                if (out.size() >= MAX_CANDIDATES) {
+                    break;
+                }
+                if (makeable(id)) {
+                    out.add(id);
                 }
             }
         }

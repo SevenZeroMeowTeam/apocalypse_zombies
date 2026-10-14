@@ -2,6 +2,7 @@ package com.apocalypse.zombies.ai;
 
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.entity.CatGirlEntity;
+import com.apocalypse.zombies.entity.CatGirlRecipeTable;
 import com.mojang.logging.LogUtils;
 
 import net.minecraft.ChatFormatting;
@@ -146,16 +147,25 @@ public final class LocalAiClient {
         }
 
         String said = text.length() > MAX_INPUT ? text.substring(0, MAX_INPUT) : text;
+        // 候选表要在这里先喂饱：以前只有 /apocalypse catgirl recipes 那条命令会载入它，
+        // 一进游戏就跟她说话时表是空的 → 候选恒空 → 她只会回「列表为空，无法执行任何任务」。
+        CatGirlRecipeTable.ensureLoaded(server);
         List<String> candidates = CatGirlAiPrompt.candidates(said,
                 cat.level() instanceof ServerLevel level ? level : null);
         String userTurn = CatGirlAiPrompt.userTurn(cat, player, said, candidates);
         List<String[]> history = new ArrayList<>(HISTORY.getOrDefault(player.getUUID(), new ArrayDeque<>()));
 
-        String body = LmStudioWire.requestBody(
-                Config.CAT_GIRL_AI_MODEL.get(), CatGirlAiPrompt.SYSTEM, CatGirlAiPrompt.FEWSHOT,
-                history, userTurn,
-                Config.CAT_GIRL_AI_NUM_CTX.get(), 0.2D, 300, false,
-                Config.CAT_GIRL_AI_JSON_SCHEMA.get());
+        String model = Config.CAT_GIRL_AI_MODEL.get();
+        int maxTokens = Config.CAT_GIRL_AI_MAX_TOKENS.get();
+        boolean jsonSchema = Config.CAT_GIRL_AI_JSON_SCHEMA.get();
+        boolean prefill = Config.CAT_GIRL_AI_PREFILL.get();
+        // 两条请求体：带 prefill 的（主路）与不带的（服务端不收 prefill 时的退路）。
+        String withPrefill = LmStudioWire.requestBody(model, CatGirlAiPrompt.SYSTEM, CatGirlAiPrompt.FEWSHOT,
+                history, userTurn, Config.CAT_GIRL_AI_NUM_CTX.get(), 0.2D, maxTokens, false,
+                jsonSchema, true);
+        String withoutPrefill = LmStudioWire.requestBody(model, CatGirlAiPrompt.SYSTEM, CatGirlAiPrompt.FEWSHOT,
+                history, userTurn, Config.CAT_GIRL_AI_NUM_CTX.get(), 0.2D, maxTokens, false,
+                jsonSchema, false);
 
         String endpoint = Config.CAT_GIRL_AI_ENDPOINT.get();
         String url = LmStudioWire.chatUrl(endpoint);
@@ -166,6 +176,22 @@ public final class LocalAiClient {
         player.sendSystemMessage(Component.literal("[猫耳娘] ").withStyle(ChatFormatting.LIGHT_PURPLE)
                 .append(Component.literal("（她在想……）").withStyle(ChatFormatting.DARK_GRAY)));
 
+        dispatch(server, playerId, catId, url, timeoutMs,
+                prefill ? withPrefill : withoutPrefill,
+                prefill ? withoutPrefill : null,
+                prefill, candidates, said);
+    }
+
+    /**
+     * 发一轮（可能两轮）请求。<b>必须在主线程调用</b>（读的是实体/背包的实时状态）。
+     *
+     * @param body        这一轮真正发出去的请求体
+     * @param prefillFallback prefill 被服务端顶回来时改用的请求体；{@code null} 表示不再重试
+     * @param prefill     当前这轮用的是不是「带答案前缀」的请求体
+     */
+    private static void dispatch(MinecraftServer server, UUID playerId, UUID catId, String url,
+                                 int timeoutMs, String body, String prefillFallback, boolean prefill,
+                                 List<String> candidates, String said) {
         HttpRequest request;
         try {
             request = HttpRequest.newBuilder(URI.create(url))
@@ -175,13 +201,23 @@ public final class LocalAiClient {
                     .build();
         } catch (RuntimeException e) {
             IN_FLIGHT.remove(playerId);
-            fail(server, playerId, "端点地址不对：" + endpoint);
+            fail(server, playerId, "端点地址不对：" + url);
             return;
         }
 
         CompletableFuture<HttpResponse<String>> future =
                 http().sendAsync(request, HttpResponse.BodyHandlers.ofString());
         future.whenComplete((response, error) -> server.execute(() -> {
+            // 服务端不收「以助手开头收尾」的请求（LM Studio / llama.cpp 收，个别实现回 400）：
+            // 去掉答案前缀重来一轮，别让玩家为服务端的口味买单。
+            if (error == null && prefill && prefillFallback != null
+                    && response.statusCode() >= 400 && response.statusCode() < 500) {
+                LOGGER.info("cat_girl AI：服务端不收 prefill（HTTP {}），去掉答案前缀重来一轮",
+                        response.statusCode());
+                dispatch(server, playerId, catId, url, timeoutMs, prefillFallback, null, false,
+                        candidates, said);
+                return;
+            }
             IN_FLIGHT.remove(playerId);
             ServerPlayer p = server.getPlayerList().getPlayer(playerId);
             if (p == null) {
@@ -213,6 +249,7 @@ public final class LocalAiClient {
             CatGirlAiActions.apply(c, p, reply, candidates);
         }));
     }
+
 
     /** 她可能已经换了世界/被卸载；按 uuid 在当前世界找回来。 */
     private static CatGirlEntity resolve(MinecraftServer server, UUID catId) {

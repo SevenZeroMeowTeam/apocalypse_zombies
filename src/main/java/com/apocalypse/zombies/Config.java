@@ -390,6 +390,10 @@ public final class Config {
     public static final ForgeConfigSpec.IntValue CAT_GIRL_AI_NUM_CTX;
     /** 结构化输出：让服务端用 json_schema 把回包钉成五键 JSON。 */
     public static final ForgeConfigSpec.BooleanValue CAT_GIRL_AI_JSON_SCHEMA;
+    /** 一轮最多让她写多少 token（含思考过程）。 */
+    public static final ForgeConfigSpec.IntValue CAT_GIRL_AI_MAX_TOKENS;
+    /** 先替她写好答案开头的「{」，逼思考型模型直接落笔。 */
+    public static final ForgeConfigSpec.BooleanValue CAT_GIRL_AI_PREFILL;
     /** 破坏一根原木的基础耗时（tick），拿着斧头打折。 */
     public static final ForgeConfigSpec.IntValue CAT_GIRL_CHOP_TICKS;
     /** 破坏一块矿石的基础耗时（tick），拿着镐打折。 */
@@ -919,14 +923,25 @@ public final class Config {
                         "默认是 Qwen3.5-4B-Claude-4.6-Opus-Reasoning-Distilled（GGUF，Q4_K_S）。",
                         "不用先在 LM Studio 里手动加载：它会按需把模型拉起来（首次多等几秒）。")
                 .define("model", "qwen3.5-4b-claude-4.6-opus-reasoning-distilled");
-        CAT_GIRL_AI_TIMEOUT_MS = b.comment("一轮最多等多久（毫秒）。4B 模型冷启动那一次可能要好几秒；等太久说明机器忙。")
-                .defineInRange("timeout_ms", 30000, 1000, 120000);
+        CAT_GIRL_AI_TIMEOUT_MS = b.comment("一轮最多等多久（毫秒）。4B 模型冷启动那一次可能要好几秒；等太久说明机器忙。",
+                        "思考型模型（DeepSeek-R1 蒸馏那些）一轮能想十几秒，别卡太紧。")
+                .defineInRange("timeout_ms", 60000, 1000, 300000);
         CAT_GIRL_AI_NUM_CTX = b.comment("上下文长度（KV 缓存）。4096 够用；显存紧就调小，别指望它能读完你的书。")
                 .defineInRange("num_ctx", 4096, 512, 32768);
         CAT_GIRL_AI_JSON_SCHEMA = b.comment("结构化输出：让 LM Studio 用 json_schema 把回包钉成那五个键（推荐开着）。",
                         "极少数版本/模型不收 json_schema（会回 HTTP 400）—— 那种情况把它关掉，",
                         "退回「提示词约束 + 容错解析」，她照样能说话，只是格式偶尔要返工。")
                 .define("json_schema", true);
+        CAT_GIRL_AI_MAX_TOKENS = b.comment("一轮最多让她写多少 token（思考过程也算在里面）。",
+                        "思考型模型（DeepSeek-R1 蒸馏那类）不认「别思考」那个开关：给 300，它能全用来想，",
+                        "正文一个字不写，屏幕上就只剩「……我又想不明白了（没有 JSON）」。默认 512。")
+                .defineInRange("max_tokens", 512, 64, 4096);
+        CAT_GIRL_AI_PREFILL = b.comment("先替她把答案的第一个字符「{」写好，逼她直接落笔（推荐开着）。",
+                        "在 llama.cpp / LM Studio 上实测：同一句话从「299 token / 14 秒 / 空答案」变成",
+                        "「36 token / 1.6 秒 / 合法 JSON」，思考一个字都不吐。",
+                        "个别服务端不收这种「以助手开头收尾」的请求（HTTP 400）——",
+                        "那种情况模组会自动去掉这一条重来一次，不必手动关。")
+                .define("prefill_json", true);
         b.pop();
         CAT_GIRL_CHOP_TICKS = b.comment("破坏一根原木的基础耗时（tick，20 = 1 秒）。")
                 .defineInRange("chop_ticks", 40, 4, 400);

@@ -161,20 +161,29 @@ def list_models(endpoint):
     return [m.get("id") for m in (d.get("data") or []) if m.get("id")]
 
 
-def ask(model, system, user, timeout=60):
+def ask(model, system, user, timeout=60, prefill=True):
+    """发一轮。`prefill=True` = 在 messages 末尾追加内容为 `{` 的 assistant 消息（与 Java 侧同一条口径）。
+
+    为什么非加不可：思考型模型（DeepSeek-R1 蒸馏那类）的思考写在它自己的模板里，请求里那个
+    `enable_thinking=False` 它当没听见 —— 2026-10-13 实测 `max_tokens=300` 时思考能吃满 299 个
+    token，`content` 交回空串。先替它写好答案的头一个字符，它就只剩「接着写」这一条路。
+    """
+    messages = ([{"role": "system", "content": system}]
+                + [m for pair in FEWSHOT for m in (
+                    {"role": "user", "content": pair[0]},
+                    {"role": "assistant", "content": pair[1]})]
+                + [{"role": "user", "content": user}])
+    if prefill:
+        messages.append({"role": "assistant", "content": "{"})
     body = json.dumps({
         "model": model,
         "stream": False,
         "temperature": 0.2,
-        "max_tokens": 300,
+        "max_tokens": 512,
         "context_length": 4096,
         "chat_template_kwargs": {"enable_thinking": False},
         "response_format": response_format(),
-        "messages": ([{"role": "system", "content": system}]
-                     + [m for pair in FEWSHOT for m in (
-                         {"role": "user", "content": pair[0]},
-                         {"role": "assistant", "content": pair[1]})]
-                     + [{"role": "user", "content": user}]),
+        "messages": messages,
     }).encode("utf-8")
     req = urllib.request.Request(chat_url(ENDPOINT), data=body,
                                  headers={"Content-Type": "application/json"})
@@ -197,6 +206,83 @@ def content_of(body):
     return (body.get("message") or {}).get("content") or body.get("response") or ""
 
 
+def _first_json(text):
+    """文本里第一个**括号配平**的 `{…}` 段（字符串内的花括号不算）；找不到返回 ""。"""
+    depth = 0
+    start = -1
+    in_str = False
+    esc = False
+    for i, ch in enumerate(text):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0:
+                    return text[start:i + 1]
+    return ""
+
+
+def _json_objects(text):
+    """文本里所有配平的 `{…}` 段，按出现顺序。"""
+    out = []
+    rest = text
+    while True:
+        seg = _first_json(rest)
+        if not seg:
+            return out
+        out.append(seg)
+        i = rest.find(seg)
+        rest = rest[i + len(seg):]
+
+
+def answer_of(body):
+    """回包 → 真答案（JSON 文本 + 理由）。
+
+    **只认真答案**：`content` 是答案，`reasoning_content` 是思考。思考里恰好草拟过一整段合法
+    JSON 时可以拿来救命，但思考本身绝不当答案 —— 旧版是「content 空就直接拿 reasoning_content」，
+    于是思考型模型一被 max_tokens 截断，探针读到的就是一段中文思考，JSON 解析必失败。
+    """
+    choices = body.get("choices") or []
+    msg = (choices[0].get("message") or {}) if choices else {}
+    content = msg.get("content") or ""
+    reasoning = msg.get("reasoning_content") or ""
+    text = (choices[0].get("text") or "") if choices else (body.get("response") or "")
+    if not choices and not msg:
+        content = (body.get("message") or {}).get("content") or content
+
+    for label, blob in (("content", content), ("reasoning_content", reasoning), ("text", text)):
+        for seg in _json_objects(strip_think(blob)):
+            try:
+                if isinstance(json.loads(seg), dict):
+                    return seg, label
+            except ValueError:
+                continue
+    truncated = (choices[0].get("finish_reason") == "length") if choices else False
+    if not content.strip() and reasoning.strip():
+        why = ("思考把 max_tokens 用光、答案还没开始写就被截断（把 max_tokens 调大，或换不吐思考的模型）"
+               if truncated else "只顾着想，没给出 JSON 答案（把 max_tokens 调大试试）")
+    elif truncated:
+        why = "回包被 max_tokens 截断，JSON 没写完（把 max_tokens 调大）"
+    elif not (content or reasoning or text).strip():
+        why = "空回包（服务端一个字都没回）"
+    else:
+        why = "没有 JSON"
+    return "", why
+
+
 def strip_think(text):
     """qwen 系的思考标签：<think ...>…</think>（有时没闭合）。"""
     out = text
@@ -216,6 +302,13 @@ def is_chinese(s):
 
 
 def main():
+    # Windows 的控制台默认是 GBK，这里的 ✅/❌ 会直接抛 UnicodeEncodeError 把体检打断在第一个用例上
+    # （2026-10-13 实测）。改成 UTF-8 + replace：打不出来的字符降级成 ?，但体检能跑完。
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     models = sys.argv[1:]
     if not models:
         ids = list_models(ENDPOINT)
@@ -246,14 +339,17 @@ def main():
                 print("  [%s] 请求失败：%s" % (c["name"], e))
                 continue
             raw = content_of(d)
-            content = strip_think(raw)
+            answer, why = answer_of(d)
             toks = (d.get("usage") or {}).get("completion_tokens") or 0
             speed = toks / wall if wall > 0 else 0
             print("  [%s]  %.1fs 墙钟 | %.1f tok/s | 原始 %d 字" % (c["name"], wall, speed, len(raw)))
             if raw.strip().startswith("<think"):
                 print("       ⚠ 思考标签泄漏（Java 侧必须 strip）")
+            if not answer:
+                print("       ❌ %s" % why)
+                continue
             try:
-                j = json.loads(content)
+                j = json.loads(answer)
                 keys_ok = all(k in j for k in ("reply", "action"))
                 act = j.get("action")
                 item = (j.get("item") or "").strip()
@@ -268,7 +364,7 @@ def main():
                                               "" if is_chinese(j.get("reply") or "") else "⚠ 非中文"))
                 total_ok += 1 if ok else 0
             except Exception as e:
-                print("       ❌ JSON 解析失败（%s）：%s" % (e, content[:160]))
+                print("       ❌ JSON 解析失败（%s）：%s" % (e, answer[:160]))
         print("  —— 通过 %d/%d" % (total_ok, len(CASES)))
     return 0
 

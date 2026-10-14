@@ -97,6 +97,41 @@ public class LmStudioWireTest {
         check("response_format 用 json_schema（不是 json_object）",
                 fmt.contains("\"json_schema\"") && !fmt.contains("json_object")
                         && fmt.contains("additionalProperties"));
+
+        // ---- 2026-10-13 那一张截图上的四个现象，逐条钉住 ----
+
+        // 「……我又想不明白了（没有 JSON）」的真身：思考型模型（DeepSeek-R1 蒸馏那类，
+        // enable_thinking 在它模板里是写死的）把 max_tokens 全花在思考上，content 交回空串。
+        // 旧版把 reasoning_content 当正文 → 思考文本里没有花括号 → 玩家屏幕上就是「没有 JSON」。
+        String thinkOnly = "{\"choices\":[{\"finish_reason\":\"length\",\"message\":{\"role\":\"assistant\","
+                + "\"content\":\"\",\"reasoning_content\":\"\\n好，我来仔细分析一下这个问题。首先，玩家当前的状态"
+                + "是工种是FOLLOW，血量20/20，位置在12、34、56，背包是空的。玩家的指令是让她去砍点树回来。"
+                + "接下来，我需要考虑玩家的当前状态和指令的可行性。玩家在工种为FOLLOW的情况下，通常是在自主操作，可能\"}}]}";
+        LmStudioWire.Reply r9 = LmStudioWire.parse(thinkOnly);
+        check("只有思考、没有答案 → 降级，且绝不当成回话", !r9.ok() && r9.say().isEmpty(), r9.error());
+        check("降级理由指向 max_tokens（玩家才知道怎么改）", r9.error().contains("max_tokens"), r9.error());
+
+        // 括号配平扫描：content 里先有一段不是 JSON 的花括号，后面才是真答案。
+        // 旧版取「第一个 { 到最后那个 }」会拼成一坨必然失败的怪东西。
+        String twoBraces = "{\"choices\":[{\"message\":{\"content\":\"{先想想} {\\\"reply\\\":\\\"好的\\\","
+                + "\\\"action\\\":\\\"none\\\",\\\"job\\\":\\\"\\\",\\\"item\\\":\\\"\\\",\\\"count\\\":0}\"}}]}";
+        LmStudioWire.Reply r10 = LmStudioWire.parse(twoBraces);
+        check("两段花括号 → 取第一段真能解析的 JSON", r10.ok() && "好的".equals(r10.say()), r10.error());
+
+        // 答案被截断（括号没配平）→ 同样指向 max_tokens
+        String cut = "{\"choices\":[{\"finish_reason\":\"length\",\"message\":{\"content\":"
+                + "\"{\\\"reply\\\":\\\"我这就去砍\"}}]}";
+        LmStudioWire.Reply r11 = LmStudioWire.parse(cut);
+        check("被截断的 JSON → 降级并指向 max_tokens", !r11.ok() && r11.error().contains("max_tokens"), r11.error());
+
+        // prefill：只有开着的时候，末尾才多一条「答案开头」的 assistant 消息
+        String plainBody = LmStudioWire.requestBody(
+                "m", "s", List.of(), List.of(), "u", 0, 0.2D, 64, false, true, false);
+        String preBody = LmStudioWire.requestBody(
+                "m", "s", List.of(), List.of(), "u", 0, 0.2D, 64, false, true, true);
+        check("prefill 开关：关着不加、开着末尾多一条 assistant「{」",
+                !plainBody.contains("\"assistant\"")
+                        && preBody.contains("\"role\":\"assistant\",\"content\":\"{\""));
     }
 
     // ------------------------------------------------------------------ 真端点用例
@@ -104,9 +139,36 @@ public class LmStudioWireTest {
     private static void liveCase() throws Exception {
         java.util.List<String[]> history = new java.util.ArrayList<>();
         history.add(new String[]{"玩家说：你好", "{\"reply\":\"主人好\",\"action\":\"none\",\"job\":\"\",\"item\":\"\",\"count\":0}"});
-        String body = LmStudioWire.requestBody(MODEL, SYSTEM, FEWSHOT, history,
-                "可做的东西列表: [\"minecraft:stone_pickaxe\"]\n她当前：工种=FOLLOW（自主 开），血量 20/20，背包有 石头 x12、木棍 x4\n玩家说：给我做一把石镐",
-                4096, 0.2D, 300, false, true);
+        String ask = "可做的东西列表: [\"minecraft:stone_pickaxe\"]\n她当前：工种=FOLLOW（自主 开），血量 20/20，"
+                + "背包有 石头 x12、木棍 x4\n玩家说：给我做一把石镐";
+
+        // 主路：新默认口径（max_tokens=512 + 先替她写好答案开头的「{」）
+        LmStudioWire.Reply reply = liveAsk(history, ask, true);
+        if (reply == null) {
+            return;
+        }
+        check("真模型回包可解析", reply.ok(), reply.error());
+        check("动作在白名单里", LmStudioWire.ACTIONS.contains(reply.action()));
+        check("工种合法或空", reply.job().isEmpty() || LmStudioWire.JOBS.contains(reply.job()));
+        check("count 在 1..64", reply.count() >= 1 && reply.count() <= 64);
+        check("回话是中文", reply.say().chars().anyMatch(c -> c >= 0x4e00 && c <= 0x9fff));
+
+        // 对照：不带 prefill 的老路径。思考型模型这里很可能整轮被思考吃掉 ——
+        // 不要求它一定成功，但**失败理由必须是玩家看得懂、能动手改的那条**，
+        // 不能退回从前那句白跑的「没有 JSON」。
+        LmStudioWire.Reply plain = liveAsk(history, ask, false);
+        if (plain != null) {
+            check("不带 prefill 时：要么可用、要么给出可读诊断",
+                    plain.ok() || plain.error().contains("max_tokens") || plain.error().contains("JSON"),
+                    plain.ok() ? "（这轮它没吐思考，直接给了 JSON）" : plain.error());
+        }
+    }
+
+    /** 对着真端点发一轮；HTTP 不通返回 {@code null}（由调用方收尾）。 */
+    private static LmStudioWire.Reply liveAsk(java.util.List<String[]> history, String ask,
+                                              boolean prefill) throws Exception {
+        String body = LmStudioWire.requestBody(MODEL, SYSTEM, FEWSHOT, history, ask,
+                4096, 0.2D, 512, false, true, prefill);
 
         HttpRequest request = HttpRequest.newBuilder(URI.create(LmStudioWire.chatUrl(ENDPOINT)))
                 .timeout(Duration.ofSeconds(300))
@@ -114,21 +176,20 @@ public class LmStudioWireTest {
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build();
         HttpResponse<String> response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-        check("真模型 HTTP 200", response.statusCode() == 200,
+        check("真模型 HTTP 200" + (prefill ? "（带 prefill）" : "（不带 prefill）"),
+                response.statusCode() == 200,
                 response.statusCode() == 200 ? null : response.body());
         if (response.statusCode() != 200) {
-            return;
+            return null;
         }
 
         LmStudioWire.Reply reply = LmStudioWire.parse(response.body());
-        System.out.println("    她的回话：" + reply.say());
-        System.out.println("    动作：" + reply.action() + " / 工种：" + reply.job()
-                + " / 物品：" + reply.item() + " / 数量：" + reply.count());
-        check("真模型回包可解析", reply.ok(), reply.error());
-        check("动作在白名单里", LmStudioWire.ACTIONS.contains(reply.action()));
-        check("工种合法或空", reply.job().isEmpty() || LmStudioWire.JOBS.contains(reply.job()));
-        check("count 在 1..64", reply.count() >= 1 && reply.count() <= 64);
-        check("回话是中文", reply.say().chars().anyMatch(c -> c >= 0x4e00 && c <= 0x9fff));
+        if (prefill) {
+            System.out.println("    她的回话：" + reply.say());
+            System.out.println("    动作：" + reply.action() + " / 工种：" + reply.job()
+                    + " / 物品：" + reply.item() + " / 数量：" + reply.count());
+        }
+        return reply;
     }
 
     private static final String SYSTEM = "你是 Minecraft 里的猫耳娘助理。必须只输出一行 JSON，键固定："
