@@ -214,9 +214,21 @@ def restore_hosts():
         return 1
 
 
-def git(args, check=True):
-    proc = subprocess.run(['git', '-C', REPO] + args, capture_output=True, text=True,
-                          errors='replace', env=dict(os.environ, GIT_TERMINAL_PROMPT='0'))
+class _Result(object):
+    """`subprocess.run` 超时时的替身，字段和 CompletedProcess 一致。"""
+
+    def __init__(self, rc, out, err):
+        self.returncode, self.stdout, self.stderr = rc, out, err
+
+
+def git(args, check=True, timeout=None):
+    try:
+        proc = subprocess.run(['git', '-C', REPO] + args, capture_output=True, text=True,
+                              errors='replace', timeout=timeout,
+                              env=dict(os.environ, GIT_TERMINAL_PROMPT='0'))
+    except subprocess.TimeoutExpired:
+        log('  ! git %s → 超时（%s s）' % (' '.join(args), timeout))
+        return _Result(-1, '', 'timeout')
     if check and proc.returncode != 0:
         log('  ! git %s → %s' % (' '.join(args), (proc.stderr or proc.stdout).strip()[:300]))
     return proc
@@ -236,15 +248,15 @@ def ensure_repo():
     return True, 'ok'
 
 
-def do_push():
+def do_push(timeout=240):
     """把 HEAD 推到远端分支，失败时说清楚是哪一类问题。
 
     **强制 HTTP/1.1**：2026-10-15 实测，本机到 GitHub 的 HTTP/2 一推大包就被中间设备掐断
-    （`Recv failure: Connection was reset`，同一 IP 换 HTTP/1.1 直接过）；httpcl 上传缓冲也一并放大。
+    （`Recv failure: Connection was reset`，同一 IP 换 HTTP/1.1 直接过）；上传缓冲也一并放大。
     这两条只作用在本次 push 上（`-c`），不写进仓库配置，也不会改这台机器上别的行为。
     """
     proc = git(['-c', 'http.version=HTTP/1.1', '-c', 'http.postBuffer=524288000',
-                'push', REMOTE, 'HEAD:refs/heads/%s' % BRANCH], check=False)
+                'push', REMOTE, 'HEAD:refs/heads/%s' % BRANCH], check=False, timeout=timeout)
     out = ((proc.stderr or '') + (proc.stdout or '')).strip()
     if proc.returncode == 0:
         log('  ✓ 已推到 %s/%s' % (REMOTE, BRANCH))
@@ -260,7 +272,43 @@ def do_push():
     return 3
 
 
-def push(message, dry=False):
+def probe_channel(timeout=30):
+    """这条 IP 能不能真的把 git 会话跑起来。
+
+    TLS 握手过了**不代表** git 能连 —— 2026-10-15 实测：扫出来 925 ms 的那条 IP 握手很漂亮，
+    git 却 `Failed to connect ... after 21137 ms`。所以推送前先用 `git ls-remote`（轻量、只读）验一遍。
+    """
+    return git(['-c', 'http.version=HTTP/1.1', 'ls-remote', '--heads', REMOTE, BRANCH],
+               check=False, timeout=timeout).returncode == 0
+
+
+def push_with_rotation(ips, tries=4):
+    """逐条候选 IP 试推，直到有一条真的把 HEAD 送上去。
+
+    hosts 一次只指向一个 IP，所以这里按扫描排名换个试：写 hosts → `ls-remote` 验通道 → push。
+    非网络类失败（比如远端有本地没有的提交）不换 IP，直接停下来说清楚。
+    """
+    if not ips:
+        return do_push()
+    last = 3
+    for ip in ips[:tries]:
+        ok, why = apply_hosts([ip])
+        log('  通道 %s：%s' % (ip, 'hosts 已指向它' if ok else why))
+        if not probe_channel():
+            log('    ✗ git 连不上这条，换下一条')
+            continue
+        rc = do_push()
+        if rc == 0:
+            return 0
+        last = rc
+        if rc != 3:
+            return rc
+        log('    ✗ 这条 IP 没推成，换下一条重试')
+    log('  候选 IP 都没推成 —— 先确认网络/代理，或用 --restore-hosts 撤掉 hosts 后手动推。')
+    return last
+
+
+def push(message, dry=False, ips=None):
     ok, why = ensure_repo()
     if not ok:
         log(why)
@@ -281,7 +329,7 @@ def push(message, dry=False):
         log('  （--no-push：已提交，按你的要求不推）')
         return 0
     log('== 推送 ==')
-    return do_push()
+    return push_with_rotation(ips or [])
 
 
 def main():
@@ -320,7 +368,7 @@ def main():
 
     if args.apply_only:
         return 0
-    return push(args.message, dry=args.no_push)
+    return push(args.message, dry=args.no_push, ips=ips)
 
 
 if __name__ == '__main__':
