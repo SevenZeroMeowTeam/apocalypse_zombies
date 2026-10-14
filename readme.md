@@ -288,9 +288,11 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 - `tools/github_push.py` 随本次改动一起入库：本机到 github.com:443 时通时不通（DNS 给的 IP 经常握手超时），
   它把一批候选 IP 逐个做「TCP 443 + **带证书校验的** TLS 握手」，挑最快的写进 hosts 里我们自己的标记段
   （`--restore-hosts` 随时撤掉），然后 `git add/commit/push`。**不带参数就是全流程**：扫描 → 写 hosts → 提交 → 推送。
-  用法见文件头。本次实测又踩到两个坑，都已写进脚本：HTTP/2 推大包会被中间设备掐断
+  用法见文件头。本次实测又踩到三个坑，都已写进脚本：HTTP/2 推大包会被中间设备掐断
   （`Recv failure: Connection was reset`，改成固定走 HTTP/1.1）；远端 `main` 停在 1.1.98、本地已到 1.1.101，
-  直接推会被 `! [rejected]` 顶回来 —— 先 `git pull --rebase origin main` 接上远端历史（本次就是这么接的）。
+  直接推会被 `! [rejected]` 顶回来 —— 先 `git pull --rebase origin main` 接上远端历史（本次就是这么接的）；
+  推送阶段按扫描排名**逐条换 IP 试推**，每条先用 `git ls-remote` 验通道
+  （TLS 握手最快那条未必扛得住 git 会话：实测 925 ms 的那条 git 21 秒连不上）——本次就是第一条失败、第二条推成的。
 - 版本号 1.1.100 → 1.1.101（`gradle.properties` / 根 `mod.toml` / `readme.md` 头表 + 更新日志，四处同改）。
 
 ### 1.1.100 — 2026-10-14
