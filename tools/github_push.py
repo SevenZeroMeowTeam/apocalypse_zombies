@@ -4,17 +4,25 @@
 
 用法::
 
-    py tools/github_push.py                  # 扫描 + 应用 + 提交 + 推送（出货后用这个）
+    py tools/github_push.py                  # 扫描 + 应用 + 提交 + 推送（默认全流程，要推就敲这一条）
     py tools/github_push.py --scan-only      # 只扫描并打印排行，不动任何东西
     py tools/github_push.py --no-push        # 扫描 + 应用 + 提交，但不推
+    py tools/github_push.py --apply-only     # 扫描 + 写 hosts，不碰 git
     py tools/github_push.py --restore-hosts  # 把 hosts 里我们自己那段撤掉
+    py tools/github_push.py -m "提交信息"    # 换提交信息（默认「chore: 自动出货提交」）
 
-为什么需要它：本机到 github.com:443 时通时不通 —— 系统 DNS 给的 20.205.243.166
-经常 21 秒握手超时（`git ls-remote` 实测：`Could not connect to server`），
-而换个边缘 IP 就秒过。这里把一批候选逐个做「TCP 443 + **带证书校验的** TLS 握手」，
-挑最快的几条写进 hosts。改的是 hosts 里我们自己的标记段，`--restore-hosts` 随时撤掉。
+为什么需要它：本机到 github.com:443 时通时不通 —— 系统 DNS 给的 IP 经常 21 秒握手超时
+（`git ls-remote` 实测：`Could not connect to server`），而换个边缘 IP 就秒过。这里把一批候选
+逐个做「TCP 443 + **带证书校验的** TLS 握手」，挑最快的几条写进 hosts。改的是 hosts 里我们
+自己的标记段，`--restore-hosts` 随时撤掉。
 
-不写死任何凭证：推送走 git 自己的配置（credential helper / 环境里的 token）。
+推送走 git 自己的配置（credential helper / 环境里的 token），本脚本不写死任何凭证。
+两条实测出来的坑已经在脚本里处理掉了：
+
+  * 国内链路上 HTTP/2 推大包会被掐断（`Recv failure: Connection was reset`）—— 见 `do_push()`，
+    推送固定走 HTTP/1.1；
+  * 远端 main 上可能有本地没有的提交（本仓库 2026-10-15 实测：远端停在 1.1.98、本地已到 1.1.101），
+    这时 push 会被 `! [rejected]` 顶回来 —— 脚本会直接告诉你要拉哪一支来对齐。
 """
 
 import argparse
@@ -228,7 +236,31 @@ def ensure_repo():
     return True, 'ok'
 
 
-def push(message):
+def do_push():
+    """把 HEAD 推到远端分支，失败时说清楚是哪一类问题。
+
+    **强制 HTTP/1.1**：2026-10-15 实测，本机到 GitHub 的 HTTP/2 一推大包就被中间设备掐断
+    （`Recv failure: Connection was reset`，同一 IP 换 HTTP/1.1 直接过）；httpcl 上传缓冲也一并放大。
+    这两条只作用在本次 push 上（`-c`），不写进仓库配置，也不会改这台机器上别的行为。
+    """
+    proc = git(['-c', 'http.version=HTTP/1.1', '-c', 'http.postBuffer=524288000',
+                'push', REMOTE, 'HEAD:refs/heads/%s' % BRANCH], check=False)
+    out = ((proc.stderr or '') + (proc.stdout or '')).strip()
+    if proc.returncode == 0:
+        log('  ✓ 已推到 %s/%s' % (REMOTE, BRANCH))
+        return 0
+    log('  ✗ 推送失败：%s' % out[:500])
+    low = out.lower()
+    if 'reset' in low or 'could not connect' in low or 'timed out' in low or 'recv failure' in low:
+        log('  连接被掐断 —— 换个边缘 IP 再试：重跑本脚本（它会重新扫描并改写 hosts 那一段）。')
+    elif 'non-fast-forward' in low or 'fetch first' in low or 'rejected' in low:
+        log('  远端有本地没有的提交 —— 先接上远端历史再推：')
+        log('      git -C "%s" pull --rebase %s %s' % (REPO, REMOTE, BRANCH))
+        log('  （本仓库 2026-10-15 就是这样接上的：远端停在 1.1.98，本地已到 1.1.101。）')
+    return 3
+
+
+def push(message, dry=False):
     ok, why = ensure_repo()
     if not ok:
         log(why)
@@ -244,14 +276,12 @@ def push(message):
         if git(['commit', '-m', message], check=False).returncode != 0:
             log('  提交没成功（看上面的报错）')
             return 2
+    if dry:
+        log('== 推送 ==')
+        log('  （--no-push：已提交，按你的要求不推）')
+        return 0
     log('== 推送 ==')
-    proc = git(['push', REMOTE, BRANCH], check=False)
-    if proc.returncode != 0:
-        if 'Could not connect' in (proc.stderr or '') or 'timed out' in (proc.stderr or ''):
-            log('  推送连不上 —— 先让本脚本把 hosts 换到能通的 IP 再试一次。')
-        return 3
-    log('  ✓ 已推到 %s/%s' % (REMOTE, BRANCH))
-    return 0
+    return do_push()
 
 
 def main():
@@ -288,9 +318,9 @@ def main():
     if not ok:
         log('  仍然继续尝试推送（也许本机本来就连得上）。')
 
-    if args.apply_only or args.no_push:
+    if args.apply_only:
         return 0
-    return push(args.message)
+    return push(args.message, dry=args.no_push)
 
 
 if __name__ == '__main__':
