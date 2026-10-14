@@ -16,6 +16,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.client.ForgeHooksClient;
 import software.bernie.geckolib.cache.object.BakedGeoModel;
 import software.bernie.geckolib.cache.object.GeoBone;
 import software.bernie.geckolib.model.GeoModel;
@@ -26,16 +27,22 @@ import software.bernie.geckolib.util.RenderUtils;
 /**
  * 让她的甲**看得见**：把原版盔甲网格（{@code HumanoidModel} 的 layer_1 / layer_2）贴到她的骨骼上。
  *
- * <p>GeckoLib 自带的 {@code GeoArmorRenderer} 只认 {@code GeoArmorItem}（自己注册的几何盔甲），
+ * <p>
+ * GeckoLib 自带的 {@code GeoArmorRenderer} 只认 {@code GeoArmorItem}（自己注册的几何盔甲），
  * 对原版/模组盔甲物品是无效的 —— 而她的甲是任意盔甲，所以这里自己写一层：
- * 按骨骼名找到要挂的位置（head / body / left_arm / …），把原版网格按她的块体尺寸缩放后画上去。</p>
+ * 按骨骼名找到要挂的位置（head / body / left_arm / …），把原版网格按她的块体尺寸缩放后画上去。
+ * </p>
  *
- * <p><b>摆放规则</b>：原版盔甲网格和她的模型用的是同一套坐标系（1 单位 = 1/16 格、脚底 y=0、Y 向上），
+ * <p>
+ * <b>摆放规则</b>：原版盔甲网格和她的模型用的是同一套坐标系（1 单位 = 1/16 格、脚底 y=0、Y 向上），
  * 所以只要把网格在每根轴上的区间「贴合」到骨骼的包围盒区间即可 —— 缩放 s、平移 t 由
- * {@code t = (她的低端 − 原版低端 × s) / 16} 算出，避免逐件手调魔数。</p>
+ * {@code t = (她的低端 − 原版低端 × s) / 16} 算出，避免逐件手调魔数。
+ * </p>
  *
- * <p>骨骼变换用 GeckoLib 自己的 {@link RenderUtils#prepMatrixForBone}，所以她的走路/甩尾动画
- * 会带着盔甲一起动。</p>
+ * <p>
+ * 骨骼变换用 GeckoLib 自己的 {@link RenderUtils#prepMatrixForBone}，所以她的走路/甩尾动画
+ * 会带着盔甲一起动。
+ * </p>
  */
 public class CatGirlArmorLayer extends GeoRenderLayer<CatGirlEntity> {
 
@@ -61,44 +68,57 @@ public class CatGirlArmorLayer extends GeoRenderLayer<CatGirlEntity> {
     }
 
     // 原版盔甲网格的区间（x / y / z 各 [低, 高]，1/16 格；脚底 y=0）
-    private static final float[] V_HEAD = {-4F, 4F, 24F, 32F, -4F, 4F};
-    private static final float[] V_BODY = {-4F, 4F, 12F, 24F, -2F, 2F};
-    private static final float[] V_ARM_R = {-8F, -4F, 12F, 24F, -2F, 2F};
-    private static final float[] V_ARM_L = {4F, 8F, 12F, 24F, -2F, 2F};
-    private static final float[] V_LEG_R = {-4F, 0F, 0F, 12F, -2F, 2F};
-    private static final float[] V_LEG_L = {0F, 4F, 0F, 12F, -2F, 2F};
+    private static final float[] V_HEAD = { -4F, 4F, 24F, 32F, -4F, 4F };
+    private static final float[] V_BODY = { -4F, 4F, 12F, 24F, -2F, 2F };
+    private static final float[] V_ARM_R = { -8F, -4F, 12F, 24F, -2F, 2F };
+    private static final float[] V_ARM_L = { 4F, 8F, 12F, 24F, -2F, 2F };
+    private static final float[] V_LEG_R = { -4F, 0F, 0F, 12F, -2F, 2F };
+    private static final float[] V_LEG_L = { 0F, 4F, 0F, 12F, -2F, 2F };
 
     // 她模型的对应区间（取自 cat_girl.geo.json 的骨骼包围盒）
-    private static final float[] H_HEAD = {-3.0F, 3.0F, 23.3F, 30.2F, -2.8F, 2.8F};
-    private static final float[] H_BODY = {-3.5F, 3.5F, 14.4F, 24.1F, -2.2F, 1.9F};
-    private static final float[] H_ARM_R = {1.9F, 5.2F, 16.0F, 23.0F, -1.4F, 1.6F};
-    private static final float[] H_ARM_L = {-5.2F, -1.9F, 16.0F, 23.0F, -1.4F, 1.6F};
-    private static final float[] H_LEG_R = {-0.1F, 2.4F, 1.4F, 14.0F, -1.3F, 1.3F};
-    private static final float[] H_LEG_L = {-2.4F, -0.1F, 1.4F, 14.0F, -1.3F, 1.3F};
-    private static final float[] H_FOOT_R = {0.0F, 2.2F, 0.0F, 2.4F, -2.4F, 1.7F};
-    private static final float[] H_FOOT_L = {-2.2F, 0.0F, 0.0F, 2.4F, -2.4F, 1.7F};
+    private static final float[] H_HEAD = { -3.0F, 3.0F, 23.3F, 30.2F, -2.8F, 2.8F };
+    private static final float[] H_BODY = { -3.5F, 3.5F, 14.4F, 24.1F, -2.2F, 1.9F };
+    private static final float[] H_ARM_R = { 1.9F, 5.2F, 16.0F, 23.0F, -1.4F, 1.6F };
+    private static final float[] H_ARM_L = { -5.2F, -1.9F, 16.0F, 23.0F, -1.4F, 1.6F };
+    private static final float[] H_LEG_R = { -0.1F, 2.4F, 1.4F, 14.0F, -1.3F, 1.3F };
+    private static final float[] H_LEG_L = { -2.4F, -0.1F, 1.4F, 14.0F, -1.3F, 1.3F };
+    private static final float[] H_FOOT_R = { 0.0F, 2.2F, 0.0F, 2.4F, -2.4F, 1.7F };
+    private static final float[] H_FOOT_L = { -2.2F, 0.0F, 0.0F, 2.4F, -2.4F, 1.7F };
 
     @Override
     public void render(PoseStack poseStack, CatGirlEntity animatable, BakedGeoModel model, RenderType renderType,
-                       MultiBufferSource bufferSource, VertexConsumer buffer, float partialTick,
-                       int packedLight, int packedOverlay) {
+            MultiBufferSource bufferSource, VertexConsumer buffer, float partialTick,
+            int packedLight, int packedOverlay) {
         if (!Config.CAT_GIRL_ARMOR_RENDER.get()) {
             return;
         }
         this.ensureModels();
         GeoModel<CatGirlEntity> geoModel = this.getGeoModel();
 
-        for (EquipmentSlot slot : new EquipmentSlot[]{
-                EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+        for (EquipmentSlot slot : new EquipmentSlot[] {
+                EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET }) {
             ItemStack stack = animatable.getItemBySlot(slot);
             if (!(stack.getItem() instanceof ArmorItem armor) || armor.getEquipmentSlot() != slot) {
                 continue;
             }
             boolean leggings = slot == EquipmentSlot.LEGS;
             HumanoidModel<CatGirlEntity> armorModel = leggings ? this.inner : this.outer;
+            // 与原版 HumanoidArmorLayer.getArmorResource 同一套拼法：模组材质的 getName()
+            // 带命名空间（apocalypse_zombies:copper），必须先按 ':' 拆出域再拼路径 —— 整条
+            // 塞进 ResourceLocation 会把 "textures/models/armor/apocalypse_zombies" 当成
+            // 命名空间校验，她穿铜甲一进渲染就 ResourceLocationException。
+            // 层号也对齐原版：护腿用 layer_2，其余部位用 layer_1。
+            String material = armor.getMaterial().getName();
+            String domain = "minecraft";
+            int sep = material.indexOf(':');
+            if (sep != -1) {
+                domain = material.substring(0, sep);
+                material = material.substring(sep + 1);
+            }
+            String path = domain + ":textures/models/armor/" + material
+                    + "_layer_" + (leggings ? 2 : 1) + ".png";
             ResourceLocation texture = new ResourceLocation(
-                    "textures/models/armor/" + armor.getMaterial().getName()
-                            + "_layer_" + (leggings ? 1 : 2) + ".png");
+                    ForgeHooksClient.getArmorTexture(animatable, stack, path, slot, null));
             VertexConsumer consumer = bufferSource.getBuffer(RenderType.armorCutoutNoCull(texture));
 
             for (Piece piece : piecesFor(slot, armorModel)) {
@@ -117,19 +137,19 @@ public class CatGirlArmorLayer extends GeoRenderLayer<CatGirlEntity> {
 
     private Piece[] piecesFor(EquipmentSlot slot, HumanoidModel<CatGirlEntity> armorModel) {
         return switch (slot) {
-            case HEAD -> new Piece[]{
-                    new Piece(armorModel.head, "head", V_HEAD, H_HEAD)};
-            case CHEST -> new Piece[]{
+            case HEAD -> new Piece[] {
+                    new Piece(armorModel.head, "head", V_HEAD, H_HEAD) };
+            case CHEST -> new Piece[] {
                     new Piece(armorModel.body, "body", V_BODY, H_BODY),
                     new Piece(armorModel.rightArm, "right_arm", V_ARM_R, H_ARM_R),
-                    new Piece(armorModel.leftArm, "left_arm", V_ARM_L, H_ARM_L)};
-            case LEGS -> new Piece[]{
+                    new Piece(armorModel.leftArm, "left_arm", V_ARM_L, H_ARM_L) };
+            case LEGS -> new Piece[] {
                     new Piece(armorModel.body, "body", V_BODY, H_BODY),
                     new Piece(armorModel.rightLeg, "right_leg", V_LEG_R, H_LEG_R),
-                    new Piece(armorModel.leftLeg, "left_leg", V_LEG_L, H_LEG_L)};
-            case FEET -> new Piece[]{
+                    new Piece(armorModel.leftLeg, "left_leg", V_LEG_L, H_LEG_L) };
+            case FEET -> new Piece[] {
                     new Piece(armorModel.rightLeg, "right_foot", V_LEG_R, H_FOOT_R),
-                    new Piece(armorModel.leftLeg, "left_foot", V_LEG_L, H_FOOT_L)};
+                    new Piece(armorModel.leftLeg, "left_foot", V_LEG_L, H_FOOT_L) };
             default -> new Piece[0];
         };
     }

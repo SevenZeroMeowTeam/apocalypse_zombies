@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.101` |
+| **当前版本** | `1.1.102` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -276,6 +276,26 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 1.1.102 — 2026-10-15
+
+**修了猫耳娘穿铜甲一进渲染就崩的问题。**
+
+实机崩溃报告（`1.20.1-Forge_47.4.27` 实例 `crash-reports/` 下 15:10:59 与 15:12:21 两份，同源）里的链条干净：
+
+```
+ResourceLocationException: Non [a-z0-9_.-] character in namespace of location:
+textures/models/armor/apocalypse_zombies:copper_layer_2.png
+    at CatGirlArmorLayer.render(CatGirlArmorLayer.java:101)
+```
+
+| 项 | 内容 |
+|---|---|
+| 根因 | `CatGirlArmorLayer` 自己拼原版盔甲贴图路径：`new ResourceLocation("textures/models/armor/" + armor.getMaterial().getName() + …)`。原版材质的 `getName()` 是裸名（`iron`），拼出来合法；而模组材质（铜甲 `ModArmorMaterials.COPPER`）的 `getName()` 带命名空间 `apocalypse_zombies:copper`（Forge 标准写法），整条串进 `ResourceLocation` 后前缀被当成命名空间校验，含 `/` 非法 → 抛异常。玩家自己穿铜甲不崩，是因为原版 `HumanoidArmorLayer` 会先按 `:` 拆出域再拼路径 |
+| 修法 | 按原版同一套拼法：先把材质名按 `:` 拆成域 + 路径，再拼 `域:textures/models/armor/<材质>_layer_<n>.png`，并过一遍 `ForgeHooksClient.getArmorTexture`（兼容覆写了自定义贴图的物品） |
+| 顺手修 | 层号对齐原版约定 —— 护腿用 `layer_2`、其余部位用 `layer_1`；原实现写成 `leggings ? 1 : 2`，不崩，但铜甲贴图会张冠李戴 |
+
+- 版本号 1.1.101 → 1.1.102（`gradle.properties` / 根 `mod.toml` / `readme.md` 头表 + 更新日志，四处同改）。
 
 ### 1.1.101 — 2026-10-15
 
