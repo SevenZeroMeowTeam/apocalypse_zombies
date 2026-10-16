@@ -70,6 +70,10 @@ public class ApocalypseZombies {
         modBus.addListener(this::onConfigLoaded);
 
         MinecraftForge.EVENT_BUS.register(CommonEvents.class);
+        // 铜装备配方去重（兼容 [硬核生存] hcsurvival）：与 CommonEvents 同一条路，显式注册。
+        com.apocalypse.zombies.compat.CopperGearRecipeCompat.register();
+        // 登录即解锁本模组配方（doLimitedCrafting 世界里「产物槽空」的正解）。
+        com.apocalypse.zombies.compat.RecipeUnlockCompat.register();
         MinecraftForge.EVENT_BUS.addListener(this::onRegisterCommands);
 
         NetworkHandler.register();

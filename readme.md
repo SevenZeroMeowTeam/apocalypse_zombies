@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.2.0` |
+| **当前版本** | `1.2.3` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -269,7 +269,7 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 | `player_mine` | **玩家一键挖掘**（1.1.81 起）：`enabled`（默认开）、`targets`（连带哪些方块：0 只矿石 / 1 矿石+自然方块 / 2 任何可挖方块）、`radius` / `max_blocks`（范围 / 上限 64）、`vein_only`（只连带连通矿脉）、`require_correct_tool`（工具不对口不连带）、`consume_durability`（扣耐久）、`sneak_disables`（潜行只挖一格）、`to_inventory`（产物进背包）、`protected`（追加保护名单）、`highlight`（瞄准时把会连带的方块描边画出来，默认开）、`count`（瞄准时在准星下方显示「会连挖几格」，默认开） |
 
 > **图形界面**：`模组列表 → 选中 Apocalypse Zombies → 配置`（1.1.79 起真能用了）——
-> 列出**全部 170 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
+> 列出**全部 171 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
 > 也就是说：界面和手改是**同一份配置**，不存在两套。
 
 > `specials.elite_spawn_weight` 改完要**重进世界**才生效 —— biome modifier 在加载时烘焙。
@@ -277,6 +277,143 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 1.2.3 — 2026-10-17
+
+**「产物槽空」的真凶落定：存档开着「限制合成」（`doLimitedCrafting=true`），而本模组从来没写过
+配方解锁进度。本版把全部 18 条配方的解锁补上，并在玩家登录时直接写入配方书。**
+（1.2.2 里那句「玩家拿错短木棍」是探针落地之前的推测 —— 本版更正它。）
+
+**真因（这条链是在探针日志 + 存档 NBT + 服务端字节码三头钉死的）**
+
+- 探针实测：铜斧 / 铜锄 / 铜锹三种图案摆上去，**服务端 `getRecipesFor` 每次都能命中本模组的配方、
+  也能装配出 `copper_axe x1`**，可玩家合成台的产物槽就是空的、点了也取不出来 ——
+  「匹配成功」与「产物槽有东西」在服务端是前后两道工序，断的是后一道；
+- 后一道是 `CraftingMenu.slotChangedCraftingGrid` 里的
+  `RecipeHolder.setRecipeUsed(Level, ServerPlayer, Recipe)` 闸门（字节码逐条核过）：
+  配方不是 `special` 的、世界开着 `doLimitedCrafting`、且**配方不在玩家配方书里** ⇒ 返回 false ⇒
+  **产物被整个丢弃**（`assemble` 的结果压根不写进产物槽）；
+- 世界确实开着：`saves/1/level.dat` 的 GameRules 里有 `doLimitedCrafting = true`；
+- 为什么只有本模组的东西合不了：`craftingdead` / `farmersdelight` 这些能合的模组**都带了
+  「配方解锁进度」**（玩家配方书里躺着 `craftingdead:combat_knife`、`farmersdelight:cutting_board`），
+  原版物品则早被原版进度解锁（连 `minecraft:copper_block` 都有 —— 见到铜锭就解锁）；而本模组的
+  配方书条目数是 **0** —— `data/apocalypse_zombies/advancements/` 从来没建过。
+
+**修法**
+
+- `data/apocalypse_zombies/advancements/recipes/` 新增十个解锁文件（挂在 `minecraft:recipes/root` 下）：
+  护甲四件「背包里有铜锭」解锁；五把工具「有铜锭 + 有棍」解锁（棍只写 `minecraft:stick` ——
+  1.20.1 的进度解析碰到未注册物品 id 会**整条作废**，硬核生存的短木棍摆法由下面的登录解锁兜底）；
+  火把两条一起解锁；
+- 新增 `compat/RecipeUnlockCompat`（FORGE 总线）：玩家**登录时**把 `apocalypse_zombies` 命名空间下
+  的全部配方一次性写进配方书（`awardRecipesByKey`）—— **既有存档立刻可合**，不必等下一次背包变动
+  去触发进度判定；只碰自家命名空间；
+- 删掉排查期的探针 / 启动自检临时代码，`CopperGearRecipeCompat` 回到纯去重职责。
+
+**验证**：开发服实跑（`gradlew runServer`）—— `Loaded 1281 advancements`（原版 1271 + 本模组 10，
+零解析错误）、`扫描配方 1187 条 → 本模组铜装备配方 11 条`、`Done`；新增门禁
+`check_recipe_unlocks.py`（每条配方都必须被 `data/apocalypse_zombies/advancements/recipes/` 的
+解锁进度覆盖 —— 就是这次踩的坑），与 `check_recipes.py` / `check_hcsurvival_conflict.py` /
+`check_gun_resources.py` 四连全绿；装机 1.2.3。
+
+### 1.2.2 — 2026-10-16
+
+**铜装备手柄槽改成物品标签（兼容硬核生存的「短木棍」）+ 去重口径升级为「抢同一批网格」。**
+（用户报「无合成物品」并附合成台截图后，一路查到真凶。）
+
+**真凶（这一版是从截图像素 + 配方数据两头夹出来的）**
+
+- 截图里那个"摆对图案却空产物"的合成台，第二行那根**不是原版木棍**：它比原版短粗、头上一截浅色，
+  与背包里真正的原版木棍并排摆着 —— 像素比对（形状 / 亮度 / 全库贴图暴力匹配）指向
+  **`hcsurvival:short_stick`（短木棍）**；REI 那格标红 = "这一格没被满足" ✓；
+- 硬核生存的硬核工具链正是以短木棍为"棍"：它把**原版木/石工具配方整个换成「1 个屏障」**
+  （`data/minecraft/recipes/wooden_axe.json` = 1 个 `minecraft:barrier` = 永远合不出来），
+  玩家被推向它的石片 / 燧石 / 短木棍体系 —— 而短木棍配方是「1 根木棍 → 2 根短木棍」，
+  在背包里和原版木棍长得几乎一模一样的**两套棍**就这么同时存在；
+- 本模组（和硬核生存自己）的铜工具配方要的都是 `minecraft:stick` ⇒ 玩家拿错一根 ⇒ **图案不匹配
+  ⇒ 产物格空**。这就是「所有铜制武器、工具、物品无法合成」的完整链路。
+
+**修法**
+
+- **canonical 十一张配方一格没动**（图案仍与原版逐格一致，手柄仍是 `minecraft:stick`）；
+- 另加**五张「短木棍版」条件配方**（`copper_{axe,hoe,pickaxe,shovel,sword}_short_stick.json`）：
+  图案与 canonical 逐格相同，只有手柄槽换成 `hcsurvival:short_stick`，并挂
+  `"conditions": [{"type": "forge:mod_loaded", "modid": "hcsurvival"}]` ——
+  Forge 在**解析之前**就按条件跳过，没装硬核生存的玩家根本不会碰到那个物品 id，
+  装了的玩家则"原版木棍 / 短木棍两种摆法都能合出本模组那件"；
+- 去重口径从「指纹完全相等」升级为**「抢同一批网格」**：类型 / 尺寸相同，且**逐格材料集合两两有
+  交集**（空槽对空槽才算一致；shaped 连镜像摆法一起比，且镜像只作用在一侧）⇒
+  硬核生存那 11 张同形配方照旧全部判为竞争者、运行期剔除；
+  顺手修掉两个真 bug：`frozenset().isdisjoint(frozenset())` 为 `True` 导致「空槽对空槽」被误判成
+  冲突（头盔 / 胸甲这类带空格的图案会整条漏判）、镜像两侧同时翻等于没翻 —— 两个都是门禁当场抓住的；
+- **为什么不把手柄槽改成物品标签**（一开始就是这么写的，被开发服打回来）：
+  1.20.1 的原版 `TagLoader` 遇到标签里引用**不存在的物品**时会把**整条标签丢掉**
+  （`Couldn't load tag apocalypse_zombies:copper_handles as it is missing following references:
+  hcsurvival:short_stick`），标签空掉 = 手柄槽谁也匹配不上 = **没装硬核生存的玩家丢掉全部铜工具
+  配方**。条件配方没有这个问题（Forge 先判条件、后解析），所以现在这条规矩进了门禁：
+  **配方里出现外家物品，就必须带条件**（`check_recipes.py` 逐张查）。
+
+**验证**：`check_recipes.py`（图案仍与原版逐格一致 + 短木棍版条件配方 + 外家物品必带条件）、
+`check_hcsurvival_conflict.py`（硬核生存 11 张仍全部判为竞争者）、`check_gun_resources.py` 全绿；
+开发服实跑（`gradlew runServer`，**本机没有硬核生存 ⇒ 正好验证标签里的未知条目不会毁掉配方**：
+零解析错误 + 伪造的重复配方仍被剔除）。装机 1.2.2。
+
+### 1.2.1 — 2026-10-16
+
+**铜装备兼容补丁：与 `[硬核生存] hcsurvival` 同形同料的九条重复配方，运行期剔掉外家那几条，
+摆对图案必定出本模组的产物。**（用户报「所有铜制武器、工具、物品无法合成」并要求「写一个
+兼容硬核生存的补丁」后处理。）
+
+**病根（这次是在字节码上钉死的）**
+
+- `hcsurvival` 用**同一套原版图案 + 同一材料 `minecraft:copper_ingot`** 注册了同名的九件铜装备
+  （`hcsurvival:copper_helmet` …，斧 / 锄同样是 `_1/_2` 一对镜像摆法），与本模组那九件的
+  canonical 图案**逐格等价**；
+- 1.20.1 的 `RecipeManager.getRecipeFor` 是 `byType(type).values().stream().filter(matches).findFirst()`
+  —— **按内部 Map 的迭代顺序取第一条命中**（HashMap 顺序，跟谁先加载无关）。两条一模一样的配方里
+  **永远只有一条能被合成台用到**，另一条等于不存在：摆对图案可能拿到硬核生存那件，也可能
+  什么都拿不到（配方书 / REI 里两套同名配方还并列混显）；
+- 反过来说，只要**两条都活着**，"无法合成"就无解 —— 唯一稳的修法是让其中一条退场。
+
+**修法：`compat/CopperGearRecipeCompat`（新，FORGE 总线）**
+
+- 配方加载完成后（`AddReloadListenerEvent` 加进来的监听器排在原版 `RecipeManager` 之后，
+  再由 `PreparationBarrier` 保证等地到全部 prepare 结束）把「**形状指纹与本模组铜装备配方逐格
+  等价、产物却不是本模组物品**」的配方从 `RecipeManager` 里 `replaceRecipes` 剔除；
+- 判定是**结构化**的：配方类型 + 宽 x 高 + 逐格材料集合（`Ingredient.getItems()` 归一成物品 id
+  列表，所以 `item` 与等价的 `tag` 写法同指纹；空槽记 `-`）。
+  **shaped 按左右镜像归一** —— `ShapedRecipe.matches` 对同一个图案会同时试正摆与镜像摆，
+  图案 P 与镜像(P) 的两条配方接受的是同一批网格，互为竞争者（铜斧 / 铜锄的镜像变体正是为这件事
+  而存在），取两者里字典序小的那个当指纹，镜像对才会撞成同一个指纹；
+- **不写死 hcsurvival 的配方 id**：只对本模组那九件的指纹建表，主命名空间不是本模组、又撞进这张表的
+  才剔 —— 换个同形冲突的模组照样拦得住，硬核生存的其余内容（晾肉架 / 绷带 / 粗制火把…）一张不碰；
+- 本模组配方一条都没上桌（被数据包顶掉之类）时**直接不动手**；任何异常只记一行 `warn`，
+  配方表保持原样 —— 这是世界加载的地基，不该被兼容代码搞崩；
+- 开关：新配置 **`compat.copper_recipe_dedup`（默认 true）**，关掉完全回到原样（两套同名配方并列，
+  谁被命中看运气）。配置总数 170 → **171**。
+
+**门禁 `tools/check_hcsurvival_conflict.py`（新）**
+
+把 Java 那边的指纹规则**离线复刻**成 Python，拿真 jar（`[硬核生存] hcsurvival-0.19.2.jar`，找不到
+时退回内置表）逐条比对，四条断言：
+
+1. 本模组 11 张铜装备配方（9 件 + 斧/锄镜像）→ 9 个不同指纹；
+2. hcsurvival 的 11 张铜装备配方**每一条**都撞进本模组指纹（= 运行期会被剔除）；
+3. 剔除后 9 个指纹上只剩本模组产物（没有残留竞争者）；
+4. 规则**有边界**：抽样的非铜装备配方（晾肉架 / 绷带 / 粗制火把 / 雪取水）一张都不在指纹集合里。
+
+验证：`check_hcsurvival_conflict.py` 全绿（真 jar 对照）、`check_recipes.py` 9/9 全绿、
+`check_gun_resources.py` 全绿；**开发服端到端实跑**（`gradlew runServer` + 一张伪造的同形重复配方
+数据包 `verifydup:copper_helmet` —— 图案与本模组铜头盔逐格相同、产物故意换成木棍）：日志里
+`[铜装备兼容] 扫描配方 1188 条 → 本模组铜装备指纹 9 个` 与
+`[铜装备兼容] 剔除 1 条与本模组铜装备同形的重复配方（摆对图案必定出本模组的产物）：[verifydup:copper_helmet]`
+两条都出现 —— 剔除路径真的生效（同一套判定对硬核生存那 11 条同样成立）。
+装机 1.2.1。
+
+> ⚠ 记录一笔踩坑：开发服日志是 **GBK** 编码，拿 UTF-8 的 `grep` 搜中文会**静默搜不到**
+> （ASCII 的 `Done (`/`Loaded N recipes` 又能搜到，看起来像「代码没跑」）。搜中文请用
+> `grep -a` 配 GBK，或直接用 Python 按 gbk 解码。
+- 版本号 1.2.0 → 1.2.1（`gradle.properties` / 根 `mod.toml` / `readme.md` 头表 + 更新日志，四处同改）。
 
 ### 1.2.0 — 2026-10-16
 

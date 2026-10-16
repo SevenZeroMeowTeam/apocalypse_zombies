@@ -1,0 +1,42 @@
+{
+  "parent": "minecraft:recipes/root",
+  "criteria": {
+    "has_copper_ingot": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "minecraft:copper_ingot"
+            ]
+          }
+        ]
+      }
+    },
+    "has_handle": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {
+            "items": [
+              "minecraft:stick"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "requirements": [
+    [
+      "has_copper_ingot",
+      "has_handle"
+    ]
+  ],
+  "rewards": {
+    "recipes": [
+      "apocalypse_zombies:copper_hoe",
+      "apocalypse_zombies:copper_hoe_mirror",
+      "apocalypse_zombies:copper_hoe_short_stick"
+    ]
+  }
+}
