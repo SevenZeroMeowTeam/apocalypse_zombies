@@ -23,6 +23,15 @@
 装弹是**管状弹仓 + 机匣右侧装填门**逐发压入（不是换弹匣）：每发的节奏与 Java 侧音效表对齐
 （Win94Item.BOLT_SOUNDS / RELOAD_EMPTY_SOUNDS 的 tick 锚点）。
 
+⚠ 坐标空间：本文件的数值是**作者空间 B**（+X = 射手右侧，与 bbmodel / spec.py 同一套）——
+  Blockbench 预览里看到什么，游戏里就该是什么（这是这套管线的目标不变量）。落盘文件是空间 F，
+  GeckoLib 加载时把 F 预烹饪回 B：位置 x → −x；旋转 (rx,ry,rz) → (−rx,−ry,+rz)
+  （三处源码见 export.py 文件头）。**换算由 `export.py` 的 `cook_for_export()` 统一完成，
+  不要在这里手翻、也不要手改落盘 animation.json**。改完动画：
+  `python tools/win94/anim.py`（写 bbmodel）→ `python tools/win94/export.py`（换算并落盘）。
+  1.1.105/106 的教训：整层缺失 → 子弹从装填门对侧压进机匣（「装弹方向反了」）；
+  旋转换算方向写错 → 文件里 +62° 的 lever 在实机向上翻（1.1.107 修）。
+
 时长契约（Java：ceil(length × 20) ticks）：
   static_idle 2.0s(40) draw 0.8s(16) shoot 0.6s(12) bolt 1.1s(22)
   reload_tactical 2.2s(44) reload_empty 4.4s(88) inspect 2.6s(52)

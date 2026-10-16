@@ -16,7 +16,7 @@ import software.bernie.geckolib.renderer.GeoItemRenderer;
  * <p>Like the other rifles the first-person pose lives in {@code WeaponHandGrip}, not here — this class
  * only hands the live bone chains to {@link Win94GeoModel#capture} after the clip has run, so the arms
  * drawn a few lines later in the same frame ride the gun wherever it actually is. The driven part is the
- * {@code lever} rather than a bolt handle: its 85° swing is the whole action.</p>
+ * {@code lever} rather than a bolt handle: its 62° swing is the whole action.</p>
  */
 public class Win94ItemRenderer extends GeoItemRenderer<Win94Item> {
 

@@ -72,9 +72,9 @@ import software.bernie.geckolib.util.GeckoLibUtil;
  *       {@value #MAGAZINE_SIZE} rounds when the clip ends, which is also when the weapon unlocks.</li>
  *   <li><b>A clear sight, not a blackout scope.</b> The reference render's is a long hunting scope used
  *       with both eyes open, so aiming draws the {@link GunItem.SightStyle#CLEAR_SIGHT} lens — a pale
- *       wash with a transparent crosshair — and the rifle <em>stays in frame</em>: see
- *       {@link #hasScopeOverlay()} / {@link #hidesModelWhileAimed()}. The zoom is a fixed
- *       {@value #AIMED_FOV}-degree field of view, about 2.5×.</li>
+ *       wash with a transparent crosshair. The rifle and the hands then leave the frame entirely (see
+ *       {@link #hidesModelWhileAimed()}), leaving the lens and the cross as the whole view. The zoom is a
+ *       fixed {@value #AIMED_FOV}-degree field of view, about 2.5×.</li>
  * </ul>
  *
  * <p><b>Sounds are borrowed</b>, same as the Mosin: the recordings in {@code sounds/awm/} are TaCZ's AWM
@@ -136,14 +136,20 @@ public class Win94Item extends Item implements GeoItem, GunItem {
      * Starting from the Mosin's measured pair — the two rifles are within a centimetre of each other in
      * length and share the stock-wrist grip — to be refined with {@code tools/pose_measure.py} like the
      * others. See {@link GunItem#adsPitch()} for the display rotation that has to be cancelled first.
+     * Only the visible half of the raise rides these — past {@code SCOPE_HIDE_MODEL_AT} the model is gone.
      */
     private static final float ADS_X = -0.475F;
     private static final float ADS_Y = 0.37F;
     /** Must equal {@code models/item/win94.json}'s firstperson rotation's first two components. */
     private static final float DISPLAY_PITCH = 2.0F;
     private static final float DISPLAY_YAW = 4.0F;
-    /** On top of the display block's own 0.78 — see {@link GunItem#firstPersonScale()}. */
-    private static final float FIRST_PERSON_SCALE = 1.25F;
+    /**
+     * On top of the display block's own 0.78 — see {@link GunItem#firstPersonScale()}. Deliberately above
+     * the other rifles' 1.25: this model is true to the 24-inch rifle's own dimensions (17.83 u, where the
+     * Mosin and the RSC are drawn 15–20% over), so at the shared 1.25 it read as a toy beside them. 1.50
+     * draws it at 20.9 u on screen — still just under the Mosin, a carbine's presence, not a pistol's.
+     */
+    private static final float FIRST_PERSON_SCALE = 1.50F;
     /** .45-70 kicks harder than the Mosin's rifle round: a full-bodied push about the grip. */
     private static final float FIRE_PITCH = 5.5F;
 
@@ -290,12 +296,15 @@ public class Win94Item extends Item implements GeoItem, GunItem {
     }
 
     /**
-     * The rifle <em>stays in frame</em> while aiming: a clear sight is looked past, and hiding the model
-     * would leave the player floating behind a crosshair with no gun and no hands.
+     * The rifle and both hands leave the frame while the sight is up — the request for this gun was
+     * explicit: raise the sight and see only the glass and its crosshair. Past
+     * {@code ClientEvents.SCOPE_HIDE_MODEL_AT} of the raise nothing of the first-person model is drawn,
+     * and the {@link GunItem.SightStyle#CLEAR_SIGHT} overlay — pale lens, haloed crosshair, no blackout —
+     * is the whole view. The ADS offsets below still shape the visible half of the raise.
      */
     @Override
     public boolean hidesModelWhileAimed() {
-        return false;
+        return true;
     }
 
     @Override

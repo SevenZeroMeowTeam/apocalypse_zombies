@@ -17,8 +17,14 @@
 ## 坐标与单位（项目铁律，见 `docs/wiki/05-武器制作流程.md`）
 
 - 16 u = 1 方块；**1 u = 62.5 mm**；1 in = 25.4 mm = 0.4064 u
-- 枪口 −Z、上 +Y、**+X = 射手右侧**（装填门与抛壳口都在 +X 侧）
+- 枪口 −Z、上 +Y、**+X = 射手右侧**（装填门与抛壳口都在 +X 侧）—— 这是**作者空间**（bbmodel / spec.py）
 - 原点 = 机匣中心（膛线轴线 bore 在 y = 0）
+- ⚠ **两套空间**：落盘的 `geo.json` / `animation.json` 是空间 F（装填门等不对称件在 −X 侧，
+  wiki 07「导出空间 −X = 射手右侧」）；GeckoLib 加载时把 F 预烹饪回**作者空间 B**
+  （位置 x → −x；旋转 (rx,ry,rz) → (−rx,−ry,+rz)；三处源码见 `export.py` 文件头）。
+  换算由 `export.py` 的 `cook_for_export()` 统一完成，**Blockbench 里改动画写 B 空间值，
+  不许手翻、不许手改落盘文件**。教训：漏换算 → 子弹从装填门对侧压入（1.1.105 前）；
+  旋转换算方向写错 → 杠杆在实机向上翻（1.1.106，1.1.107 修）。
 
 ## 真枪基准 → 模型尺寸
 
@@ -90,7 +96,7 @@
 | `tools/win94/build.py` | 经 MCP 清空并重建（ensure → clear → groups → cubes → verify） |
 | `tools/win94/tex.py` | 按 UV 表逐面绘制 512² 贴图并经 MCP 装入（木纹/钢纹按**模型坐标**画，跨段连续） |
 | `tools/win94/anim.py` | 7 条 clip 的关键帧表（真枪相位）+ 写入 |
-| `tools/win94/export.py` | save_project → identifier → export geo → 本地转 animation.json |
+| `tools/win94/export.py` | save_project → identifier → export geo → 本地转 animation.json（**动画在该步做 X 镜像**：作者空间 → 导出空间，含 `check_mirrored()` 校验） |
 | `tools/win94/gate.py` | 门禁：环闭合/护圈包扳机/装填门位置/镜高/动画相位/资源完整性 |
 | `tools/win94/all.py` | 一键全链路（同进程依次调用，沙箱下不 spawn 子进程） |
 | `tools/win94/shot.py` | 固定机位截图（目视核对用） |
@@ -119,7 +125,7 @@ python tools/win94/shot.py side iso lever action
 | # | 缺陷 / 限制 | 说明 |
 |---|---|---|
 | 1 | **动画没有肉眼验收** | MCP 的截图通道**看不到骨骼变形** —— `preview_animation` / `screenshot` 渲染的是未变形的静态几何，所以 7 条 clip 目前只有数据验收（关键帧值、相位顺序、tick 契约，见 `gate.py`）。要肉眼确认得在 Blockbench 里拨时间轴，或进游戏看。 |
-| 2 | `ADS_X / ADS_Y` 还是借 Mosin 的 | `Win94GeoModel` 里 −0.475 / 0.37 是从 Mosin 抄的；模型长度从 21.9 u 缩到 17.83 u 之后没有重测。要用 `tools/pose_measure.py` 重新量。 |
+| 2 | `ADS_X / ADS_Y` 还是借 Mosin 的 | `Win94GeoModel` 里 −0.475 / 0.37 是从 Mosin 抄的；模型长度从 21.9 u 缩到 17.83 u 之后没有重测。要用 `tools/pose_measure.py` 重新量。1.1.106 起 `hidesModelWhileAimed() = true`（右键瞄准隐藏手和枪），这组值只影响抬枪可见的前半程（`SCOPE_HIDE_MODEL_AT = 0.5` 之前），偏一点也不再看得出来。 |
 | 3 | 枪托 / 护木是**分段方块**拼的 | 枪托 24 段、护木 4 段，侧面轮廓仍是阶梯（每段 ≈5 mm 落差），不是连续曲面。再加段数会显著推高方块数（现在 249）。 |
 | 4 | 圆柱是**多棱近似** | 枪管 8 棱、弹仓管与镜管 6 棱、卡箍 12 段。凑近能数出棱面。 |
 | 5 | 环是**弦直条搭接**的 | 杠杆环 20 段 / 护圈 16 段，段间搭接 10%，放大看有轻微棱角；实测最大缝 1.62 mm（`gate.py` 卡 3 mm）。 |

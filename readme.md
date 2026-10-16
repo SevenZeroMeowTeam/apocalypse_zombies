@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.105` |
+| **当前版本** | `1.1.107` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -277,6 +277,75 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 1.1.107 — 2026-10-16
+
+**修 1.1.106 旋转换算的方向错误：win94 杠杆实机向上翻（用户报「应该向下拉」）。**
+
+1.1.106 把 win94 的动画翻译到落盘文件时，位置通道翻对了（装弹方向因此修好），但**旋转通道的
+换算方向写反了** —— 当时按"精确镜像"推导（rx 不变、否 rz），实际是 **GeckoLib 加载预烹饪的逆**
+（从仓库 `art/bride/gl/` 里的 GeckoLib 4.8.4 源码逐处读出）：
+
+| 环节 | 源码 | 换算 |
+|---|---|---|
+| 几何：pivot / cube / 骨骼·方块旋转 | `BakedModelFactory.constructBone/constructCube` | pivot x→−x；cube origin x→−(x+w)；旋转 (rx,ry,rz)→(−rx,−ry,rz) |
+| 动画：位置 | `RenderUtils.translateMatrixToBone` | posX→−posX（y/z 原样） |
+| 动画：旋转 | `BakedAnimationsAdapter.buildKeyframeStack(isForRotation=true)` | (rx,ry,rz)→(−rx,−ry,rz) |
+
+⇒ 落盘文件必须写：**位置 x 取反；旋转否定 rx/ry、保留 rz**（这正是莫辛/AWM 等已出货枪的文件
+规则：莫辛 casing 的 bbmodel (60,−160,−40)/+0.5 → 落盘 (−60,+160,−40)/−0.5）。1.1.105/106 的
+lever +62° 原样落盘 ⇒ 加载时被烹成 −62° ⇒ 杠杆向上翻；hammer/trigger 的 rx 同病。
+
+**修复**：`export.py` 换算函数改为 `cook_for_export()`（规则改正 + 三处 GeckoLib 源码注释）、
+校验 `check_cooked()`、落盘 `win94.animation.json` 重新生成（与 1.1.106 版 diff：**34 处键全部是
+rx/rz 符号变化，位置通道 0 处变化**）、`gate.py` 的机构符号判据改成落盘空间符号
+（lever 负 / 击锤负 / 扳机正）、`anim.py` 与 `art/win94/README.md` 的规则说明重写。
+
+**验证**：`gate.py` 十项全绿 · `check_gun_resources.py` 全绿 · `check_cooked()` 逐键 0 失败 ·
+tick 契约与各通道时间点不变。修正后：lever 落盘 −62°（渲染 +62° = 环向前下方摆）、
+hammer −32°（待击向后）、trigger +16°（下端向后）—— 与 1.1.104 的机构相位表完全一致。
+- 版本号 1.1.106 → 1.1.107（`gradle.properties` / 根 `mod.toml` / `readme.md` 头表 + 更新日志，四处同改）。
+
+### 1.1.106 — 2026-10-16
+
+**实机试玩三处修正：win94 手上显小、右键瞄准应隐藏手和枪、装弹方向反了。**
+
+三处都是用户实机反馈（截图标注），逐条定位根因后修复：
+
+1. **手上显小**。1.1.104 把模型按真枪尺寸重建后总长 17.83 u，而其它长枪的模型都画大了
+   15–20%（莫辛 22.90 u 对真枪 1232 mm 超 16%），第一人称缩放却共用 1.25 —— 屏幕上只有
+   17.4 u，比 UZI（18.1 u）还短，视觉上像个小玩具。`Win94Item.FIRST_PERSON_SCALE`
+   1.25 → **1.50**（屏幕 20.9 u，仍略小于莫辛，保住卡宾枪的体量感）。
+   `firstPersonScale` 在握姿链的**上游**生效，ADS 补偿量随它一起放大，准星线仍在屏幕中心
+   （`GunItem#firstPersonScale()` 的设计就是为此）。
+
+2. **右键瞄准没有隐藏手和枪**。用户最初的要求就是"右键瞄准显示透明十字准星放大 2.5 倍，
+   **看不见手臂和武器**"；1.1.104 接入时把"看不见"误判为 bug（未注册导致）而写成
+   `hidesModelWhileAimed() = false`。恢复为 **true**：抬枪过 `SCOPE_HIDE_MODEL_AT` 后第一人称
+   模型整体不画，只留 CLEAR_SIGHT 的镜片、圈与十字准星（与 AWM 黑镜同一条框架路径，
+   `ClientEvents.onRenderHand`）。
+
+3. **装弹方向反了（根因最隐蔽）**。bbmodel 是**作者空间**（+X = 射手右侧，装填门、抛壳口
+   都建在 +X），而 **bedrock 导出把 X 取反** —— 落盘 geo 里所有不对称件都在 −X 侧
+   （全项目一致：莫辛/AWM 的枪机柄与抛壳件同理；wiki 07「导出空间 −X = 射手右侧」）。
+   1.1.104/105 的 `export.py` 转换动画时**漏了这次镜像**：几何在导出空间、动画还在作者空间，
+   子弹从"没有装填门的那一侧"压进机匣、空壳飞向另一侧 —— 实机看到的正是「装弹方向反了」。
+   - `tools/win94/export.py` 新增换算层（位置 x 取反 ✓；旋转按当时推的"精确镜像"处理
+     —— ⚠ **旋转这条规则写错了方向**，1.1.107 更正为"否定 rx/ry、保留 rz"，见下）
+     + `check_mirrored()` 逐键校验"落盘值 == 换算(bbmodel 值)"，漏翻 / 重复翻当场报错；
+   - 落盘 `win94.animation.json` 重生成：**78 个键**按换算翻转（cartridge / spent_shell / gate
+     的 x、body / gate / spent_shell 的旋转）—— 位置方向因此修好；旋转部分当时以为"X 轴机构
+     不受影响"，实际方向写反，杠杆在实机向上翻 —— ⚠ 1.1.107 修正；
+   - `tools/win94/gate.py`：装填门开度判据放宽为 `|x|`（门在导出空间反向弹开同样是"被顶开"），
+     新增检查项 10「落盘动画与导出几何同坐标系」：geo 装填门在 −X、换弹子弹 x ∈ [−0.86, 0]、
+     空壳末帧 x −2.10 向右上方抛出；
+   - `tools/win94/anim.py` / `art/win94/README.md` / `art/win94/DELIVERY.md` 写明两套空间的分工
+     （作者空间写 bbmodel、export.py 负责镜像，**不许手翻**）。
+
+**验证**：`gate.py` 与 `check_gun_resources.py` 全绿（9 把枪 + 16 物品 + 27 音效 + 14 个动画文件
+1977 条通道符合 GeckoLib 契约）；`check_mirrored()` 逐键核对 0 失败；重生成前后 diff 确认
+tick 契约（40/16/12/22/44/88/52）与各通道关键帧时间点逐条不变。
+- 版本号 1.1.105 → 1.1.106（`gradle.properties` / 根 `mod.toml` / `readme.md` 头表 + 更新日志，四处同改）。
 
 ### 1.1.105 — 2026-10-16
 

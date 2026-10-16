@@ -12,12 +12,17 @@
   5. 杠杆转轴在机匣**前下方**，环在转轴**后方**（Δz > 0）⇒ 打开必须是**正角度**。
   6. 装填门在机匣**中后部**（真枪原图 x 482…527 → z −1.63…−0.88），不在尾端。
   7. 倍镜：镜管中心高于 bore 50 mm（±5），镜管底与机匣顶留 ≥ 20 mm 抛壳净空。
-  8. 动画：7 条契约 clip 与 Java 的 tick 常量一致（40/16/12/22/44/88/52）；
-     lever 正角度、扳机负角度、击锤正角度；
+  8. 动画（读**落盘** animation.json）：7 条契约 clip 与 Java 的 tick 常量一致（40/16/12/22/44/88/52）；
+     **落盘空间的机构符号**（GeckoLib 加载时对旋转做 (−rx,−ry,+rz) 预烹饪，见 export.py）
+     —— lever 应为负（渲染 +62° = 环向前下方摆）、击锤负（渲染 +32° = 锤顶向后倒）、
+     扳机正（渲染 −16° = 刀片下端向后）；
      bolt 行程 ≥ 0.9 u（够抽壳）；
      **carrier 先下后上**：最低位时刻必须晚于 bolt 后退行程的 50%，且早于最高位时刻；
-     reload_empty 至少压 5 发（gate 被顶开 5 次）。
+     reload_empty 至少压 5 发（gate 被顶开 5 次，开度按 |x| 计）。
   9. 交付资源：geo identifier / 骨骼数 / 贴图 / animation format_version。
+ 10. **落盘动画与导出几何同坐标系**：geo 的装填门在 −X（导出空间 −X = 射手右侧），
+     换弹的子弹必须从 −X 一侧（装填门侧）压入、空壳向 −X 上方抛出（渲染时统一取反回 +X）——
+     1.1.105 及以前几何在导出空间、动画还在作者空间，实机就是「装弹方向反了」。
 
 用法：python tools/win94/gate.py
 """
@@ -323,10 +328,12 @@ def main():
     bolt = clips.get('bolt')
     if bolt:
         lev = anim_channel(bolt, 'lever', 'rotation')
-        if not lev or max(v[0] for _t, v in lev) <= 0:
-            bad('bolt：lever 旋转不是正角度（环在转轴后方，打开必须是正角度）')
+        lev_peak = max((v[0] for _t, v in lev), key=abs) if lev else 0.0
+        if not lev or lev_peak >= 0:
+            bad('bolt：lever 在落盘空间应为负角度（GeckoLib 预烹饪取反 ⇒ 渲染 +62°。'
+                '文件写正角度 = 实机杠杆向上翻，1.1.105/106 的 bug）')
         else:
-            ok(f'bolt：lever 峰值 {max(v[0] for _t, v in lev):.1f}°（正角度 = 环向前下方摆）')
+            ok(f'bolt：lever 落盘 {lev_peak:.1f}°（渲染 {-lev_peak:.1f}° = 环向前下方摆）')
         bp = anim_channel(bolt, 'bolt', 'position')
         if bp:
             back = max(v[2] for _t, v in bp)
@@ -366,39 +373,44 @@ def main():
     emp = clips.get('reload_empty')
     if emp:
         gp = anim_channel(emp, 'gate', 'position')
-        opens = [t for t, v in gp if v[0] > 0.005]
+        # 开度按 |x| 计：装填门在导出空间是 −X 侧，被顶开时 x 朝哪边弹是 2 mm 级的细节，
+        # 「开合几次」才是要卡的东西（1.1.106 起落盘动画已镜像，见检查项 10）。
+        opens = [t for t, v in gp if abs(v[0]) > 0.005]
         # 顶开是"到峰值再回位"，按峰值计数
         peaks = 0
-        prev = -1
+        prev = 0.0
         for t, v in gp:
-            if v[0] > 0.005 and prev <= 0.005:
+            if abs(v[0]) > 0.005 and prev <= 0.005:
                 peaks += 1
-            prev = v[0]
+            prev = abs(v[0])
         if peaks < 5:
             bad(f'reload_empty：装填门只被顶开 {peaks} 次（管仓 5 发要压 5 次）')
         else:
             ok(f'reload_empty：装填门被顶开 {peaks} 次 = 压入 5 发；共 {len(opens)} 帧有开度')
         lev = anim_channel(emp, 'lever', 'rotation')
-        if not lev or max(v[0] for _t, v in lev) <= 0:
+        lev_peak = max((v[0] for _t, v in lev), key=abs) if lev else 0.0
+        if not lev or abs(lev_peak) < 40:
             bad('reload_empty：收尾的杠杆循环没做（满仓后要扳一次杠杆上膛）')
+        elif lev_peak >= 0:
+            bad(f'reload_empty：收尾杠杆在落盘空间是正角度 {lev_peak:.0f}° —— 实机会向上翻')
         else:
-            ok(f'reload_empty：收尾杠杆循环 {max(v[0] for _t, v in lev):.0f}°')
+            ok(f'reload_empty：收尾杠杆循环落盘 {lev_peak:.0f}°（渲染 {-lev_peak:.0f}° 向下）')
     tac = clips.get('reload_tactical')
     if tac:
         gp = anim_channel(tac, 'gate', 'position')
-        peaks, prev = 0, -1
+        peaks, prev = 0, 0.0
         for _t, v in gp:
-            if v[0] > 0.005 and prev <= 0.005:
+            if abs(v[0]) > 0.005 and prev <= 0.005:
                 peaks += 1
-            prev = v[0]
+            prev = abs(v[0])
         if peaks != 3:
             bad(f'reload_tactical：应压 3 发，实为 {peaks}')
         else:
             ok('reload_tactical：装填门顶开 3 次 = 压入 3 发')
 
     for clip, bone, chan, sign, label in (
-            ('bolt', 'hammer', 'rotation', 1, '击锤待击 = 正角度（锤顶向后倒）'),
-            ('shoot', 'trigger', 'rotation', -1, '扳机扣动 = 负角度（刀片下端向后）')):
+            ('bolt', 'hammer', 'rotation', -1, '击锤待击：落盘负角度，渲染 +32°（锤顶向后倒）'),
+            ('shoot', 'trigger', 'rotation', 1, '扳机扣动：落盘正角度，渲染 −16°（刀片下端向后）')):
         a = clips.get(clip)
         if not a:
             continue
@@ -432,6 +444,48 @@ def main():
         else:
             ok(f'贴图 {TEX.name} {im.size[0]}x{im.size[1]} · {TEX.stat().st_size} B')
 
+    # ---- 10. 落盘动画与导出几何同坐标系（换弹方向 = 装填门侧）
+    #      geo 导出时 X 被取反：bbmodel 作者空间 +X = 射手右侧 → 导出空间 −X = 射手右侧
+    #      （全项目一致，wiki 07；莫辛/AWM 的枪机柄、抛壳件都在 −X 侧）。动画必须由
+    #      export.py 做同一次镜像 —— 1.1.105 及以前这层缺失：几何镜像了、动画没镜像，
+    #      子弹从"没有装填门的那一侧"压进机匣，实机看到的就是「装弹方向反了」。
+    geo_gate = [c for b in g0.get('bones', []) if b.get('name') == 'gate'
+                for c in b.get('cubes', [])]
+    if not geo_gate:
+        bad('geo 里没有 gate 骨骼的方块')
+    else:
+        gx1 = max(c['origin'][0] + c['size'][0] for c in geo_gate)
+        if gx1 > -0.2:
+            bad(f'geo 装填门 x 到 {gx1:.2f} —— 导出空间应在 −X 侧（−X = 射手右侧）')
+        else:
+            ok(f'geo 装填门在导出空间右侧（x 到 {gx1:.2f}，bbmodel 作者空间为镜像的 +X）')
+    for clip_name in ('reload_tactical', 'reload_empty'):
+        a = clips.get(clip_name)
+        if not a:
+            continue
+        cp = anim_channel(a, 'cartridge', 'position')
+        if not cp:
+            bad(f'{clip_name}：cartridge 没有位移关键帧')
+            continue
+        xmin = min(v[0] for _t, v in cp)
+        xmax = max(v[0] for _t, v in cp)
+        # 不变量：子弹永不越过中线到 +X 侧（那是装填门的对侧）；且必须有"门外"帧（x ≤ −0.8，
+        # 机匣右壁 −0.29 之外）。收尾上膛到 x = 0 的中线是合法终点。
+        if xmin > -0.8 or xmax > 0.05:
+            bad(f'{clip_name}：子弹 x 偏移 [{xmin:.2f},{xmax:.2f}] —— 不是从装填门（−X）一侧'
+                f'压入（越过了中线），几何与动画不在同一坐标空间（export.py 的镜像层漏了？）')
+        else:
+            ok(f'{clip_name}：子弹从装填门一侧压入（x {xmin:.2f} → {xmax:.2f}）')
+    bolt_clip = clips.get('bolt')
+    if bolt_clip:
+        sp = anim_channel(bolt_clip, 'spent_shell', 'position')
+        if sp:
+            xe = sp[-1][1][0]
+            if xe > -0.5:
+                bad(f'bolt：空壳末帧 x {xe:.2f} —— 应向右上方（−X）抛出，与莫辛/AWM 同侧')
+            else:
+                ok(f'bolt：空壳向右上方抛出（末帧 x {xe:.2f}）')
+
     print('=== win94 门禁 ===')
     for n in notes:
         print('  ·', n)
@@ -442,7 +496,7 @@ def main():
         return 1
     print('\n全部通过：两个环都闭合且与真枪尺寸一致 · 护圈包住扳机 · 环在转轴后方（正角度）·\n'
           '          装填门在机匣中后部 · 倍镜按真枪架高 · 动画 carrier 先下后上、'
-          '5 发压弹 + 收尾上膛')
+          '5 发压弹 + 收尾上膛 · 换弹方向 = 装填门侧（几何/动画同坐标系）')
     return 0
 
 
