@@ -51,11 +51,16 @@ PROBE_HOSTS = ('github.com', 'api.github.com', 'codeload.github.com',
                'objects.githubusercontent.com', 'raw.githubusercontent.com')
 
 # 社区长期在用的 GitHub 边缘 IP（github.com 的 A 记录池）。DNS 被污染时这些照样能打。
+# 注：2026-10-16 起部分 IP 只放行 TLS 握手、HTTP 层被掐断 —— probe() 会逐条验证 HTTP 响应。
 SEED_IPS = (
     '140.82.112.3', '140.82.113.3', '140.82.114.3', '140.82.116.3', '140.82.121.3',
-    '20.205.243.166', '20.205.243.168', '20.27.177.113', '20.200.245.247',
+    '140.82.112.4', '140.82.113.4', '140.82.114.4', '140.82.116.4', '140.82.121.4',
+    '140.82.112.5', '140.82.113.5',
+    '20.205.243.166', '20.205.243.168', '20.205.243.164', '20.205.243.165',
+    '20.27.177.113', '20.200.245.247',
     '20.233.83.145', '20.248.137.48', '20.207.73.82', '20.175.192.147',
     '20.87.245.0', '4.237.22.38', '20.26.156.215', '20.201.28.151',
+    '192.30.255.112', '192.30.255.113',
 )
 
 # 用它们问 DNS（系统 DNS 可能被污染，所以直接问公共的）
@@ -88,11 +93,14 @@ def dns_lookup(host, server, timeout=6):
     return ips
 
 
-def probe(ip, host='github.com', timeout=3.0):
-    """TCP 443 + 带证书校验的 TLS 握手。返回 (通不通, 毫秒)。
+def probe(ip, host='github.com', timeout=6.0):
+    """TCP 443 + 带证书校验的 TLS 握手 +（默认）一次真实 HTTP 请求。返回 (通不通, 毫秒)。
 
     只测 TCP 是不够的 —— 国内不少「可用 IP」其实是劫持节点，TCP 通、证书对不上。
-    这里用 create_default_context() 走完握手并校验 SAN，能过的才敢写进 hosts。
+    只看握手也不够 —— 2026-10-16 实测：17 个候选的 TLS 握手全部 300~800 ms 很漂亮，
+    但 git 一条都推不出去（`curl 28 ... after 21112 ms`）。补上 HTTP 层验证后才看清：
+    握手刚完就被中间设备掐断，HTTP 请求永远收不到响应。推送走的就是 HTTP 层，
+    所以「握手通」不算可用，「HTTP 有响应」才算。
     """
     t0 = time.monotonic()
     try:
@@ -100,9 +108,40 @@ def probe(ip, host='github.com', timeout=3.0):
             ctx = ssl.create_default_context()
             with ctx.wrap_socket(sock, server_hostname=host) as tls:
                 tls.getpeercert()
+                tls.settimeout(timeout)
+                tls.sendall(b'GET /robots.txt HTTP/1.1\r\nHost: github.com\r\n'
+                            b'User-Agent: git/2.43.0\r\nAccept: */*\r\nConnection: close\r\n\r\n')
+                if not tls.recv(16).startswith(b'HTTP/1.'):
+                    return False, None
     except Exception:
         return False, None
     return True, (time.monotonic() - t0) * 1000.0
+
+
+def proxy_args():
+    """git 配置里有个指向本地、却没在监听的代理时，返回强制禁用代理的 -c 参数。
+
+    2026-10-16 实测：`~/.gitconfig` 里 `https.proxy = http://127.0.0.1:10808`（代理软件没开），
+    git 的每一次连接都瞬间失败 —— 而 github_push 的「换 IP 试推」会把它误报成
+    「这些 IP 都连不上」，真正的原因根本不在 IP 上。本地端口活着（代理软件在跑）
+    或代理是远程地址时不动它。
+    """
+    val = ''
+    for key in ('https.proxy', 'http.proxy'):
+        val = (git(['config', '--get', key], check=False).stdout or '').strip()
+        if val:
+            break
+    if not val:
+        return []
+    m = re.match(r'^\w+://(127\.0\.0\.1|localhost|\[::1\]):(\d+)', val)
+    if not m:
+        return []
+    try:
+        socket.create_connection((m.group(1).strip('[]'), int(m.group(2))), timeout=2).close()
+        return []
+    except OSError:
+        log('  · 代理 %s 没在监听（端口不通）→ 本次推送不用它，直连' % val)
+        return ['-c', 'http.proxy=', '-c', 'https.proxy=']
 
 
 def gather_candidates():
@@ -120,7 +159,7 @@ def gather_candidates():
 def scan(verbose=True):
     cands = gather_candidates()
     if verbose:
-        log('候选 %d 个，开始逐个做 TLS 握手…' % len(cands))
+        log('候选 %d 个，逐个做 TLS 握手 + HTTP 层验证…' % len(cands))
     results = []
     with ThreadPoolExecutor(max_workers=16) as pool:
         futures = {pool.submit(probe, ip): ip for ip in cands}
@@ -135,7 +174,8 @@ def scan(verbose=True):
     results.sort()
     if verbose:
         if not results:
-            log('  ✗ 一个都没过 —— 现在连 github.com 的 TLS 都握不上，先把网络弄好。')
+            log('  ✗ 一个都没过 —— 连 github.com 的握手或 HTTP 层都不通，先把网络弄好'
+                '（或把代理软件打开：~/.gitconfig 里的 https.proxy 指向它）。')
         for ms, ip, src in results:
             log('  ✓ %-16s %6.0f ms   (%s)' % (ip, ms, src))
     return results
@@ -255,8 +295,9 @@ def do_push(timeout=240):
     （`Recv failure: Connection was reset`，同一 IP 换 HTTP/1.1 直接过）；上传缓冲也一并放大。
     这两条只作用在本次 push 上（`-c`），不写进仓库配置，也不会改这台机器上别的行为。
     """
-    proc = git(['-c', 'http.version=HTTP/1.1', '-c', 'http.postBuffer=524288000',
-                'push', REMOTE, 'HEAD:refs/heads/%s' % BRANCH], check=False, timeout=timeout)
+    proc = git(proxy_args() + ['-c', 'http.version=HTTP/1.1', '-c', 'http.postBuffer=524288000',
+                               'push', REMOTE, 'HEAD:refs/heads/%s' % BRANCH],
+               check=False, timeout=timeout)
     out = ((proc.stderr or '') + (proc.stdout or '')).strip()
     if proc.returncode == 0:
         log('  ✓ 已推到 %s/%s' % (REMOTE, BRANCH))
@@ -278,11 +319,11 @@ def probe_channel(timeout=30):
     TLS 握手过了**不代表** git 能连 —— 2026-10-15 实测：扫出来 925 ms 的那条 IP 握手很漂亮，
     git 却 `Failed to connect ... after 21137 ms`。所以推送前先用 `git ls-remote`（轻量、只读）验一遍。
     """
-    return git(['-c', 'http.version=HTTP/1.1', 'ls-remote', '--heads', REMOTE, BRANCH],
+    return git(proxy_args() + ['-c', 'http.version=HTTP/1.1', 'ls-remote', '--heads', REMOTE, BRANCH],
                check=False, timeout=timeout).returncode == 0
 
 
-def push_with_rotation(ips, tries=4):
+def push_with_rotation(ips, tries=6):
     """逐条候选 IP 试推，直到有一条真的把 HEAD 送上去。
 
     hosts 一次只指向一个 IP，所以这里按扫描排名换个试：写 hosts → `ls-remote` 验通道 → push。
