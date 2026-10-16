@@ -9,6 +9,7 @@ import com.apocalypse.zombies.client.model.MosinNagantGeoModel;
 import com.apocalypse.zombies.client.model.Rsc1917GeoModel;
 import com.apocalypse.zombies.client.model.S686GeoModel;
 import com.apocalypse.zombies.client.model.UziGeoModel;
+import com.apocalypse.zombies.client.model.Win94GeoModel;
 import com.apocalypse.zombies.item.AWMItem;
 import com.apocalypse.zombies.item.Colt1878Item;
 import com.apocalypse.zombies.item.CrossbowItem;
@@ -18,6 +19,7 @@ import com.apocalypse.zombies.item.MosinNagantItem;
 import com.apocalypse.zombies.item.Rsc1917Item;
 import com.apocalypse.zombies.item.S686Item;
 import com.apocalypse.zombies.item.UziItem;
+import com.apocalypse.zombies.item.Win94Item;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.AbstractClientPlayer;
@@ -244,6 +246,17 @@ public final class WeaponArms {
     }
 
     /**
+     * 温彻斯特 M1894：与莫辛同一套分工（右手随动作、左手托前托），但右手跟的是<b>杠杆</b>而不是
+     * 枪机旋钮 —— 手落在护圈底横杆上，随 {@code lever} 骨的 85° 弧线走（见 {@code Win94GeoModel}）。
+     */
+    public static void renderWin94(Minecraft mc, PoseStack pose, MultiBufferSource buffer, int light,
+                                   String action, float progress) {
+        render(mc, pose, buffer, light, Win94GeoModel.frame,
+                Win94GeoModel.rightHand(action, progress, new float[3]),
+                Win94GeoModel.leftHand(action, progress, new float[3]));
+    }
+
+    /**
      * Draws the arms for whichever of our guns is in hand, or nothing.
      *
      * <p>The gun answers for itself where its hands are: it knows which action is running
@@ -259,6 +272,8 @@ public final class WeaponArms {
             renderRsc1917(mc, pose, buffer, light, action, progress);
         } else if (stack.getItem() instanceof M1GarandItem) {
             renderM1Garand(mc, pose, buffer, light, action, progress);
+        } else if (stack.getItem() instanceof Win94Item) {
+            renderWin94(mc, pose, buffer, light, action, progress);
         } else if (stack.getItem() instanceof MosinNagantItem) {
             renderMosinNagant(mc, pose, buffer, light, action, progress);
         } else if (stack.getItem() instanceof AWMItem) {
@@ -284,6 +299,7 @@ public final class WeaponArms {
         UziGeoModel.frame.invalidate();
         S686GeoModel.frame.invalidate();
         Colt1878GeoModel.frame.invalidate();
+        Win94GeoModel.frame.invalidate();
     }
 
     private static void render(Minecraft mc, PoseStack pose, MultiBufferSource buffer, int light,

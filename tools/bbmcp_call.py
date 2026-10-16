@@ -11,10 +11,13 @@
   python tools/bbmcp_call.py call <tool> '<json args>' # 调一个工具
 """
 import json
+import os
 import sys
 import urllib.request
 
-URL = 'http://localhost:3000/bb-mcp'
+# BlockbenchMCP 桥的地址；端口跟着 Blockbench 插件设置走（默认 8787），
+# 需要时用环境变量 BB_MCP_URL 覆盖。
+URL = os.environ.get('BB_MCP_URL', 'http://127.0.0.1:8787/bb-mcp')
 HDRS = {'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream'}
 
 

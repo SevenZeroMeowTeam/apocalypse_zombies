@@ -13,6 +13,13 @@
 /JJI54557149985_obj/
 /x/
 
+# ===== 建模会话在仓库根丢下的一次性文件 =====
+# MCP 的 save_project 会写根目录（模型源已归档到 art/<name>/）；其余是贴图遮罩、裁剪图、探针 JSON。
+# Microsoft/ 是 PowerShell 在本机 cwd 落下的 ModuleAnalysisCache。
+/Microsoft/
+/.tmp_*
+/*.npy
+
 # ===== 开发机游戏日志 =====
 # Forge 启动器会在仓库根丢下 `游戏日志 - <版本>-<时间>.log`，是本机运行残留，不进仓库。
 /*.log

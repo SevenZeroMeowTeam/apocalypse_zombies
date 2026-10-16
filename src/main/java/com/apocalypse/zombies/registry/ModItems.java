@@ -9,6 +9,7 @@ import com.apocalypse.zombies.item.Rsc1917Item;
 import com.apocalypse.zombies.item.Colt1878Item;
 import com.apocalypse.zombies.item.S686Item;
 import com.apocalypse.zombies.item.UziItem;
+import com.apocalypse.zombies.item.Win94Item;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.CreativeModeTabs;
@@ -49,6 +50,16 @@ public final class ModItems {
 
     public static final RegistryObject<Item> MOSIN_NAGANT =
             ITEMS.register("mosin_nagant", () -> new MosinNagantItem(new Item.Properties().stacksTo(1)));
+
+    /**
+     * 温彻斯特 M1894（Win94 杠杆狙击枪）：管状弹仓 5 发 .45-70、手动杠杆循环、内置清晰镜（2.5 倍、
+     * 透明十字准星、瞄准时枪与手臂均不隐藏）。
+     *
+     * <p>与莫辛同一类武器（手动循环、固定弹仓、射击后动作自动跟上），差别在几何（杠杆而非枪栓）、
+     * 动作时长与 ADS 样式 —— 见 {@link Win94Item}。全长 1.37 格（参考图比例）。</p>
+     */
+    public static final RegistryObject<Item> WIN94 =
+            ITEMS.register("win94", () -> new Win94Item(new Item.Properties().stacksTo(1)));
 
     public static final RegistryObject<Item> CROSSBOW =
             ITEMS.register("crossbow", () -> new CrossbowItem(new Item.Properties().stacksTo(1)));
@@ -190,6 +201,7 @@ public final class ModItems {
             event.accept(M1_GARAND);
             event.accept(RSC_1917);
             event.accept(MOSIN_NAGANT);
+            event.accept(WIN94);
             event.accept(CROSSBOW);
             event.accept(UZI);
             event.accept(S686);
