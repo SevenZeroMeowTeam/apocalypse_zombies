@@ -27,6 +27,7 @@ PAIRS = {
     'copper_axe': 'iron_axe',
     'copper_hoe': 'iron_hoe',
     'copper_pickaxe': 'iron_pickaxe',
+    'copper_shovel': 'iron_shovel',
     'copper_sword': 'iron_sword',
     'copper_helmet': 'iron_helmet',
     'copper_chestplate': 'iron_chestplate',
@@ -39,6 +40,7 @@ FALLBACK = {
     'iron_axe': ['XX', 'X#', ' #'],
     'iron_hoe': ['XX', ' #', ' #'],
     'iron_pickaxe': ['XXX', ' # ', ' # '],
+    'iron_shovel': ['X', '#', '#'],
     'iron_sword': ['X', 'X', '#'],
     'iron_helmet': ['XXX', 'X X'],
     'iron_chestplate': ['X X', 'XXX', 'XXX'],
@@ -134,6 +136,22 @@ def main():
                 % (mod_name, got, vanilla_name, want))
         else:
             ok('%s == 原版 %s（%s）' % (mod_name, vanilla_name, '/'.join(want)))
+
+        # 镜像变体（可选）：存在时必须是 canonical 图案的**精确左右镜像**，键与产出一致。
+        # ——1.1.103~108 的错误图案把镜像摆法"教"给了玩家，补变体让两种摆法都能合（hcsurvival 同思路）。
+        mirror_path = MOD_RECIPES / ('%s_mirror.json' % mod_name)
+        if mirror_path.exists():
+            m = json.loads(mirror_path.read_text(encoding='utf-8'))
+            want_mirror = [row[::-1] for row in recipe['pattern']]
+            if m.get('pattern') != want_mirror:
+                bad('%s_mirror：图案 %s 不是 %s 的左右镜像（应为 %s）'
+                    % (mod_name, m.get('pattern'), mod_name, want_mirror))
+            elif (m.get('result') or {}) != (recipe.get('result') or {}):
+                bad('%s_mirror：产出 %s 与 %s 不一致' % (mod_name, m.get('result'), mod_name))
+            elif (m.get('key') or {}) != (recipe.get('key') or {}):
+                bad('%s_mirror：键与 %s 不一致' % (mod_name, mod_name))
+            else:
+                ok('%s_mirror == %s 的左右镜像（两种摆法都能合）' % (mod_name, mod_name))
 
     print('=== 配方图案门禁（对照 %s）===' % source)
     for n in notes:

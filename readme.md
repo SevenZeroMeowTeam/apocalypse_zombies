@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.109` |
+| **当前版本** | `1.2.0` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -277,6 +277,43 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 1.2.0 — 2026-10-16
+
+**铜套装收尾：铜斧 / 铜锄补镜像变体（左右两种摆法都能合）+ 铜锹补齐进本模组 + 配方门禁。**
+
+（用户报「合成表都有，就是空的合成物」、并要求「把铜锹补进我们的模组」后一起处理的三件事。）
+
+**一、查清"铜"装备在包里有双份**
+
+- **本模组配方数据全部有效**：9 张 canonical 图案 == 原版、模型贴图齐全、游戏日志零配方加载错误、
+  离线复刻 1.20.1 匹配规则逐格验证全过 —— 摆对一定能出；
+- `[硬核生存] hcsurvival` 自带 `hcsurvival:copper_*`（9 件、含铜锹，斧/锄还带镜像双配方
+  `_1/_2`）。REI / 配方书按"铜"搜索会把两套同名物品混显 —— **悬停看提示末行可区分**
+  （`Hardcore Survival` / `Apocalypse Zombies`）。
+
+**二、铜斧 / 铜锄补镜像变体**
+
+1.1.103~108 期间铜斧图案是错的（'SX'、锄也被镜像），玩家照着摆了数周；1.1.109 修回原版图案后，
+老习惯的镜像摆法会合不出东西。现各加一张**镜像变体**（`copper_axe_mirror` / `copper_hoe_mirror`，
+与 hcsurvival 的 `_1/_2` 同思路）：左右两种摆法都合出同一件物品。
+
+**三、铜锹补进本模组**
+
+原先玩家在配方书里看到的"铜锹"只存在于 hcsurvival（`hcsurvival:copper_shovel`）；本家补齐：
+
+- `ModItems.COPPER_SHOVEL` = `new ShovelItem(ModTiers.COPPER, 1.5F, -3.0F)`（与石锹同手感参数，
+  耐久/效率/挖掘等级随 `ModTiers.COPPER` 走），归工具页；
+- `models/item/copper_shovel.json` + `textures/item/copper_shovel.png`：贴图由原版 `iron_shovel.png`
+  逐像素套用本套装已有的"铁→铜"色板重染（从 copper_axe 与 iron_axe 提炼的 10 色映射，零冲突）；
+- 配方 `['X','S','S']`（== 原版 iron_shovel）+ 双语"铜锹 / Copper Shovel"。
+
+**门禁同步**：`check_recipes.py`（canonical == 原版；`_mirror` 变体必须精确镜像；对照表含铜锹，
+现 9 张）；`check_gun_resources.py` 的原版物品类白名单加 `ShovelItem`（否则误报"找不到模型绑定"）。
+
+验证：`check_recipes.py` 9/9 全绿、`check_gun_resources.py` 全绿（9 枪 + 17 个其他物品 + 27 音效）、
+包内资产核对无误；装机 1.2.0。
+- 版本号 1.1.109 → 1.2.0（`gradle.properties` / 根 `mod.toml` / `readme.md` 头表 + 更新日志，四处同改）。
 
 ### 1.1.109 — 2026-10-16
 

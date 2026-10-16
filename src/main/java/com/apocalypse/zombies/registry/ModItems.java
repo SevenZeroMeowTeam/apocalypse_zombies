@@ -16,6 +16,7 @@ import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.HoeItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.PickaxeItem;
+import net.minecraft.world.item.ShovelItem;
 import net.minecraft.world.item.SwordItem;
 import net.minecraftforge.common.ForgeSpawnEggItem;
 import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
@@ -160,6 +161,18 @@ public final class ModItems {
                     () -> new AxeItem(ModTiers.COPPER, 7.0F, -3.2F, new Item.Properties()));
 
     /**
+     * 铜锹：与石锹同一组手感参数（攻击修正 +1.5 / 攻速 -3.0），挖掘等级 / 耐久 / 效率跟着
+     * {@link ModTiers#COPPER} 走，与另四件铜工具同档。
+     *
+     * <p>1.1.110 同版追加：这套铜装备原先只有剑 / 镐 / 锄 / 斧 —— 玩家在配方书里看到的"铜锹"
+     * 其实来自 {@code [硬核生存] hcsurvival}（它的 `hcsurvival:copper_*` 与本模组是两套同名物品），
+     * 这里把缺的那一件补进本家，铜套装自此完整（贴图沿用套装同一套铁→铜色板重染）。</p>
+     */
+    public static final RegistryObject<Item> COPPER_SHOVEL =
+            ITEMS.register("copper_shovel",
+                    () -> new ShovelItem(ModTiers.COPPER, 1.5F, -3.0F, new Item.Properties()));
+
+    /**
      * 铜甲四件：护甲值 2 / 4 / 3 / 1（合计 <b>10</b>）—— 皮革 7 → 高，铁 15 → 低。
      *
      * <p>单看头盔它与铁同为 2：原版护甲值是整数，皮革的 1 与铁的 2 之间没有第三个数，所以
@@ -217,6 +230,7 @@ public final class ModItems {
             event.accept(COPPER_PICKAXE);
             event.accept(COPPER_HOE);
             event.accept(COPPER_AXE);
+            event.accept(COPPER_SHOVEL);
         }
         if (event.getTabKey() == CreativeModeTabs.SPAWN_EGGS) {
             event.accept(SCREAMER_SPAWN_EGG);

@@ -124,11 +124,12 @@ registry = read(JAVA / "registry/ModItems.java")
 # 刷怪蛋同样是 ITEMS.register(...) -> new ForgeSpawnEggItem(...)，但它们没有 GeoModel，
 # 不是本脚本的检查对象 —— 不过滤掉会稳定报 4 条假失败，把真问题淹没掉。
 #
-# 1.1.92 起还要排掉**原版物品类**：铜装备（SwordItem / PickaxeItem / HoeItem / AxeItem / ArmorItem）
-# 走的是原版那套模型（models/item/*.json + 普通 16×16 贴图），与 GeckoLib 的
-# geo/animation 毫无关系；不排掉就是 8 条假失败（前四个类各 1 条，ArmorItem 四条 —— 四件甲）。
+# 1.1.92 起还要排掉**原版物品类**：铜装备（SwordItem / PickaxeItem / HoeItem / AxeItem /
+# ShovelItem / ArmorItem）走的是原版那套模型（models/item/*.json + 普通 16×16 贴图），
+# 与 GeckoLib 的 geo/animation 毫无关系；不排掉就是 9 条假失败（前五个类各 1 条，
+# ArmorItem 四条 —— 四件甲。ShovelItem 是 1.1.110 同版补铜锹时加进来的）。
 VANILLA_ITEM_CLASSES = {"ForgeSpawnEggItem", "SwordItem", "PickaxeItem", "HoeItem", "AxeItem",
-                        "ArmorItem"}
+                        "ShovelItem", "ArmorItem"}
 guns = [
     entry
     for entry in re.findall(r'ITEMS\.register\("([a-z0-9_]+)",\s*\(\)\s*->\s*new\s+(\w+Item)\(', registry)
