@@ -217,6 +217,17 @@ public final class Config {
     public static final ForgeConfigSpec.DoubleValue ZOMBIE_LOOT_GEAR_CHANCE;
     public static final ForgeConfigSpec.DoubleValue ZOMBIE_LOOT_RARE_CHANCE;
 
+    // ---- 外家模组兼容 ----
+
+    /**
+     * 铜装备配方去重（兼容 [硬核生存] hcsurvival）。
+     *
+     * <p>默认开：hcsurvival 用同一套原版图案 + 同一材料注册了同名的九件铜装备，与本模组的
+     * canonical 图案逐格等价；两条一模一样的配方在 1.20.1 里只有一条可能被合成台命中。
+     * 打开时把「同形、产物却不是本模组」的那几条从配方表里剔除，摆对图案必定出本模组的产物。</p>
+     */
+    public static final ForgeConfigSpec.BooleanValue COPPER_RECIPE_DEDUP;
+
     // ---- 相同物品一键采集 ----
     public static final ForgeConfigSpec.BooleanValue COLLECT_ENABLED;
     /** 采集半径（格）。 */
@@ -715,6 +726,17 @@ public final class Config {
         ZOMBIE_LOOT_RARE_CHANCE = b.comment("掉本模组枪械的概率。默认极低 —— 枪是稀罕物，",
                         "不该变成打僵尸的常规产出。")
                 .defineInRange("rare_gun_chance", 0.002D, 0.0D, 1.0D);
+        b.pop();
+
+        b.comment("外家模组兼容：把「与本模组同形、产物却不是本模组」的重复配方让开，避免配方被顶掉。")
+                .push("compat");
+        COPPER_RECIPE_DEDUP = b.comment("铜装备配方去重（[硬核生存] hcsurvival）。",
+                        "hcsurvival 用同一套原版图案、同一材料（minecraft:copper_ingot）注册了同名的九件铜装备，",
+                        "两条一模一样的配方在 1.20.1 里只有一条可能被合成台命中（同为 findFirst，顺序随机），",
+                        "另一条等于不存在。打开时：配方加载完成后，把「与本模组铜装备配方逐格等价、产物却不是",
+                        "本模组物品」的配方从配方表里剔除，摆对图案必定出本模组的产物。",
+                        "关掉就完全回到原样（两套同名配方并列，谁被命中看运气）。")
+                .define("copper_recipe_dedup", true);
         b.pop();
 
         b.comment("相同物品一键采集。")

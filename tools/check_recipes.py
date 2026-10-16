@@ -52,6 +52,15 @@ FALLBACK = {
 MATERIAL = 'copper_ingot'
 STICK = 'stick'
 
+#: 「短木棍版」条件配方：图案与 canonical 逐格相同，只有手柄槽换成硬核生存的短木棍。
+#: —— 用条件而不是把手柄槽改成物品标签，是因为 1.20.1 的原版 TagLoader 遇到标签里引用
+#: **不存在的物品**时会把**整条标签**丢掉（"Couldn't load tag … missing references"），
+#: 没装硬核生存的玩家会连带丢掉全部铜工具配方；条件配方是 Forge 在**解析之前**就跳过的，
+#: 物品 id 根本不会被解析，装与不装都安全。
+SHORT_STICK_TOOLS = ('copper_axe', 'copper_hoe', 'copper_pickaxe', 'copper_shovel', 'copper_sword')
+HCS_ITEM = 'hcsurvival:short_stick'
+MOD_LOADED_CONDITION = {'type': 'forge:mod_loaded', 'modid': 'hcsurvival'}
+
 problems = []
 notes = []
 
@@ -110,6 +119,41 @@ def main():
                        'pattern': v} for k, v in FALLBACK.items()}
         if not jar.exists():
             print('（%s 不存在 —— 退回内置表）' % jar)
+
+    # 「短木棍版」条件配方：图案与 canonical 逐格相同，只有手柄槽换成 hcsurvival:short_stick，
+    # 且必须挂 forge:mod_loaded:hcsurvival（没装就是 Forge 直接跳过，物品 id 不会被解析）。
+    for tool in SHORT_STICK_TOOLS:
+        canon = json.loads((MOD_RECIPES / ('%s.json' % tool)).read_text(encoding='utf-8'))
+        path = MOD_RECIPES / ('%s_short_stick.json' % tool)
+        if not path.exists():
+            bad('缺短木棍版条件配方 %s_short_stick.json' % tool)
+            continue
+        v = json.loads(path.read_text(encoding='utf-8'))
+        if v.get('pattern') != canon.get('pattern'):
+            bad('%s_short_stick：图案 %s 与 canonical %s 不一致'
+                % (tool, v.get('pattern'), canon.get('pattern')))
+        elif (v.get('result') or {}) != (canon.get('result') or {}):
+            bad('%s_short_stick：产出与 canonical 不一致' % tool)
+        elif MOD_LOADED_CONDITION not in (v.get('conditions') or []):
+            bad('%s_short_stick：缺 forge:mod_loaded:hcsurvival 条件（没装硬核生存时会解析失败）' % tool)
+        elif json.dumps(v.get('key') or {}, sort_keys=True).count(HCS_ITEM) != 1:
+            bad('%s_short_stick：手柄槽应恰好引用一次 %s' % (tool, HCS_ITEM))
+        else:
+            ok('%s_short_stick == canonical 图案 + 短木棍手柄（挂 hcsurvival 条件）' % tool)
+
+    # 总规矩：任何**引用外家物品**的配方都必须带条件 —— 1.20.1 里引用不存在的物品 = 整条配方解析失败。
+    for path in sorted(MOD_RECIPES.glob('*.json')):
+        rec = json.loads(path.read_text(encoding='utf-8'))
+        blob = json.dumps(rec, ensure_ascii=False)
+        foreign = set()
+        for val in (rec.get('key') or {}).values():
+            item = (val or {}).get('item') if isinstance(val, dict) else None
+            if isinstance(item, str) and not item.startswith(('minecraft:', 'apocalypse_zombies:')):
+                foreign.add(item)
+        if foreign and not (rec.get('conditions') or []):
+            bad('%s 引用了外家物品 %s 却没有 conditions —— 缺了那个模组时整条配方会解析失败'
+                % (path.name, sorted(foreign)))
+    ok('外家物品（%s）只出现在带条件的配方里' % HCS_ITEM)
 
     for mod_name, vanilla_name in PAIRS.items():
         path = MOD_RECIPES / ('%s.json' % mod_name)
