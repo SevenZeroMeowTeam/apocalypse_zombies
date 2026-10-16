@@ -26,6 +26,9 @@ public class Win94ItemRenderer extends GeoItemRenderer<Win94Item> {
     /** The lever — its live pose is what the right hand is put on while the clip cycles the action. */
     private static final String LEVER_BONE = "lever";
 
+    /** The cartridge the reloads press through the gate — the right hand rides it while loading. */
+    private static final String ROUND_BONE = "cartridge";
+
     public Win94ItemRenderer() {
         super(new Win94GeoModel());
     }
@@ -38,7 +41,8 @@ public class Win94ItemRenderer extends GeoItemRenderer<Win94Item> {
         if (displayContext.firstPerson()) {
             CoreGeoBone move = getGeoModel().getAnimationProcessor().getBone(MOVE_BONE);
             CoreGeoBone lever = getGeoModel().getAnimationProcessor().getBone(LEVER_BONE);
-            Win94GeoModel.capture(itemRenderTranslations, move, lever,
+            CoreGeoBone round = getGeoModel().getAnimationProcessor().getBone(ROUND_BONE);
+            Win94GeoModel.capture(itemRenderTranslations, move, lever, round,
                     com.apocalypse.zombies.client.GunAimState.getAimProgress());
         }
     }

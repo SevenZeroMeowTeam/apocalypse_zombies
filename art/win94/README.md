@@ -112,7 +112,8 @@ python tools/win94/shot.py side iso lever action
 ## 与 Java 侧的契约
 
 - 骨骼名（16）：`root/move/body/barrel/forearm/receiver/stock/bolt/hammer/lever/carrier/`
-  `cartridge/spent_shell/trigger/gate/scope` —— `Win94ItemRenderer` 硬编码 `move` 与 `lever`。
+  `cartridge/spent_shell/trigger/gate/scope` —— `Win94ItemRenderer` 硬编码 `move` 与 `lever`；
+  `cartridge` 由渲染器一并捕捉，换弹时右手（装弹手）跟着它逐发把子弹推入装填门（1.1.108）。
 - clip 名与 tick：`static_idle 40 / draw 16 / shoot 12 / bolt 22 / reload_tactical 44 /`
   `reload_empty 88 / inspect 52`（Java 侧 `SHOOT_TICKS` 等常量 + `check_gun_resources.py` 卡）。
 - 第一人称手部目标写在 `Win94GeoModel.java`：`GRIP / SUPPORT / LEVER_KNOB / LEVER_TURN_MAX`

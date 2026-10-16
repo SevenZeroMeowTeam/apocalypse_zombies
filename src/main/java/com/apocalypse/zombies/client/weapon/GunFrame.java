@@ -67,6 +67,22 @@ public final class GunFrame {
     private float boltPull;
     private boolean boltValid;
 
+    /**
+     * The loading round's own chain this frame — everything from the cartridge up to, but not including,
+     * {@code move} — plus how far along +Z the clip has parked it. See {@link #round} and {@link #roundGrip}.
+     */
+    private final Matrix4f roundChain = new Matrix4f();
+    private float roundFeed;
+    private boolean roundValid;
+
+    /**
+     * Model px along +Z a round sits at when it is at the loading gate rather than at home: the reload clips
+     * park every pressable round a fifth of a unit rearward ({@code FEED_Z}), while the round in the chamber
+     * sits forward of home ({@code CHAMBER_Z}, negative). Reading the sign as well as the size is what keeps
+     * the loading hand out of the barrel when the clip finally chambers one.
+     */
+    private static final float ROUND_AT_GATE_Z = 0.08F;
+
     private final Vector3f v = new Vector3f();
 
     /** Scratch while composing one bone's own transform in {@link #partChain}. */
@@ -100,6 +116,7 @@ public final class GunFrame {
     public void invalidate() {
         valid = false;
         boltValid = false;
+        roundValid = false;
     }
 
     /**
@@ -152,6 +169,48 @@ public final class GunFrame {
         if (!boltValid) return 0.0F;
         return Math.max(Math.abs((float) Math.toDegrees(boltTurn)) / turnMaxDeg,
                         Math.abs(boltPull) / pullMaxPx);
+    }
+
+    /**
+     * Records where the round being loaded is this frame, for the guns whose reloads are hand-fed — the
+     * lever gun's loading gate. Same rule as {@link #bolt}: the hand is driven from the live bone rather than
+     * from a second copy of the clip's timing, so the two cannot drift apart.
+     *
+     * @param roundChain the composed chain for the cartridge, from {@link #partChain} (may be {@code null})
+     * @param roundBone the cartridge bone itself, read for its clip values (may be {@code null})
+     */
+    public void round(Matrix4f roundChain, CoreGeoBone roundBone) {
+        if (roundChain == null || roundBone == null) {
+            roundValid = false;
+            return;
+        }
+        this.roundChain.set(roundChain);
+        this.roundFeed = roundBone.getPosZ();
+        this.roundValid = true;
+    }
+
+    /**
+     * True while a round is sitting at the loading gate rather than at home or in the chamber, so the loading
+     * hand sits on it instead of waiting with the next one. Both the presses and the step-outs between them
+     * count: the round a reload is working is <em>always</em> parked a fifth of a unit rearward, right up to
+     * the moment the last one is chambered (which drives it the other way, past home).
+     */
+    public boolean roundAtGate() {
+        return roundValid && roundFeed > ROUND_AT_GATE_Z;
+    }
+
+    /**
+     * Where a point of the loading round has ended up this frame, in the same model pixels a hand target is
+     * written in — same contract as {@link #boltGrip}.
+     */
+    public boolean roundGrip(float[] grip, float[] out) {
+        if (!valid || !roundValid) return false;
+        v.set(grip[0], grip[1], grip[2]);
+        roundChain.transformPosition(v);
+        out[0] = v.x;
+        out[1] = v.y;
+        out[2] = v.z;
+        return true;
     }
 
     /**
