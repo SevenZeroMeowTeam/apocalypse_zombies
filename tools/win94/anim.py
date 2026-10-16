@@ -27,6 +27,12 @@
   static_idle 2.0s(40) draw 0.8s(16) shoot 0.6s(12) bolt 1.1s(22)
   reload_tactical 2.2s(44) reload_empty 4.4s(88) inspect 2.6s(52)
 
+⚠ GeckoLib 关键帧契约（2026-10-16 启动崩溃事故的根因）：
+  BakedAnimationsAdapter 逐键遍历通道，**时间戳为 0 的关键帧必须是该通道的第一个键**；
+  0 帧若排在其它时间之后，它会抛 "Invalid keyframe data - multiple starting keyframes?"，
+  整个 animation.json 解析失败 ⇒ 客户端在资源加载阶段直接崩溃。
+  所以写 Blockbench 前一律 geckolib_sort()（组内按时间升序），自检按同一规则复刻。
+
 用法：
   python tools/win94/anim.py --dry     # 只打印时间表
   python tools/win94/anim.py           # 写入 Blockbench
@@ -59,6 +65,27 @@ OUT_X = S.OUT_X                  # 子弹在装填门外（右侧）的 x 偏移
 def kf(bone, channel, t, v, interp='catmullrom'):
     return {'bone': bone, 'channel': channel, 'time': round(t, 3),
             'value': [round(x, 4) for x in v], 'interpolation': interp}
+
+
+def geckolib_sort(kfs):
+    """按 (骨骼, 通道) 分组后组内按时间升序稳定重排，返回是否改动过。
+
+    写入 Blockbench 的顺序 = bbmodel 数组顺序 = 导出 JSON 的键顺序，
+    而 GeckoLib 要求零时间戳帧是该通道第一个键（见文件头契约说明）。
+    """
+    slots = {}
+    for i, k in enumerate(kfs):
+        slots.setdefault((k['bone'], k['channel']), []).append(i)
+    changed = False
+    for idx in slots.values():
+        # 先整组读出（副本）再落位，避免边读边写
+        before = [kfs[i] for i in idx]
+        want = sorted(before, key=lambda k: k['time'])
+        if want != before:
+            changed = True
+        for slot, item in zip(idx, want):
+            kfs[slot] = item
+    return changed
 
 
 # =============================================================== 1. static_idle
@@ -178,6 +205,8 @@ TAC = [
     kf('body', 'rotation', 1.35, (2, 6, 4)),
     kf('body', 'rotation', 1.95, (2, 5, 3)),
     kf('body', 'rotation', TAC_LEN, (0, 0, 0)),
+    # ⚠ gate 的零时间戳帧必须排在本通道最前（GeckoLib 硬约束，见文件头说明）
+    kf('gate', 'position', 0.0, (0, 0, 0)),
 ]
 for i, t0 in enumerate((0.56, 1.10, 1.64)):
     t_push, t_in = t0, t0 + 0.30
@@ -195,7 +224,6 @@ for i, t0 in enumerate((0.56, 1.10, 1.64)):
     ]
 TAC += [
     kf('cartridge', 'position', TAC_LEN, (OUT_X, 0.10, FEED_Z), 'step'),
-    kf('gate', 'position', 0.0, (0, 0, 0)),
     kf('gate', 'position', TAC_LEN, (0, 0, 0)),
 ]
 
@@ -219,6 +247,8 @@ EMP = [
     kf('body', 'rotation', 3.79, (-2.2, 0, 0)),
     kf('body', 'rotation', 4.05, (1.2, 0, 0)),
     kf('body', 'rotation', EMP_LEN, (0, 0, 0)),
+    # ⚠ gate 的零时间戳帧必须排在本通道最前（GeckoLib 硬约束，见文件头说明）
+    kf('gate', 'position', 0.0, (0, 0, 0)),
 ]
 for i, t0 in enumerate((0.65, 1.20, 1.75, 2.30, 2.85)):
     t_in = t0 + 0.30
@@ -249,9 +279,8 @@ for i, t0 in enumerate((0.65, 1.20, 1.75, 2.30, 2.85)):
     ]
 # 收尾：扳一次杠杆，让弹仓里第一发上膛（同 bolt 的相位，只是慢一点）
 EMP += [
-    kf('gate', 'position', 0.0, (0, 0, 0)),
-    kf('gate', 'position', 3.0, (0, 0, 0)),
-    kf('gate', 'position', 3.30, (0, 0, 0)),
+    # gate 在 3.15（最后一发的 t_in）已回关闭位，到 4.4 之间全是 0 值保持，
+    # 中间不再插 0 值帧（冗余帧若排在 3.15 之前会破坏 GeckoLib 要求的升序）
     kf('gate', 'position', EMP_LEN, (0, 0, 0)),
     kf('lever', 'rotation', 3.36, (0, 0, 0)),
     kf('lever', 'rotation', 3.72, (LEVER_OPEN, 0, 0)),
@@ -316,6 +345,11 @@ def main():
         bones = sorted({k['bone'] for k in kfs})
         print(f'{name:18s} {loop:5s} {length:5.1f} {int(length * 20 + 0.999):5d} {len(kfs):4d}  '
               f'{",".join(bones)}')
+    # 写入前规范化：每个通道按时间升序（GeckoLib 契约，见文件头）
+    fixed = [name for name, _l, _ln, kfs, _c in ANIMS if geckolib_sort(kfs)]
+    if fixed:
+        print(f'已按时间升序规范化 {len(fixed)} 条 clip 的关键帧顺序：{", ".join(fixed)}')
+
     # 自检：关键帧不许越过 clip 长度、不许有重复时间
     bad = []
     for name, _loop, length, kfs, _c in ANIMS:
@@ -328,12 +362,22 @@ def main():
             if key in seen:
                 bad.append(f'{name}: 重复关键帧 {key}')
             seen[key] = 1
+        # GeckoLib 契约：零时间戳帧必须是通道第一个键且只能有一个（否则整包动画被拒）
+        groups = {}
+        for k in kfs:
+            groups.setdefault((k['bone'], k['channel']), []).append(k['time'])
+        for (bone, chan), times in groups.items():
+            zeros = [i for i, t in enumerate(times) if t == 0]
+            if zeros and zeros[0] != 0:
+                bad.append(f'{name}: {bone}.{chan} 零时间戳帧不在首位 —— GeckoLib 会拒绝整包动画')
+            if len(zeros) > 1:
+                bad.append(f'{name}: {bone}.{chan} 有 {len(zeros)} 个零时间戳帧 —— GeckoLib 会拒绝整包动画')
     if bad:
         print('\n自检不通过：')
         for b in bad[:20]:
             print('  [x]', b)
         return 1
-    print('自检：关键帧时间全部落在 clip 内，无重复 [ok]')
+    print('自检：关键帧时间全部落在 clip 内，无重复，零时间戳帧均在各通道首位 [ok]')
 
     if dry:
         return 0

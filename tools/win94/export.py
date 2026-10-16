@@ -7,6 +7,8 @@
   4) 本地转换       bbmodel 的 animations → GeckoLib 的 animation.json：
                     {format_version, animations:{<clip>:{loop, animation_length, bones:{...}}}}
                     每个关键帧写成 {"post":{"vector":[x,y,z]},"lerp_mode":...}
+                    每个通道的键按时间升序（零时间戳在首）—— GeckoLib 的硬约束，
+                    违反会令客户端在资源加载阶段崩溃（2026-10-16 事故）。
 
 GeckoLib 的动画 codec 在 MCP 里调不到（export 会弹保存对话框），而 bbmodel 本来就存着完整关键帧，
 所以这一步在本地做 —— 数据来源仍是 Blockbench 写出的 bbmodel，没有手改。
@@ -70,7 +72,30 @@ def convert_animations(data):
             'animation_length': round(float(anim.get('length') or 0), 4),
             'bones': bones,
         }
+    # GeckoLib 契约：每个通道的键必须按时间升序（零时间戳在首）。
+    # 违反时 BakedAnimationsAdapter 抛 "multiple starting keyframes"，
+    # 整包动画解析失败 → 客户端在资源加载阶段崩溃（bbmodel 里的数组顺序不保证）。
+    for a in out.values():
+        for chans in a['bones'].values():
+            for chan, ks in chans.items():
+                chans[chan] = {k: ks[k] for k in sorted(ks, key=float)}
     return out
+
+
+def check_geckolib(anims):
+    """复刻 GeckoLib BakedAnimationsAdapter.getKeyframes 的硬约束，返回问题列表。"""
+    problems = []
+    for name, a in anims.items():
+        for bone, chans in a['bones'].items():
+            for chan, ks in chans.items():
+                for i, k in enumerate(ks):
+                    try:
+                        t = float(k)
+                    except ValueError:
+                        t = 0.0
+                    if t == 0 and i > 0:
+                        problems.append(f'{name}/{bone}.{chan}: 零时间戳键 "{k}" 不在首位')
+    return problems
 
 
 def main():
@@ -99,6 +124,12 @@ def main():
 
     data = json.loads(BBMODEL.read_text(encoding='utf-8'))
     anims = convert_animations(data)
+    gecko_bad = check_geckolib(anims)
+    if gecko_bad:
+        print('!! GeckoLib 关键帧契约不通过（写出会让客户端启动崩溃）：')
+        for b in gecko_bad[:10]:
+            print('   [x]', b)
+        return 1
     payload = {'format_version': '1.8.0', 'animations': anims}
     ANIM_OUT.parent.mkdir(parents=True, exist_ok=True)
     ANIM_OUT.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')

@@ -1159,6 +1159,16 @@
             }
           },
           "position": {
+            "0": {
+              "post": {
+                "vector": [
+                  0.0,
+                  0.0,
+                  0.0
+                ]
+              },
+              "lerp_mode": "catmullrom"
+            },
             "0.6": {
               "post": {
                 "vector": [
@@ -1240,16 +1250,6 @@
               "lerp_mode": "catmullrom"
             },
             "1.94": {
-              "post": {
-                "vector": [
-                  0.0,
-                  0.0,
-                  0.0
-                ]
-              },
-              "lerp_mode": "catmullrom"
-            },
-            "0": {
               "post": {
                 "vector": [
                   0.0,
@@ -2039,6 +2039,16 @@
             }
           },
           "position": {
+            "0": {
+              "post": {
+                "vector": [
+                  0.0,
+                  0.0,
+                  0.0
+                ]
+              },
+              "lerp_mode": "catmullrom"
+            },
             "0.69": {
               "post": {
                 "vector": [
@@ -2180,36 +2190,6 @@
               "lerp_mode": "catmullrom"
             },
             "3.15": {
-              "post": {
-                "vector": [
-                  0.0,
-                  0.0,
-                  0.0
-                ]
-              },
-              "lerp_mode": "catmullrom"
-            },
-            "0": {
-              "post": {
-                "vector": [
-                  0.0,
-                  0.0,
-                  0.0
-                ]
-              },
-              "lerp_mode": "catmullrom"
-            },
-            "3": {
-              "post": {
-                "vector": [
-                  0.0,
-                  0.0,
-                  0.0
-                ]
-              },
-              "lerp_mode": "catmullrom"
-            },
-            "3.3": {
               "post": {
                 "vector": [
                   0.0,

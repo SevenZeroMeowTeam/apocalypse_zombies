@@ -300,6 +300,26 @@ def main():
         else:
             ok(f'{name}: len {a["animation_length"]}s = {ticks} ticks（与 Java 一致）')
 
+    # ---- 8b. GeckoLib 关键帧契约：零时间戳帧必须是各通道第一个键
+    #      （违反 ⇒ BakedAnimationsAdapter 抛 "multiple starting keyframes" ⇒
+    #       整包 animation.json 解析失败 ⇒ 客户端在资源加载阶段直接崩溃）
+    order_bad = []
+    for cname, a in clips.items():
+        for bone, chans in (a.get('bones') or {}).items():
+            for ch, ks in chans.items():
+                for i, k in enumerate(list(ks)):
+                    try:
+                        t = float(k)
+                    except ValueError:
+                        t = 0.0
+                    if t == 0 and i > 0:
+                        order_bad.append(f'{cname}/{bone}.{ch}')
+    if order_bad:
+        bad(f'GeckoLib 关键帧契约不通过（{len(order_bad)} 处零时间戳帧不在首位，'
+            f'会把客户端启动打崩）：' + '；'.join(order_bad[:5]))
+    else:
+        ok(f'GeckoLib 关键帧契约：{len(clips)} 条 clip 的零时间戳帧均在各通道首位')
+
     bolt = clips.get('bolt')
     if bolt:
         lev = anim_channel(bolt, 'lever', 'rotation')

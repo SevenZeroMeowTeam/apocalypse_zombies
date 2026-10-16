@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.1.104` |
+| **当前版本** | `1.1.105` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -277,6 +277,40 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 1.1.105 — 2026-10-16
+
+**修 1.1.104 引入的启动崩溃：`win94.animation.json` 被 GeckoLib 拒绝，客户端在资源加载阶段直接崩溃。**
+
+实机连崩三次（`logs/2026-10-16-*.log.gz`），报错逐字相同：
+
+```
+Caused by: software.bernie.geckolib.GeckoLibException:
+    apocalypse_zombies:animations/win94.animation.json: Error loading animation file
+Caused by: com.google.gson.JsonParseException: Invalid keyframe data - multiple starting keyframes?0
+```
+
+**根因**：GeckoLib 4.8.4 的 `BakedAnimationsAdapter.getKeyframes` 有一条硬约束 ——
+逐键遍历通道时，**时间戳为 0 的关键帧必须是该通道在 JSON 里的第一个键**，
+否则抛 `multiple starting keyframes` 并令整个 `animation.json` 解析失败
+（反编译 `geckolib-forge-1.20.1-4.8.4.jar` 逐条字节码核对过判定条件与消息拼接）。
+1.1.104 的 `anim.py` 把 `gate.position` 的 0 秒帧**追加在逐发压弹循环之后**，
+于是它落在 JSON 中段：`reload_tactical` 的 0 帧排在 1.94 之后、`reload_empty` 的排在 3.15 之后 → 整包被拒。
+
+**修复（四层，改完互相对得上）**：
+
+- 资产：`win94.animation.json` 与 `win94.bbmodel` 的 `gate.position` 零帧移到首位（通道按时间升序）；
+  顺带删掉 `reload_empty` 里两枚 0 值冗余帧（3.0 / 3.30，前后帧都已是 0，语义不变）。
+- 源头 `tools/win94/anim.py`：零帧改到压弹循环之前声明；写 Blockbench 前一律
+  `geckolib_sort()`（每个通道内按时间升序稳定重排）；自检复刻 GeckoLib 规则（零帧在首位、无多个零帧）。
+- 防线 `tools/win94/export.py`：导出时逐通道按时间升序写键，并加 `check_geckolib()`，
+  违规拒绝写出（而不是把一个会崩的包交给构建）。
+- 门禁 `tools/win94/gate.py`：新增「GeckoLib 关键帧契约」检查项，7 条 clip 全绿。
+
+**验证**：用 GeckoLib 4.8.4 原始字节码反射调用 `getKeyframes`，扫全部 **15 个动画文件 / 2088 个通道
+→ 0 失败**；对 1.1.104 的坏文件会逐字复现上面两条报错（对照验证，证明校验器抓的就是这个崩溃）。
+`export.py` 从 bbmodel 重新生成的动画与已发货资源**逐键逐值零差异**。
+- 版本号 1.1.104 → 1.1.105（`gradle.properties` / 根 `mod.toml` / `readme.md` 头表 + 更新日志，四处同改）。
 
 ### 1.1.104 — 2026-10-16
 
