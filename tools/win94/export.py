@@ -24,8 +24,8 @@ sys.path.insert(0, str(ROOT / 'tools'))
 import bbmcp  # noqa: E402
 import spec as S  # noqa: E402
 
-BBMODEL = ROOT / 'win94.bbmodel'
-ASSETS = ROOT / 'src' / 'main' / 'resources' / 'assets' / 'apocalypse_zombies'
+BBMODEL = S.BBMODEL
+ASSETS = S.ASSETS
 GEO_OUT = ASSETS / 'geo' / 'win94.geo.json'
 ANIM_OUT = ASSETS / 'animations' / 'win94.animation.json'
 

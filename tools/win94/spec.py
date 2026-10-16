@@ -140,3 +140,12 @@ UV_DENSITY = 20.0       # px per model unit（枪械薄件多，密度低了 0.0
                         # 239 方块 / 1434 面在 512² 上要留余量，20 px/u 用掉约 430 px 高）
 UV_PAD = 2
 NUDGE = 0.03            # 共面自愈的偏移量
+
+# ----------------------------------------------------------------- 路径
+from pathlib import Path as _Path   # noqa: E402
+
+ROOT = _Path(__file__).resolve().parents[2]
+ART = ROOT / 'art' / 'win94'
+# 模型源归档在 art/<name>/（项目惯例，与 art/awm/awm.bbmodel 一致）；MCP 的 save_project 直接写这儿。
+BBMODEL = ART / 'win94.bbmodel'
+ASSETS = ROOT / 'src' / 'main' / 'resources' / 'assets' / 'apocalypse_zombies'

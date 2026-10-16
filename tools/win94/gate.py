@@ -31,8 +31,8 @@ ROOT = HERE.parent.parent
 sys.path.insert(0, str(HERE))
 import spec as S  # noqa: E402
 
-BBMODEL = ROOT / 'win94.bbmodel'
-ASSETS = ROOT / 'src' / 'main' / 'resources' / 'assets' / 'apocalypse_zombies'
+BBMODEL = S.BBMODEL
+ASSETS = S.ASSETS
 GEO = ASSETS / 'geo' / 'win94.geo.json'
 ANIM = ASSETS / 'animations' / 'win94.animation.json'
 TEX = ASSETS / 'textures' / 'item' / 'win94.png'
