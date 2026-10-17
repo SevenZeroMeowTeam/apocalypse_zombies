@@ -183,6 +183,20 @@ public final class OrbitalStrikeManager {
                 tickLocking(level, strike);
             } else if (age < strike.lockTicks + strike.fallTicks) {
                 tickFalling(level, strike, age - strike.lockTicks);
+            } else if (strike.mode == OrbitalStrikeMode.STORM) {
+                // 风暴：五道闪电**分批落地**，每 STORM_STAGGER_TICKS 落一道，不是一发全砸。
+                int since = age - (strike.lockTicks + strike.fallTicks);
+                // 还在路上的那几道继续拖尾（玩家看得到下一道正在来）
+                tickStormIncoming(level, strike, since);
+                if (since % OrbitalStrikeMode.STORM_STAGGER_TICKS == 0) {
+                    int index = since / OrbitalStrikeMode.STORM_STAGGER_TICKS;
+                    if (index < OrbitalStrikeMode.STORM_POINTS) {
+                        impactStormBolt(level, strike, index);
+                    }
+                    if (index >= OrbitalStrikeMode.STORM_POINTS - 1) {
+                        it.remove();
+                    }
+                }
             } else {
                 tickImpact(level, strike);
                 it.remove();
@@ -294,19 +308,8 @@ public final class OrbitalStrikeManager {
         }
         // 下落粒子也按模式分 —— 客户端是四套形态，世界里就不能还是同一根柱。
         if (strike.mode == OrbitalStrikeMode.STORM) {
-            // 风暴：五个落点各自一道闪电的噼啪火花
-            double[][] offsets = OrbitalStrikeMode.stormOffsets(strike.target, strike.radius);
-            for (double[] offset : offsets) {
-                double bx = ground.x + offset[0];
-                double bz = ground.z + offset[1];
-                for (int i = 0; i < 3; i++) {
-                    double fy = y - level.random.nextDouble() * 12.0D;
-                    broadcast(level, ParticleTypes.ELECTRIC_SPARK,
-                            bx + (level.random.nextDouble() - 0.5D) * 0.8D, fy,
-                            bz + (level.random.nextDouble() - 0.5D) * 0.8D,
-                            1, 0.0D, -0.20D, 0.0D, 0.15D);
-                }
-            }
+            // 风暴：五道闪电各自的下落窗口（分批落地），这里只负责还在路上的那几道的拖尾
+            tickStormIncoming(level, strike, local - strike.fallTicks);
         } else if (strike.mode == OrbitalStrikeMode.LANCE) {
             // 长矛：一条细长的白热尾（52 格），没有粗柱
             for (int i = 0; i < 8; i++) {
@@ -361,6 +364,38 @@ public final class OrbitalStrikeManager {
     }
 
     /**
+     * 风暴的「还在路上的闪电」拖尾。
+     *
+     * <p>第 i 道在第 {@code i * STORM_STAGGER_TICKS} tick 落地，落地前 {@code fallTicks} 开始下落，
+     * 所以它的下落窗口是 {@code [i*stagger - fallTicks, i*stagger]}。{@code since} 是相对
+     * 「第一道落地」的 tick 数（下落阶段是负数）—— 这样从下落段到整场风暴结束都用同一套判定。</p>
+     */
+    private static void tickStormIncoming(ServerLevel level, ActiveStrike strike, int since) {
+        Vec3 ground = Vec3.atCenterOf(strike.target);
+        double[][] offsets = OrbitalStrikeMode.stormOffsets(strike.target, strike.radius);
+        int fallTicks = Math.max(1, strike.fallTicks);
+        int stagger = OrbitalStrikeMode.STORM_STAGGER_TICKS;
+        for (int i = 0; i < offsets.length; i++) {
+            int land = i * stagger;
+            int start = land - fallTicks;
+            if (since < start || since >= land) {
+                continue;
+            }
+            double t = Mth.clamp((double) (since - start + 1) / fallTicks, 0.0D, 1.0D);
+            double y = Mth.lerp(t, IMPACT_FALL_Y, ground.y);
+            double bx = ground.x + offsets[i][0];
+            double bz = ground.z + offsets[i][1];
+            for (int k = 0; k < 3; k++) {
+                double fy = y - level.random.nextDouble() * 12.0D;
+                broadcast(level, ParticleTypes.ELECTRIC_SPARK,
+                        bx + (level.random.nextDouble() - 0.5D) * 0.8D, fy,
+                        bz + (level.random.nextDouble() - 0.5D) * 0.8D,
+                        1, 0.0D, -0.20D, 0.0D, 0.15D);
+            }
+        }
+    }
+
+    /**
      * 引力奇点的吸附：把半径 {@code max(8, radius*2.2)} 内的活物朝落点上方拽。
      * 越近越强、越到后段越强；{@code hurtMarked} 让玩家客户端的速度也同步。
      */
@@ -395,7 +430,10 @@ public final class OrbitalStrikeManager {
         switch (strike.mode) {
             case LANCE -> impactLance(level, strike, ground, strike.radius, destroy, damage);
             case GRAVITY -> impactGravity(level, strike, ground, strike.radius, destroy, damage);
-            case STORM -> impactStorm(level, strike, ground, strike.radius, destroy, damage);
+            case STORM -> {
+                // 风暴永远走 onServerTick 里的分批分支，这里只是保底（不该被走到）
+                impactStormBolt(level, strike, 0);
+            }
             case LASER -> impactLaser(level, strike, ground, strike.radius, destroy, damage);
             default -> impactCannon(level, strike, ground, strike.radius, destroy, damage);
         }
@@ -667,44 +705,66 @@ public final class OrbitalStrikeManager {
      * 等离子风暴：一次打击在目标周围撒下 {@link OrbitalStrikeMode#STORM_POINTS} 个小落点。
      * 偏移由「落点坐标哈希」决定，客户端用同一个函数算 —— 坑和光环必然重合。
      */
-    private static void impactStorm(ServerLevel level, ActiveStrike strike, Vec3 ground,
-                                    int radius, boolean destroy, boolean damage) {
-        BlockPos target = strike.target;
-        double[][] offsets = OrbitalStrikeMode.stormOffsets(target, radius);
+    /**
+     * 等离子风暴的**单道**闪电落地。五道按 {@link OrbitalStrikeMode#STORM_STAGGER_TICKS}
+     * 分批落下（见 {@link #onServerTick}），每一道都是一个独立的小坑 + 独立的伤害判定。
+     */
+    private static void impactStormBolt(ServerLevel level, ActiveStrike strike, int index) {
+        Vec3 ground = Vec3.atCenterOf(strike.target);
+        int radius = strike.radius;
+        double[][] offsets = OrbitalStrikeMode.stormOffsets(strike.target, radius);
+        double[] offset = offsets[Mth.clamp(index, 0, offsets.length - 1)];
+        Vec3 sub = new Vec3(ground.x + offset[0], ground.y, ground.z + offset[1]);
+        BlockPos subPos = BlockPos.containing(sub);
         int subRadius = Mth.clamp(Math.round(radius * 0.45F), 2, 12);
-        for (double[] offset : offsets) {
-            Vec3 sub = new Vec3(ground.x + offset[0], ground.y, ground.z + offset[1]);
-            BlockPos subPos = BlockPos.containing(sub);
-            if (destroy) {
-                enqueueDestroy(level, subPos, subRadius, strike.mode.pierces());
-            }
-            if (damage) {
-                damageArea(level, sub, subRadius * 1.8D, strike.owner, OrbitalStrikeMode.STORM);
-            }
-            spawnSurfaceDebris(level, subPos, subRadius);
-            level.playSound(null, subPos, SoundEvents.GENERIC_EXPLODE, SoundSource.PLAYERS, 3.0F, 1.1F);
-            broadcast(level, ParticleTypes.FLASH, sub.x, sub.y + 1.0D, sub.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
-            broadcast(level, ModParticles.ORBITAL_SPARK.get(), sub.x, sub.y + 0.6D, sub.z,
-                    Math.min(30, 12 + subRadius * 2), subRadius * 0.5D, 2.0D, subRadius * 0.5D, 0.7D);
-            for (int i = 0; i < 12; i++) {
-                broadcast(level, ParticleTypes.ELECTRIC_SPARK,
-                        sub.x + (level.random.nextDouble() - 0.5D) * subRadius,
-                        sub.y + 0.4D + level.random.nextDouble() * 2.0D,
-                        sub.z + (level.random.nextDouble() - 0.5D) * subRadius,
-                        1, 0.0D, 0.25D, 0.0D, 0.35D);
-            }
+        boolean destroy = Config.ORBITAL_STRIKE_DESTROY_BLOCKS.get();
+        boolean damage = Config.ORBITAL_STRIKE_DAMAGE_MOBS.get();
+
+        if (index == 0) {
+            // 第一道落地时排雷声队列（整场风暴只排一次）
+            queueThunder(level, ground);
         }
-        // 中心一记更低的轰鸣把所有落点「串」起来
-        level.playSound(null, target, SoundEvents.WARDEN_SONIC_BOOM, SoundSource.PLAYERS, 5.0F, 0.55F);
-        level.playSound(null, target, SoundEvents.ENDER_DRAGON_GROWL, SoundSource.PLAYERS, 3.0F, 0.8F);
-        // 整片区域一层翻腾的烟
-        int cloud = Math.min(180, 40 + radius * 6);
+        if (destroy) {
+            enqueueDestroy(level, subPos, subRadius, strike.mode.pierces());
+        }
+        if (damage) {
+            damageArea(level, sub, subRadius * 1.8D, strike.owner, OrbitalStrikeMode.STORM);
+        }
+        spawnSurfaceDebris(level, subPos, subRadius);
+        level.playSound(null, subPos, SoundEvents.GENERIC_EXPLODE, SoundSource.PLAYERS, 3.0F, 1.1F);
+        broadcast(level, ParticleTypes.FLASH, sub.x, sub.y + 1.0D, sub.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        broadcast(level, ModParticles.ORBITAL_SPARK.get(), sub.x, sub.y + 0.6D, sub.z,
+                Math.min(30, 12 + subRadius * 2), subRadius * 0.5D, 2.0D, subRadius * 0.5D, 0.7D);
+        for (int i = 0; i < 12; i++) {
+            broadcast(level, ParticleTypes.ELECTRIC_SPARK,
+                    sub.x + (level.random.nextDouble() - 0.5D) * subRadius,
+                    sub.y + 0.4D + level.random.nextDouble() * 2.0D,
+                    sub.z + (level.random.nextDouble() - 0.5D) * subRadius,
+                    1, 0.0D, 0.25D, 0.0D, 0.35D);
+        }
+        // 每道落点都补一小团烟（整片区域的大烟留到最后一道）
+        int cloud = Math.min(40, 10 + subRadius * 4);
         for (int i = 0; i < cloud; i++) {
-            double ox = (level.random.nextDouble() - 0.5D) * radius * 1.8D;
-            double oz = (level.random.nextDouble() - 0.5D) * radius * 1.8D;
+            double ox = (level.random.nextDouble() - 0.5D) * subRadius * 1.6D;
+            double oz = (level.random.nextDouble() - 0.5D) * subRadius * 1.6D;
             broadcast(level, ParticleTypes.LARGE_SMOKE,
-                    ground.x + ox, ground.y + level.random.nextDouble() * 2.5D, ground.z + oz,
+                    sub.x + ox, sub.y + level.random.nextDouble() * 2.0D, sub.z + oz,
                     1, 0.0D, 0.05D, 0.0D, 0.02D);
+        }
+        // 最后一道：一记更低的轰鸣把所有落点「串」起来 + 整片区域翻腾的烟
+        if (index >= OrbitalStrikeMode.STORM_POINTS - 1) {
+            level.playSound(null, strike.target, SoundEvents.WARDEN_SONIC_BOOM,
+                    SoundSource.PLAYERS, 5.0F, 0.55F);
+            level.playSound(null, strike.target, SoundEvents.ENDER_DRAGON_GROWL,
+                    SoundSource.PLAYERS, 3.0F, 0.8F);
+            int bigCloud = Math.min(180, 40 + radius * 6);
+            for (int i = 0; i < bigCloud; i++) {
+                double ox = (level.random.nextDouble() - 0.5D) * radius * 1.8D;
+                double oz = (level.random.nextDouble() - 0.5D) * radius * 1.8D;
+                broadcast(level, ParticleTypes.LARGE_SMOKE,
+                        ground.x + ox, ground.y + level.random.nextDouble() * 2.5D, ground.z + oz,
+                        1, 0.0D, 0.05D, 0.0D, 0.02D);
+            }
         }
     }
 

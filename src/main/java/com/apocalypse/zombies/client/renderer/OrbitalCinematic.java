@@ -196,6 +196,12 @@ public final class OrbitalCinematic {
         double lookX = anchor.x;
         double lookY = anchor.y + radius * (soul ? 1.6D : LOOK_UP_FACTOR);
         double lookZ = anchor.z;
+        if (soul && impactAge >= 0) {
+            // 落地后 12 tick 内视线从弹坑抬到天上：看见行星全息图和那颗开火的卫星 ——
+            // 「抬头看看是谁在开火」。抬到行星下缘（约 +170）正好让球体填满画面上半。
+            float k = smooth(Mth.clamp((float) impactAge / 12.0F, 0.0F, 1.0F));
+            lookY = Mth.lerp(k, lookY, anchor.y + 170.0D);
+        }
 
         // 从玩家真实的眼位/视角插值过去（e 的两头正好贴合原版相机，全程无跳变）。
         float partialTick = (float) event.getPartialTick();

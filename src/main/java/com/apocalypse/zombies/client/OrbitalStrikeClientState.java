@@ -44,7 +44,19 @@ public final class OrbitalStrikeClientState {
             return false;
         }
         long elapsed = now() - startGameTime;
-        return elapsed >= 0L && elapsed <= (long) lockTicks + fallTicks + AFTERGLOW_TICKS;
+        return elapsed >= 0L && elapsed <= (long) lockTicks + fallTicks + afterglowTicks();
+    }
+
+    /**
+     * 余晖长度：风暴是分批落地的（5 道 × {@link OrbitalStrikeMode#STORM_STAGGER_TICKS}），
+     * 状态必须活到最后一两道落地 + 它们的冲击环播完，否则后几道的环会被硬切。
+     */
+    public static int afterglowTicks() {
+        if (mode == OrbitalStrikeMode.STORM) {
+            return AFTERGLOW_TICKS + OrbitalStrikeMode.STORM_STAGGER_TICKS
+                    * (OrbitalStrikeMode.STORM_POINTS - 1);
+        }
+        return AFTERGLOW_TICKS;
     }
 
     public static BlockPos target() {

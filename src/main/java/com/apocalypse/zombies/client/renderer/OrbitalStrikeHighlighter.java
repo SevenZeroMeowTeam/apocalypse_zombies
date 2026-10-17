@@ -61,6 +61,9 @@ public final class OrbitalStrikeHighlighter {
     private static final double BEAM_TOP_Y = 320.0D;
     /** 卫星/轨道平台悬浮在光柱顶上方的高度。 */
     private static final double PLATFORM_HEIGHT = 6.0D;
+    /** 宇宙激光的行星全息图：球心离地面多高 / 半径多大（光柱从球心穿过去）。 */
+    private static final double PLANET_HEIGHT = 300.0D;
+    private static final double PLANET_RADIUS = 130.0D;
 
     /** 打击特效的识别色（电青）。 */
     private static final float CYAN_R = 0.40F;
@@ -161,12 +164,26 @@ public final class OrbitalStrikeHighlighter {
         int strikeRadius = OrbitalStrikeClientState.radius();
         double beamR = beamRadius(strikeRadius);
 
-        // —— 「太空里的东西」：轨道平台从锁定第一帧就悬在光柱顶上。
-        // 它不是实体/方块，纯渲染 —— 玩家在哪、瞄哪，平台就飘在哪的正上方。
-        renderPlatform(pose, lines, cx, BEAM_TOP_Y + PLATFORM_HEIGHT, cz, gameTime, partial);
-        renderSkyFracture(pose, lines, cx, cz, gameTime, partial, strikeRadius);
-
         OrbitalStrikeMode mode = OrbitalStrikeClientState.mode();
+        // —— 「太空里的东西」：普通模式是轨道平台 + 天穹裂缝；
+        //    宇宙激光换成「行星全息图 + 卫星」—— 激光就是从卫星发的，再穿过行星打到地面。
+        if (mode == OrbitalStrikeMode.LASER) {
+            float lockProgress = Mth.clamp((float) elapsed / Math.max(1, lockTicks), 0.0F, 1.0F);
+            long impactAge = OrbitalStrikeClientState.impactAge();
+            // 行星图：锁定段淡入，落地后 60 tick 内慢慢熄掉
+            float planetAlpha = 0.10F + 0.18F * lockProgress;
+            if (impactAge >= 0) {
+                planetAlpha *= Mth.clamp(1.0F - impactAge / 60.0F, 0.0F, 1.0F);
+            }
+            renderPlanet(pose, lines, cx, gy + PLANET_HEIGHT, cz, PLANET_RADIUS,
+                    planetAlpha, gameTime + partial);
+            renderSatellite(pose, lines, cx, OrbitalStrikeMode.LASER.originY() + 6.0D, cz,
+                    2.5D, 0.55F, gameTime + partial);
+        } else {
+            renderPlatform(pose, lines, cx, BEAM_TOP_Y + PLATFORM_HEIGHT, cz, gameTime, partial);
+            renderSkyFracture(pose, lines, cx, cz, gameTime, partial, strikeRadius);
+        }
+
         if (elapsed < lockTicks) {
             float progress = Mth.clamp((float) elapsed / Math.max(1, lockTicks), 0.0F, 1.0F);
             renderLockPhase(pose, lines, cx, cz, gy, beamR, strikeRadius, mode, progress, gameTime, partial);
@@ -255,22 +272,20 @@ public final class OrbitalStrikeHighlighter {
                 }
             }
             case LASER -> {
-                // 深空充能：目标区最大的一圈 + 700 格高空一个越来越亮的星（宇宙之外的发射点）
+                // 卫星充能：目标区最大的一圈 + 卫星下方一圈圈收紧的光环
                 double targetR = strikeRadius * (1.30D - 0.12D * progress);
                 drawCircle(pose, lines, cx, gy + 0.05D, cz, targetR,
                         CYAN_R, CYAN_G, CYAN_B, 0.22F + 0.55F * progress);
                 drawCircle(pose, lines, cx, gy + 0.05D, cz, targetR * 0.45D,
                         CYAN_R, CYAN_G, CYAN_B, (0.20F + 0.40F * progress) * pulse);
                 double originY = OrbitalStrikeMode.LASER.originY();
-                float starAlpha = 0.15F + 0.80F * progress;
-                double starR = 1.2D + 2.4D * progress;
-                drawCircle(pose, lines, cx, originY, cz, starR, 1.0F, 1.0F, 1.0F, starAlpha);
-                // 镜头光晕式的十字光芒
-                line(pose, lines, cx - starR * 5.0D, originY, cz, cx + starR * 5.0D, originY, cz,
-                        1.0F, 1.0F, 1.0F, starAlpha * 0.55F, 0, 1, 0);
-                line(pose, lines, cx, originY, cz - starR * 5.0D, cx, originY, cz + starR * 5.0D,
-                        1.0F, 1.0F, 1.0F, starAlpha * 0.55F, 0, 1, 0);
-                // 最后 30% 出现瞄准细线 —— 已经对准了，只等充能
+                // 卫星下方的充能环：从 14 格收到 5 格
+                double chargeR = Mth.lerp(progress, 14.0D, 5.0D);
+                drawCircle(pose, lines, cx, originY, cz, chargeR,
+                        1.0F, 1.0F, 1.0F, 0.30F + 0.55F * progress);
+                drawCircle(pose, lines, cx, originY, cz, chargeR * 1.7D,
+                        CYAN_R, CYAN_G, CYAN_B, 0.25F * progress);
+                // 最后 30% 出现瞄准细线 —— 已经对准了，只等扣扳机
                 if (progress > 0.70F) {
                     float k = (progress - 0.70F) / 0.30F;
                     line(pose, lines, cx, originY, cz, cx, gy, cz,
@@ -522,8 +537,10 @@ public final class OrbitalStrikeHighlighter {
         double[][] offsets = OrbitalStrikeMode.stormOffsets(
                 OrbitalStrikeClientState.target(), strikeRadius);
         for (int i = 0; i < offsets.length; i++) {
-            // 每道闪电错开 2 tick 起落 —— 五声连成一片「雷暴」
-            double boltFall = Mth.clamp((fallElapsed - i * 2.0D) / fallTicks, 0.0D, 1.0D);
+            // 五道闪电**分批落地**：第 i 道比第一道晚 i × STORM_STAGGER_TICKS 落地，
+            // 所以它的下落窗口整体后移同样的 tick 数（下落段结束后仍在画接下来的几道）。
+            double boltFall = Mth.clamp((fallElapsed - i * (double) OrbitalStrikeMode.STORM_STAGGER_TICKS)
+                    / fallTicks, 0.0D, 1.0D);
             if (boltFall >= 0.999D) {
                 continue;
             }
@@ -685,10 +702,18 @@ public final class OrbitalStrikeHighlighter {
                                           double beamR, int strikeRadius, float age, BlockPos target,
                                           PoseStack pose, long gameTime, float partial) {
         double[][] offsets = OrbitalStrikeMode.stormOffsets(target, strikeRadius);
-        float t = Mth.clamp(age / 14.0F, 0.0F, 1.0F);
         // 与服务端同一个夹取范围：小半径时坑不会小于 2，大半径时封顶 12
         double subR = Mth.clamp(strikeRadius * 0.45D, 2.0D, 12.0D);
         for (int i = 0; i < offsets.length; i++) {
+            // 每道闪电有自己的落地时刻：第 i 道在 age = i × STAGGER 才落地
+            float boltAge = age - i * (float) OrbitalStrikeMode.STORM_STAGGER_TICKS;
+            if (boltAge < 0.0F) {
+                continue;
+            }
+            float t = Mth.clamp(boltAge / 14.0F, 0.0F, 1.0F);
+            if (t >= 1.0F) {
+                continue;
+            }
             double sx = cx + offsets[i][0];
             double sz = cz + offsets[i][1];
             double outer = Mth.lerp(t, Math.max(0.3D, beamR * 0.5D), subR * 1.8D);
@@ -696,10 +721,8 @@ public final class OrbitalStrikeHighlighter {
                     Math.max(0.1D, outer - (1.0D + 3.0D * t)), outer,
                     CYAN_R, CYAN_G, CYAN_B, 0.70F * (1.0F - t) * (1.0F - t), 24);
             // 闪电残影：从落点往上 14 格，先亮后收（写进 lines 缓冲 —— POSITION_COLOR 不能塞法线）
-            if (t < 1.0F) {
-                jaggedBolt(pose, lines, sx, sz, gy + 14.0D * (1.0F - t), gy,
-                        gameTime + partial, i * 3.7D, 0.55F * (1.0F - t));
-            }
+            jaggedBolt(pose, lines, sx, sz, gy + 14.0D * (1.0F - t), gy,
+                    gameTime + partial, i * 3.7D, 0.55F * (1.0F - t));
         }
     }
 
@@ -865,7 +888,89 @@ public final class OrbitalStrikeHighlighter {
         }
     }
 
-    /** 天穹裂缝：Y=330 一圈大环 + 24 条放射裂纹，缓慢旋转。大范围打击时环也跟着放大。 */
+    /**
+     * 行星全息图：一圈圈**纬线 + 经线**组成的线框球，光柱从球心穿过去 ——
+     * 「从外太空穿过行星打到地面」的那张图。整球缓慢自转，颜色沿用打击的电青。
+     *
+     * <p>纯线框、不写深度冲突（`RenderType.lines` 不写深度），所以不会挡住后面的光柱。</p>
+     */
+    private static void renderPlanet(PoseStack pose, VertexConsumer buffer,
+                                     double cx, double cy, double cz, double radius,
+                                     float alpha, double time) {
+        if (alpha <= 0.01F) {
+            return;
+        }
+        // 五条纬线（-60° / -30° / 赤道 / +30° / +60°）
+        for (int lat = -2; lat <= 2; lat++) {
+            double phi = lat * (Math.PI / 6.0D);
+            double r = radius * Math.cos(phi);
+            double y = cy + radius * Math.sin(phi);
+            drawCircle(pose, buffer, cx, y, cz, r, CYAN_R, CYAN_G, CYAN_B, alpha * 0.55F);
+        }
+        // 十二条经线（包含 Y 轴的大圆，整体绕 Y 轴慢转）
+        int meridians = 12;
+        int segments = 32;
+        double spin = time * 0.02D;
+        for (int m = 0; m < meridians; m++) {
+            double theta = spin + m * Math.PI / meridians;
+            double cosT = Math.cos(theta);
+            double sinT = Math.sin(theta);
+            for (int i = 0; i < segments; i++) {
+                double a1 = i * Math.PI * 2.0D / segments;
+                double a2 = (i + 1) * Math.PI * 2.0D / segments;
+                double c1 = Math.cos(a1);
+                double c2 = Math.cos(a2);
+                line(pose, buffer,
+                        cx + c1 * cosT * radius, cy + Math.sin(a1) * radius, cz + c1 * sinT * radius,
+                        cx + c2 * cosT * radius, cy + Math.sin(a2) * radius, cz + c2 * sinT * radius,
+                        CYAN_R, CYAN_G, CYAN_B, alpha * 0.30F, 0, 1, 0);
+            }
+        }
+    }
+
+    /**
+     * 轨道卫星：本体 + 两片太阳能板 + 天线碟。宇宙激光就是从这里发射的 ——
+     * 光柱顶在卫星下方 6 格，抬头能看见「是谁在开火」。
+     */
+    private static void renderSatellite(PoseStack pose, VertexConsumer buffer,
+                                        double cx, double cy, double cz, double scale,
+                                        float alpha, double time) {
+        if (alpha <= 0.01F) {
+            return;
+        }
+        double s = scale;
+        // 本体
+        drawCube(pose, buffer, cx - 1.5D * s, cy - 1.0D * s, cz - 1.0D * s,
+                cx + 1.5D * s, cy + 1.0D * s, cz + 1.0D * s,
+                0.75F, 0.97F, 1.0F, alpha);
+        // 两片太阳能板（薄板 + 三条栅线）
+        for (int side = -1; side <= 1; side += 2) {
+            double x1 = cx + side * 2.4D * s;
+            double x2 = cx + side * 6.2D * s;
+            double minX = Math.min(x1, x2);
+            double maxX = Math.max(x1, x2);
+            drawCube(pose, buffer, minX, cy - 0.12D * s, cz - 1.7D * s,
+                    maxX, cy + 0.12D * s, cz + 1.7D * s,
+                    CYAN_R, CYAN_G, CYAN_B, alpha * 0.75F);
+            for (int i = 1; i <= 3; i++) {
+                double gx = Mth.lerp(i / 4.0D, minX, maxX);
+                line(pose, buffer, gx, cy + 0.13D * s, cz - 1.7D * s,
+                        gx, cy + 0.13D * s, cz + 1.7D * s,
+                        CYAN_R, CYAN_G, CYAN_B, alpha * 0.45F, 0, 1, 0);
+            }
+        }
+        // 天线碟：朝下的一个小圆 + 十字
+        double dishY = cy - 1.6D * s;
+        drawCircle(pose, buffer, cx, dishY, cz, 0.9D * s, CYAN_R, CYAN_G, CYAN_B, alpha * 0.8F);
+        line(pose, buffer, cx - 0.9D * s, dishY, cz, cx + 0.9D * s, dishY, cz,
+                CYAN_R, CYAN_G, CYAN_B, alpha * 0.6F, 0, 1, 0);
+        line(pose, buffer, cx, dishY, cz - 0.9D * s, cx, dishY, cz + 0.9D * s,
+                CYAN_R, CYAN_G, CYAN_B, alpha * 0.6F, 0, 1, 0);
+        // 导航灯：随时间的明暗脉冲
+        float blink = 0.35F + 0.65F * (0.5F + 0.5F * (float) Math.sin(time * 0.22D));
+        drawCircle(pose, buffer, cx, cy + 1.6D * s, cz, 0.35D * s,
+                1.0F, 1.0F, 1.0F, alpha * blink);
+    }
     private static void renderSkyFracture(PoseStack pose, VertexConsumer buffer,
                                           double cx, double cz, long gameTime, float partial, int strikeRadius) {
         double skyY = BEAM_TOP_Y + 10.0D;

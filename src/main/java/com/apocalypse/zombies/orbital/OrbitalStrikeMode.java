@@ -43,17 +43,19 @@ public enum OrbitalStrikeMode {
             0.45F, 0.70F, 1.10F, 0.85F, 1.60F, false, 0, 320.0D),
 
     /**
-     * 宇宙激光：从宇宙之外（Y=700 的深空发射点）直射下来的一束光。
+     * 宇宙激光：由<b>卫星</b>发射的一束光，从 Y=460 的轨道平台直射下来，穿过行星全息图到地面。
      *
      * <p><b>没有飞行时间</b>：光速，充能完成的那一帧整根光柱就已经连到地面 ——
      * 这是它和其它四种模式最根本的区别（它们都有「东西在掉下来」的过程）。
      * 破坏性也是全场最强：半径 1.35×、伤害 3×、秒杀几率 +30 个百分点，且贯穿到虚空。</p>
      */
     LASER("laser", "宇宙激光", "EXTRACOSMIC BEAM",
-            1.35F, 3.00F, 1.60F, 0.20F, 3.00F, true, 30, 700.0D);
+            1.35F, 3.00F, 1.60F, 0.20F, 3.00F, true, 30, 460.0D);
 
     /** 风暴模式的落点数（服务端挖地 + 客户端画环都用同一个常量）。 */
     public static final int STORM_POINTS = 5;
+    /** 风暴模式每道闪电之间的间隔（tick）—— 分批落地，不是一发全砸。 */
+    public static final int STORM_STAGGER_TICKS = 8;
 
     private final String id;
     private final String display;
