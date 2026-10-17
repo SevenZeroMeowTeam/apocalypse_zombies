@@ -2,6 +2,7 @@ package com.apocalypse.zombies.event;
 
 import com.apocalypse.zombies.ApocalypseZombies;
 import com.apocalypse.zombies.Config;
+import com.apocalypse.zombies.registry.ModParticles;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleOptions;
@@ -179,6 +180,23 @@ public final class OrbitalStrikeManager {
             level.playSound(null, target, SoundEvents.BEACON_AMBIENT, SoundSource.PLAYERS,
                     0.6F, 1.8F);
         }
+        // 自定义「能量火花」：从外圈向目标点聚拢（count=0 才能用显式初速度；count>0 时
+        // 速度是随机的，做不出「聚」的方向感）。锁定越久聚得越急，视觉上像在蓄能。
+        if ((strike.age() & 1) == 0) {
+            float lockProgress = (float) strike.age() / Math.max(1, Config.ORBITAL_STRIKE_LOCK_TICKS.get());
+            double speed = 0.10D + lockProgress * 0.14D;
+            for (int i = 0; i < 3; i++) {
+                double ang = level.random.nextDouble() * Math.PI * 2.0D;
+                double dist = 3.5D + level.random.nextDouble() * 3.5D;
+                double sx = ground.x + Math.cos(ang) * dist;
+                double sz = ground.z + Math.sin(ang) * dist;
+                double sy = ground.y + 2.0D + level.random.nextDouble() * 5.0D;
+                level.sendParticles(ModParticles.ORBITAL_SPARK.get(),
+                        sx, sy, sz, 0,
+                        (ground.x - sx) * speed, (ground.y + 0.5D - sy) * speed, (ground.z - sz) * speed,
+                        0.0D);
+            }
+        }
         // 第一帧：轨道平台「上线」的提示音（与客户端平台渲染同时出现）
         if (strike.age() == 1) {
             level.playSound(null, target, SoundEvents.BEACON_POWER_SELECT, SoundSource.PLAYERS,
@@ -220,6 +238,17 @@ public final class OrbitalStrikeManager {
             double sz = (level.random.nextDouble() - 0.5D) * 4.0D;
             level.sendParticles(ParticleTypes.END_ROD, ground.x + sx, IMPACT_FALL_Y + 4.0D + level.random.nextDouble() * 20.0D,
                     ground.z + sz, 1, 0.0D, -0.2D, 0.0D, 0.0D);
+        }
+        // 光柱头「犁开空气」：每 tick 几颗火花从头位置向外下迸溅，越接近地面越猛
+        if (level.random.nextFloat() < 0.4F + (float) t * 0.5F) {
+            for (int i = 0; i < 2; i++) {
+                double ang = level.random.nextDouble() * Math.PI * 2.0D;
+                double sx = ground.x + Math.cos(ang) * 0.4D;
+                double sz = ground.z + Math.sin(ang) * 0.4D;
+                level.sendParticles(ModParticles.ORBITAL_SPARK.get(),
+                        sx, y, sz, 0,
+                        Math.cos(ang) * 0.5D, -0.2D, Math.sin(ang) * 0.5D, 0.0D);
+            }
         }
         // 下落音（从远到近越来越响；24 tick 拉长后每 4 tick 一声，否则连成噪音）
         if (local % 4 == 0) {
@@ -289,6 +318,11 @@ public final class OrbitalStrikeManager {
                     ground.z + (level.random.nextDouble() - 0.5D) * radius,
                     1, 0.0D, 0.25D, 0.0D, 0.4D);
         }
+        // 能量火花爆发：一圈从落点向四面八方炸开（count>0 = 位置随机散布 + 速度随机方向）
+        level.sendParticles(ModParticles.ORBITAL_SPARK.get(),
+                ground.x, ground.y + 0.5D, ground.z,
+                Math.min(90, 30 + radius * 2),
+                radius * 0.45D, 2.2D, radius * 0.45D, 0.75D);
         // 蘑菇云：从地面向上翻腾的浓烟 + 火舌（落点越近越密，往外围越来越稀；数量随半径缩放）
         int cloudParticles = Math.min(240, 48 + radius * 6);
         for (int i = 0; i < cloudParticles; i++) {

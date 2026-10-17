@@ -490,7 +490,8 @@ public final class ClientEvents {
     public static void onRenderGui(RenderGuiEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
 
-        // 轨道打击的屏幕级特效：倒计时 / 边缘红晕 / 落地白闪（各自判断阶段与开关）
+        // 轨道打击的屏幕级特效：倒计时 / 边缘红晕 / 能量泛光 / 落地白闪（各自判断阶段与开关）
+        OrbitalScreenFX.renderImpactGlow(event.getGuiGraphics(), minecraft);
         OrbitalScreenFX.renderImpactFlash(event.getGuiGraphics(), minecraft);
         OrbitalScreenFX.renderHud(event.getGuiGraphics(), minecraft, event.getPartialTick());
 

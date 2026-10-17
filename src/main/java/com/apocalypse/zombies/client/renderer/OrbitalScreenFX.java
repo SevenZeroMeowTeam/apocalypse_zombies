@@ -24,6 +24,8 @@ public final class OrbitalScreenFX {
     private static final int FLASH_TICKS = 6;
     /** 白闪峰值不透明度。 */
     private static final float FLASH_ALPHA = 0.85F;
+    /** 能量泛光持续 tick（约 2 s）—— 白闪管「炸的一瞬间」，泛光管「能量还在翻涌」。 */
+    private static final int GLOW_TICKS = 40;
     /** 镜头震动持续 tick。 */
     private static final int SHAKE_TICKS = 6;
     /** 镜头震动最大偏转角（度）。 */
@@ -83,6 +85,50 @@ public final class OrbitalScreenFX {
         int color = 0xFF000000 | (r << 16) | (g << 8) | b;
         graphics.drawString(minecraft.font, text, -textWidth / 2, 0, color, true);
         pose.popPose();
+    }
+
+    /**
+     * 落地后的「能量泛光」：全屏淡青色渐隐 + 四边更亮的青色边条（不写 shader 的
+     * bloom 替代 —— 屏幕边缘叠亮色，观感是画面在发光）。与 {@link #renderImpactFlash}
+     * 一起挂在 {@code RenderGuiEvent.Post}，泛光先画（更暗的一层），白闪后画（最亮）。
+     */
+    public static void renderImpactGlow(GuiGraphics graphics, Minecraft minecraft) {
+        if (!OrbitalStrikeClientState.isActive()) {
+            return;
+        }
+        long impactAge = OrbitalStrikeClientState.impactAge();
+        if (impactAge < 0 || impactAge >= GLOW_TICKS) {
+            return;
+        }
+        if (minecraft.options.hideGui || minecraft.player == null) {
+            return;
+        }
+        double distance = OrbitalStrikeClientState.distanceToPlayer();
+        float falloff = (float) (1.0D - (distance - NEAR_RADIUS) / (FAR_RADIUS - NEAR_RADIUS));
+        falloff = Mth.clamp(falloff, 0.0F, 1.0F);
+        if (falloff <= 0.0F) {
+            return;
+        }
+        float t = 1.0F - (float) impactAge / GLOW_TICKS;
+        // 「涌」的感觉：正弦呼吸叠在线性衰减上，能量不是线性熄灭
+        float breathe = (0.8F + 0.2F * Mth.sin(t * Mth.PI)) * t;
+        int base = (int) (80.0F * falloff * breathe * 255.0F);
+        if (base <= 0) {
+            return;
+        }
+        int w = graphics.guiWidth();
+        int h = graphics.guiHeight();
+        int rgb = 0x9BF7FF;
+        // 全屏淡青
+        graphics.fill(0, 0, w, h, (base << 24) | rgb);
+        // 四边更亮：屏幕边缘泛光
+        int edge = Math.min(255, (int) (base * 1.9F));
+        int bandH = (int) (h * 0.14F);
+        int bandW = (int) (w * 0.04F);
+        graphics.fill(0, 0, w, bandH, (edge << 24) | rgb);
+        graphics.fill(0, h - bandH, w, h, (edge << 24) | rgb);
+        graphics.fill(0, 0, bandW, h, (edge << 24) | rgb);
+        graphics.fill(w - bandW, 0, w, h, (edge << 24) | rgb);
     }
 
     /** 落地瞬间的全屏白闪。挂在 {@code RenderGuiEvent.Post}（在 HUD 之前调用也行）。 */

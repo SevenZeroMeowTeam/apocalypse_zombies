@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.5.0` |
+| **当前版本** | `1.6.0` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -278,6 +278,30 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 1.6.0 — 2026-10-17
+
+**修复 1.5.0 进游戏必崩 + 自定义粒子「能量火花」+ 落地能量泛光。**
+
+- **崩溃修复**：1.5.0 的信标纹理光柱（`RenderType.beaconBeam` 自建实例）在装了 Embeddium
+  的客户端上必然触发 `IllegalStateException: Not filled all elements of the vertex` ——
+  自建 RenderType 实例不在 `BufferSource` 的 fixed buffers 里，走 Embeddium
+  `SodiumBufferBuilder` 的动态路径，其 4 元素格式（POSITION_COLOR_TEX_LIGHTMAP）的
+  `uv2` 顶点链有兼容问题。**改用 `RenderType.lightning()`**（原版闪电同款：fixed buffer
+  单例、POSITION_COLOR 两元素、加色发光，原版闪电每帧都在用，绝无兼容问题），
+  双层圆柱（内层白热 + 外层青色辉光）保持「亮得发光」的观感。
+- **自定义粒子「能量火花」**（`orbital_spark`）：注册 `SimpleParticleType` +
+  `particles/orbital_spark.json`（贴图集复用原版 `minecraft:glow`，不新增美术），
+  粒子类 `OrbitalSparkParticle`：白↔青随机色、全亮光照、无重力、空气摩擦减速、
+  渐隐 + 收缩。三个阶段都在用：
+  - **锁定**：每 2 tick 从外圈向目标点聚拢（`count=0` 才能用显式初速度做「聚」的方向感；
+    `count>0` 的速度是随机方向），锁定越久聚得越急 —— 蓄能感；
+  - **下落**：光柱头「犁开空气」向外下迸溅，越接近地面越猛；
+  - **落地**：一圈从落点向四面八方炸开（30 + radius×2，上限 90）。
+- **能量泛光**：落地后约 2 秒，全屏淡青色 + 四边更亮的青色边条（不写 shader 的 bloom
+  替代），正弦「呼吸」式衰减 —— 白闪管「炸的一瞬间」，泛光管「能量还在地表翻涌」的余韵。
+- 顺带记录的 Forge 1.20.1 API 坑：粒子注册是 `registerSpriteSet`（`registerSprite` 是
+  单贴图版，签名不同）；`PARTICLE_SHEET_ADDITIVE` 是 1.20.4+ 才有的。
 
 ### 1.5.0 — 2026-10-17
 

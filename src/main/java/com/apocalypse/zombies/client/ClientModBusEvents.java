@@ -1,6 +1,7 @@
 package com.apocalypse.zombies.client;
 
 import com.apocalypse.zombies.ApocalypseZombies;
+import com.apocalypse.zombies.client.particle.OrbitalSparkParticle;
 import com.apocalypse.zombies.client.gui.CatGirlTradeScreen;
 import com.apocalypse.zombies.client.model.CorroderModel;
 import com.apocalypse.zombies.client.model.CrusherModel;
@@ -8,6 +9,7 @@ import com.apocalypse.zombies.client.model.ScreamerModel;
 import com.apocalypse.zombies.client.renderer.BrideGeoRenderer;
 import com.apocalypse.zombies.client.renderer.CatGirlGeoRenderer;
 import com.apocalypse.zombies.registry.ModMenus;
+import com.apocalypse.zombies.registry.ModParticles;
 import com.apocalypse.zombies.client.renderer.OverlordGeoRenderer;
 import com.apocalypse.zombies.client.renderer.SoldierGeoRenderer;
 import com.apocalypse.zombies.client.renderer.CharmedZombieRenderer;
@@ -44,6 +46,12 @@ public final class ClientModBusEvents {
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(KeyBindings.RELOAD);
         event.register(KeyBindings.COLLECT);
+    }
+
+    /** 能量火花粒子：贴图（原版 glow）+ 渲染逻辑都收在 {@link OrbitalSparkParticle}。 */
+    @SubscribeEvent
+    public static void onRegisterParticleProviders(net.minecraftforge.client.event.RegisterParticleProvidersEvent event) {
+        event.registerSpriteSet(ModParticles.ORBITAL_SPARK.get(), new OrbitalSparkParticle.Provider());
     }
 
     /**

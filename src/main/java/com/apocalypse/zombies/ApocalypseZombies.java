@@ -8,6 +8,7 @@ import com.apocalypse.zombies.registry.ModEffects;
 import com.apocalypse.zombies.registry.ModEntities;
 import com.apocalypse.zombies.registry.ModItems;
 import com.apocalypse.zombies.registry.ModMenus;
+import com.apocalypse.zombies.registry.ModParticles;
 import com.apocalypse.zombies.registry.ModSounds;
 import com.apocalypse.zombies.registry.ModSpawns;
 import com.mojang.logging.LogUtils;
@@ -47,6 +48,7 @@ public class ApocalypseZombies {
         ModEntities.register(modBus);
         ModMenus.register(modBus);
         ModEffects.register(modBus);
+        ModParticles.register(modBus);
         ModSounds.register(modBus);
         ModBiomeModifiers.register(modBus);
         ModSpawns.register(modBus);
