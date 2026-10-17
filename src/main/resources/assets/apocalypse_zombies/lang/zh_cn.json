@@ -153,5 +153,6 @@
   "orbital_mode.cannon": "轨道炮",
   "orbital_mode.lance": "天基长矛",
   "orbital_mode.gravity": "引力奇点",
-  "orbital_mode.storm": "等离子风暴"
+  "orbital_mode.storm": "等离子风暴",
+  "orbital_mode.laser": "宇宙激光"
 }

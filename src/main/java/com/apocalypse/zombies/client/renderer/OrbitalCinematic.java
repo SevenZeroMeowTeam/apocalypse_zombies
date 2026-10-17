@@ -3,6 +3,7 @@ package com.apocalypse.zombies.client.renderer;
 import com.apocalypse.zombies.ApocalypseZombies;
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.client.OrbitalStrikeClientState;
+import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import net.minecraft.client.Camera;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
@@ -171,6 +172,14 @@ public final class OrbitalCinematic {
         int radius = OrbitalStrikeClientState.radius();
         double pull = pullDistance(radius);
         double height = pullHeight(radius);
+        // 宇宙激光：镜头不是「拉远」而是「灵魂出窍」—— 垂直升到 92 格高空俯看整根光柱。
+        // 只有从这个高度，才能同时看见弹坑和那根一直捅到 Y=700 深空发射点的光柱；
+        // 水平距离反而收近，让俯角足够陡，弹坑留在画面下缘。
+        boolean soul = OrbitalStrikeClientState.mode() == OrbitalStrikeMode.LASER;
+        if (soul) {
+            pull = Mth.clamp(radius * 0.55D + 10.0D, 14.0D, 34.0D);
+            height = 92.0D;
+        }
         // dolly-in：落地后的保持段里镜头缓慢「压」向弹坑（44 → 36 格），
         // 与慢摇叠加就是「绕着一个越来越近的坑转」—— 静止机位会显得像截图。
         double push = impactAge >= 0
@@ -182,9 +191,10 @@ public final class OrbitalCinematic {
         double vx = anchor.x + Math.cos(angle) * pull;
         double vz = anchor.z + Math.sin(angle) * pull;
         double vy = anchor.y + height;
-        // 注视点：落点上方一点，让「从天而降的光柱」和「地面上的弹坑」同时进画面。
+        // 注视点：普通模式看落点上方一点（光柱与弹坑同框）；宇宙激光看柱身中段，
+        // 弹坑压在画面下缘、光柱一路往上出画 —— 那才是「从宇宙之外打下来」。
         double lookX = anchor.x;
-        double lookY = anchor.y + radius * LOOK_UP_FACTOR;
+        double lookY = anchor.y + radius * (soul ? 1.6D : LOOK_UP_FACTOR);
         double lookZ = anchor.z;
 
         // 从玩家真实的眼位/视角插值过去（e 的两头正好贴合原版相机，全程无跳变）。

@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `2.0.0` |
+| **当前版本** | `2.1.0` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -267,7 +267,7 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 | `cat_girl` | 猫耳娘：`auto`（自主模式）、`mine_radius` / `mine_max_blocks`（一键挖掘的范围 / 上限）、`universal_tool`（全功能工具）、`mine_all` / `mine_protected`（挖什么 / 绝不挖什么）、`station_use` / `station_radius` / `station_self_craft`（工作方块） |
 | `ai` | 本机 **LM Studio** 助理（1.1.84 起）：`enabled` / `model` / `endpoint`（默认 `http://127.0.0.1:1234/v1`）/ `timeout_ms` / `num_ctx` / `json_schema` |
 | `player_mine` | **玩家一键挖掘**（1.1.81 起）：`enabled`（默认开）、`targets`（连带哪些方块：0 只矿石 / 1 矿石+自然方块 / 2 任何可挖方块）、`radius` / `max_blocks`（范围 / 上限 64）、`vein_only`（只连带连通矿脉）、`require_correct_tool`（工具不对口不连带）、`consume_durability`（扣耐久）、`sneak_disables`（潜行只挖一格）、`to_inventory`（产物进背包 —— 连带砸下来的那几格**和你亲手砸的那一格**都算，1.2.4 起）、`protected`（追加保护名单）、`highlight`（瞄准时把会连带的方块描边画出来，默认开）、`count`（瞄准时在准星下方显示「会连挖几格」，默认开） |
-| `orbital_strike` | **轨道打击遥控器**（1.2.5 起；2.0.0 起四种弹种）：`enabled`（总开关）、`radius`（基础选区半边长 1~96，各模式再乘倍率）、`damage`（中心伤害，半心单位）、`kill_chance`（每次命中秒杀几率 %）、`damage_mobs`、`destroy_blocks`、`destroy_mode`（`cube` / `column`）、`fall_ticks`、`cooldown`（冷却秒，按模式缩放）、`lock_ticks`（**前摇 tick，默认 140 = 7 s**）、`max_hardness`、`protected`、`cinematic_camera`、`break_bedrock`（**能否挖穿基岩，默认开**）、`default_mode`（`cannon` / `lance` / `gravity` / `storm`）、`allow_mode_switch` |
+| `orbital_strike` | **轨道打击遥控器**（1.2.5 起；2.0.0 起四种弹种）：`enabled`（总开关）、`radius`（基础选区半边长 1~96，各模式再乘倍率）、`damage`（中心伤害，半心单位）、`kill_chance`（每次命中秒杀几率 %）、`damage_mobs`、`destroy_blocks`、`destroy_mode`（`cube` / `column`）、`fall_ticks`、`cooldown`（冷却秒，按模式缩放）、`lock_ticks`（**前摇 tick，默认 140 = 7 s**）、`max_hardness`、`protected`、`cinematic_camera`、`break_bedrock`（**能否挖穿基岩，默认开**）、`default_mode`（`cannon` / `lance` / `gravity` / `storm` / `laser`）、`allow_mode_switch` |
 
 > **图形界面**：`模组列表 → 选中 Apocalypse Zombies → 配置`（1.1.79 起真能用了）——
 > 列出**全部 171 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
@@ -279,16 +279,30 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 
 ## 更新日志
 
+### 2.1.0 — 2026-10-17
+
+**宇宙激光的「灵魂出窍」：镜头不再只是横着拉远，而是从玩家身体里升到 92 格高空，
+俯看整根从深空打下来的光柱。**
+
+- 宇宙激光专属机位：水平距离收近（`radius*0.55+10`，夹在 14~34 格）、高度固定 92 格，
+  注视点抬到柱身中段（`radius*1.6`）—— 弹坑压在画面下缘、光柱一路向上出画，
+  读作「从宇宙之外打下来」；其余四种模式仍是原来的 44 格水平拉出；
+- 拉出段（锁定最后 14 tick）从玩家眼位持续冒向上飘的电青碎屑：第三人称下能看到
+  「魂」正在离开身体，开火后 8 tick 收尾；
+- 新增第五种弹种「宇宙激光」本体见 2.0.0 条目（光速无飞行时间、伤害 3×、贯穿到虚空）。
+
 ### 2.0.0 — 2026-10-17
 
 **轨道打击扩成「天基武器系统」：四种可切换弹种、更长的前摇、能挖穿基岩；
 前几轮未入日志的打击感与世界特效也一并收进这个版本。**
 
-- **四种弹种**（`OrbitalStrikeMode`），**每种一套独立特效，不再共用激光柱**：
+- **五种弹种**（`OrbitalStrikeMode`），**每种一套独立特效，不再共用激光柱**：
   **轨道炮**（大范围动能弹：一颗发光的弹体带尾迹砸下来，落地炸开；**贯穿型，一路打穿到虚空**）/
   **天基长矛**（半径 0.18×、上宽下尖的矛身、伤害 2.4×、前摇 1.35×，也是贯穿型）/
   **引力奇点**（下落段把周围生物往落点拽，落地向上掀飞；球体 + 三圈轨道环，向内塌缩再爆开）/
-  **等离子风暴**（5 个落点各一道锯齿闪电、逐道错开落下，5 个小坑）。
+  **等离子风暴**（5 个落点各一道锯齿闪电、逐道错开落下，5 个小坑）/
+  **宇宙激光**（从 Y=700 的深空发射点直射，**光速无飞行时间**、半径 1.35×、伤害 3×、
+  秒杀几率 +30%，贯穿到虚空 —— 破坏性最强的那一发）。
   选择存在遥控器 NBT（`StrikeMode`），**潜行 + 右键循环切换**，服务端权威、随物品栈自动同步；
   手持遥控器时准星下方常驻显示当前弹种，潜行时提示「右键 → 下一个」。
 - **前摇默认 80 → 140 tick（7 s）**，各模式再乘倍率（长矛约 9.5 s）。

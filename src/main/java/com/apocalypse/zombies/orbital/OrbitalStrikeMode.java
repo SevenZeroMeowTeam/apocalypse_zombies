@@ -19,28 +19,38 @@ public enum OrbitalStrikeMode {
 
     /** 轨道炮：大范围动能弹，**一路打穿到世界底层（含基岩，虚空见）**。 */
     CANNON("cannon", "轨道炮", "ORBITAL CANNON",
-            1.00F, 1.00F, 1.00F, 1.00F, 1.00F, true),
+            1.00F, 1.00F, 1.00F, 1.00F, 1.00F, true, 0, 320.0D),
 
     /**
      * 天基长矛：半径收得很小，但一路挖穿（含基岩）并造成极高单点伤害。
      * 前摇更长、下落更慢 —— 一根从宇宙扎下来的矛，过程本身就该看得见。
      */
     LANCE("lance", "天基长矛", "SKY LANCE",
-            0.18F, 2.40F, 1.35F, 1.25F, 1.30F, true),
+            0.18F, 2.40F, 1.35F, 1.25F, 1.30F, true, 15, 320.0D),
 
     /**
      * 引力奇点：先在下落段把周围生物往落点拽，落地瞬间反向爆开。
      * 范围中等、伤害偏高；不挖穿 —— 它压出一个坑，不是一根井。
      */
     GRAVITY("gravity", "引力奇点", "SINGULARITY",
-            0.60F, 1.45F, 1.25F, 1.10F, 1.40F, false),
+            0.60F, 1.45F, 1.25F, 1.10F, 1.40F, false, 10, 320.0D),
 
     /**
      * 等离子风暴：一次打击在目标周围撒下若干个小落点，每个都是独立的坑。
      * 单点伤害低，但覆盖面大 —— 对付散开的尸群。
      */
     STORM("storm", "等离子风暴", "PLASMA STORM",
-            0.45F, 0.70F, 1.10F, 0.85F, 1.60F, false);
+            0.45F, 0.70F, 1.10F, 0.85F, 1.60F, false, 0, 320.0D),
+
+    /**
+     * 宇宙激光：从宇宙之外（Y=700 的深空发射点）直射下来的一束光。
+     *
+     * <p><b>没有飞行时间</b>：光速，充能完成的那一帧整根光柱就已经连到地面 ——
+     * 这是它和其它四种模式最根本的区别（它们都有「东西在掉下来」的过程）。
+     * 破坏性也是全场最强：半径 1.35×、伤害 3×、秒杀几率 +30 个百分点，且贯穿到虚空。</p>
+     */
+    LASER("laser", "宇宙激光", "EXTRACOSMIC BEAM",
+            1.35F, 3.00F, 1.60F, 0.20F, 3.00F, true, 30, 700.0D);
 
     /** 风暴模式的落点数（服务端挖地 + 客户端画环都用同一个常量）。 */
     public static final int STORM_POINTS = 5;
@@ -55,15 +65,19 @@ public enum OrbitalStrikeMode {
     private final float cooldownScale;
     /**
      * 是否「打穿到虚空」：true 时无视 {@code destroy_mode}，强制整列挖到世界底层。
-     * 轨道炮和长矛是贯穿型武器（用户明确要求轨道炮能打穿基岩到虚空），
-     * 奇点和风暴是范围型 —— 它们只压坑，要不要整列仍归 {@code destroy_mode} 管。
+     * 轨道炮、长矛和宇宙激光是贯穿型武器，奇点和风暴是范围型 ——
+     * 它们只压坑，要不要整列仍归 {@code destroy_mode} 管。
      */
     private final boolean pierces;
+    /** 秒杀几率加成（百分点），叠在配置的 {@code kill_chance} 上。 */
+    private final int killBonus;
+    /** 光束起点高度（Y）：普通模式 320，宇宙激光在深空 700。 */
+    private final double originY;
 
     OrbitalStrikeMode(String id, String display, String codename,
                       float radiusScale, float damageScale,
                       float lockScale, float fallScale, float cooldownScale,
-                      boolean pierces) {
+                      boolean pierces, int killBonus, double originY) {
         this.id = id;
         this.display = display;
         this.codename = codename;
@@ -73,11 +87,23 @@ public enum OrbitalStrikeMode {
         this.fallScale = fallScale;
         this.cooldownScale = cooldownScale;
         this.pierces = pierces;
+        this.killBonus = killBonus;
+        this.originY = originY;
     }
 
     /** 这个模式是否强制整列挖穿到世界底层（含基岩，配置允许时）。 */
     public boolean pierces() {
         return pierces;
+    }
+
+    /** 秒杀几率加成（百分点）。 */
+    public int killBonus() {
+        return killBonus;
+    }
+
+    /** 光束起点高度（Y）—— 宇宙激光在深空，其余在 Y=320。 */
+    public double originY() {
+        return originY;
     }
 
     /** NBT / 配置里用的稳定标识（不要改，会丢存档里已选好的模式）。 */

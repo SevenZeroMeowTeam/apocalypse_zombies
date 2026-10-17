@@ -326,6 +326,17 @@ public final class OrbitalStrikeManager {
                 broadcast(level, ModParticles.ORBITAL_SPARK.get(), sx, sy, sz, 0,
                         (ground.x - sx) * speed, (y - sy) * speed, (ground.z - sz) * speed, 0.0D);
             }
+        } else if (strike.mode == OrbitalStrikeMode.LASER) {
+            // 宇宙激光：整根柱子同时亮 —— 光没有飞行时间，没有「下落头」可画
+            for (int i = 0; i < 18; i++) {
+                double fy = ground.y + level.random.nextDouble() * strike.mode.originY();
+                broadcast(level, ParticleTypes.END_ROD, ground.x, fy, ground.z,
+                        1, 0.0D, -0.20D, 0.0D, 0.0D);
+                if ((i & 1) == 0) {
+                    broadcast(level, ModParticles.ORBITAL_SPARK.get(), ground.x, fy, ground.z,
+                            1, 0.40D, -0.10D, 0.40D, 0.12D);
+                }
+            }
         } else {
             // 轨道炮：短粗的弹体尾迹（只拖弹体上方 7 格）+ 烟
             for (int i = 0; i < FALL_PARTICLES_PER_TICK; i++) {
@@ -385,7 +396,79 @@ public final class OrbitalStrikeManager {
             case LANCE -> impactLance(level, strike, ground, strike.radius, destroy, damage);
             case GRAVITY -> impactGravity(level, strike, ground, strike.radius, destroy, damage);
             case STORM -> impactStorm(level, strike, ground, strike.radius, destroy, damage);
+            case LASER -> impactLaser(level, strike, ground, strike.radius, destroy, damage);
             default -> impactCannon(level, strike, ground, strike.radius, destroy, damage);
+        }
+    }
+
+    /**
+     * 宇宙激光：从深空（Y=700）直射下来的一束光。没有飞行时间，充能完成即命中；
+     * 破坏性全场最强 —— 半径 1.35×、伤害 3×、秒杀 +30%，并且一路打穿到虚空。
+     */
+    private static void impactLaser(ServerLevel level, ActiveStrike strike, Vec3 ground,
+                                    int radius, boolean destroy, boolean damage) {
+        BlockPos target = strike.target;
+        if (destroy) {
+            enqueueDestroy(level, target, radius, strike.mode.pierces());
+        }
+        if (damage) {
+            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.LASER);
+        }
+        spawnSurfaceDebris(level, target, radius);
+        // 声音：一声切穿大气的高频炸裂 + 极低的持续轰鸣（音量 > 4，44 格外的机位也听得见）
+        level.playSound(null, target, SoundEvents.WARDEN_SONIC_BOOM, SoundSource.PLAYERS, 6.0F, 0.35F);
+        level.playSound(null, target, SoundEvents.ENDER_DRAGON_GROWL, SoundSource.PLAYERS, 5.0F, 0.30F);
+        level.playSound(null, target, SoundEvents.BEACON_DEACTIVATE, SoundSource.PLAYERS, 4.0F, 0.35F);
+        level.playSound(null, target, SoundEvents.GENERIC_EXPLODE, SoundSource.PLAYERS, 5.0F, 0.85F);
+        // 整根光柱的白热粒子：从地面一直撒到深空发射点
+        for (int i = 0; i < 80; i++) {
+            double fy = ground.y + level.random.nextDouble() * strike.mode.originY();
+            broadcast(level, ParticleTypes.END_ROD, ground.x, fy, ground.z,
+                    1, 0.0D, -0.25D, 0.0D, 0.0D);
+        }
+        // 地面：大爆 + 多层冲击环 + 电弧
+        int impactParticles = Math.min(480, 80 + radius * 10);
+        for (int i = 0; i < impactParticles; i++) {
+            double ox = (level.random.nextDouble() - 0.5D) * radius * 1.8D;
+            double oy = (level.random.nextDouble() - 0.5D) * radius * 1.1D;
+            double oz = (level.random.nextDouble() - 0.5D) * radius * 1.8D;
+            broadcast(level, ParticleTypes.EXPLOSION, ground.x + ox, ground.y + oy, ground.z + oz,
+                    1, 0.0D, 0.0D, 0.0D, 0.0D);
+            broadcast(level, ParticleTypes.SOUL_FIRE_FLAME, ground.x + ox, ground.y + 0.4D + oy * 0.3D, ground.z + oz,
+                    1, 0.0D, 0.0D, 0.0D, 0.0D);
+            if ((i & 1) == 0) {
+                broadcast(level, ParticleTypes.FLASH, ground.x, ground.y + 0.5D, ground.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            }
+        }
+        int rings = Math.min(9, 3 + radius / 10);
+        for (int r = 0; r < rings; r++) {
+            double ringR = 1.0D + r * (radius / (double) rings) * 1.4D;
+            broadcast(level, ParticleTypes.SONIC_BOOM, ground.x + ringR, ground.y + 0.5D, ground.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            broadcast(level, ParticleTypes.SONIC_BOOM, ground.x - ringR, ground.y + 0.5D, ground.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            broadcast(level, ParticleTypes.SONIC_BOOM, ground.x, ground.y + 0.5D, ground.z + ringR, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            broadcast(level, ParticleTypes.SONIC_BOOM, ground.x, ground.y + 0.5D, ground.z - ringR, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        }
+        broadcast(level, ModParticles.ORBITAL_SPARK.get(), ground.x, ground.y + 1.0D, ground.z,
+                Math.min(140, 40 + radius * 4), radius * 0.6D, 3.5D, radius * 0.6D, 1.1D);
+        int embers = Math.min(120, 40 + radius * 2);
+        for (int i = 0; i < embers; i++) {
+            double ox = (level.random.nextDouble() - 0.5D) * radius * 1.6D;
+            double oz = (level.random.nextDouble() - 0.5D) * radius * 1.6D;
+            double oy = 0.3D + level.random.nextDouble() * radius * 0.6D;
+            broadcast(level, ModParticles.ORBITAL_EMBER.get(),
+                    ground.x + ox, ground.y + oy, ground.z + oz, 0,
+                    (level.random.nextDouble() - 0.5D) * 0.12D,
+                    0.05D + level.random.nextDouble() * 0.08D,
+                    (level.random.nextDouble() - 0.5D) * 0.12D, 0.0D);
+        }
+        int cloud = Math.min(320, 60 + radius * 8);
+        for (int i = 0; i < cloud; i++) {
+            double ox = (level.random.nextDouble() - 0.5D) * radius * 1.4D;
+            double oz = (level.random.nextDouble() - 0.5D) * radius * 1.4D;
+            double oy = level.random.nextDouble() * radius * 1.1D;
+            broadcast(level, ParticleTypes.LARGE_SMOKE,
+                    ground.x + ox, ground.y + oy, ground.z + oz,
+                    1, 0.0D, 0.06D + level.random.nextDouble() * 0.10D, 0.0D, 0.03D);
         }
     }
 
@@ -913,7 +996,7 @@ public final class OrbitalStrikeManager {
         }
         double max = Math.max(1.0D, radius);
         float base = Config.ORBITAL_STRIKE_DAMAGE.get().floatValue() * mode.damageScale();
-        int killPercent = Mth.clamp(Config.ORBITAL_STRIKE_KILL_CHANCE.get(), 0, 100);
+        int killPercent = Mth.clamp(Config.ORBITAL_STRIKE_KILL_CHANCE.get() + mode.killBonus(), 0, 100);
         for (LivingEntity entity : targets) {
             if (entity.isRemoved() || !entity.isAlive() || entity.isSpectator()) {
                 continue;

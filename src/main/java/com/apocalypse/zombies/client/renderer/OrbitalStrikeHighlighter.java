@@ -254,6 +254,29 @@ public final class OrbitalStrikeHighlighter {
                             i * 1.7D, gameTime + partial, a * 0.65F);
                 }
             }
+            case LASER -> {
+                // 深空充能：目标区最大的一圈 + 700 格高空一个越来越亮的星（宇宙之外的发射点）
+                double targetR = strikeRadius * (1.30D - 0.12D * progress);
+                drawCircle(pose, lines, cx, gy + 0.05D, cz, targetR,
+                        CYAN_R, CYAN_G, CYAN_B, 0.22F + 0.55F * progress);
+                drawCircle(pose, lines, cx, gy + 0.05D, cz, targetR * 0.45D,
+                        CYAN_R, CYAN_G, CYAN_B, (0.20F + 0.40F * progress) * pulse);
+                double originY = OrbitalStrikeMode.LASER.originY();
+                float starAlpha = 0.15F + 0.80F * progress;
+                double starR = 1.2D + 2.4D * progress;
+                drawCircle(pose, lines, cx, originY, cz, starR, 1.0F, 1.0F, 1.0F, starAlpha);
+                // 镜头光晕式的十字光芒
+                line(pose, lines, cx - starR * 5.0D, originY, cz, cx + starR * 5.0D, originY, cz,
+                        1.0F, 1.0F, 1.0F, starAlpha * 0.55F, 0, 1, 0);
+                line(pose, lines, cx, originY, cz - starR * 5.0D, cx, originY, cz + starR * 5.0D,
+                        1.0F, 1.0F, 1.0F, starAlpha * 0.55F, 0, 1, 0);
+                // 最后 30% 出现瞄准细线 —— 已经对准了，只等充能
+                if (progress > 0.70F) {
+                    float k = (progress - 0.70F) / 0.30F;
+                    line(pose, lines, cx, originY, cz, cx, gy, cz,
+                            CYAN_R, CYAN_G, CYAN_B, 0.30F * k, 0, -1, 0);
+                }
+            }
             default -> {
                 // 轨道炮：地面瞄准标（同心环 + 四角标）+ 平台下方的弹体充能球 —— 没有激光
                 double r1 = strikeRadius * (1.15D - 0.10D * progress);
@@ -371,12 +394,14 @@ public final class OrbitalStrikeHighlighter {
         // 弹体/矛尖的「头」：从 Y=320 往下走到地面
         double headY = Mth.lerp(fall, BEAM_TOP_Y, gy);
 
-        // —— 四种模式四套形态：炮弹 / 长矛 / 奇点 / 闪电 —— 不再共用一根激光柱
+        // —— 四种模式四套形态：炮弹 / 长矛 / 奇点 / 闪电 / 宇宙激光 —— 不再共用一根激光柱
         switch (mode) {
             case GRAVITY -> renderSingularityFall(pose, lines, cx, cz, gy, headY, fall,
                     strikeRadius, gameTime, partial);
             case LANCE -> renderSpearFall(pose, lines, buffers, matrix, cx, cz, headY, fall, gameTime, partial);
             case STORM -> renderStormFall(pose, lines, cx, cz, gy, fallElapsed, fallTicks,
+                    strikeRadius, gameTime, partial);
+            case LASER -> renderLaserFall(pose, lines, buffers, matrix, cx, cz, gy,
                     strikeRadius, gameTime, partial);
             default -> renderShellFall(pose, lines, buffers, matrix, cx, cz, headY, fall,
                     strikeRadius, gameTime, partial);
@@ -392,6 +417,7 @@ public final class OrbitalStrikeHighlighter {
                 case GRAVITY -> renderImplosion(quads, matrix, cx, gy, cz, beamR, strikeRadius, age);
                 case STORM -> renderStormImpact(quads, lines, matrix, cx, gy, cz, beamR,
                         strikeRadius, age, target, pose, gameTime, partial);
+                case LASER -> renderLaserImpact(quads, matrix, cx, gy, cz, strikeRadius, age);
                 default -> {
                     renderImpactRings(quads, matrix, cx, gy, cz, beamR, strikeRadius, age, glow);
                     renderCracks(quads, matrix, level, target, strikeRadius, age);
@@ -504,6 +530,85 @@ public final class OrbitalStrikeHighlighter {
             double bottom = Mth.lerp(boltFall, BEAM_TOP_Y, gy);
             jaggedBolt(pose, lines, cx + offsets[i][0], cz + offsets[i][1],
                     BEAM_TOP_Y, bottom, gameTime + partial, i * 3.7D, 0.85F);
+        }
+    }
+
+    /**
+     * 宇宙激光的下落 —— 严格说没有「下落」：光速，充能完成的那一帧整根光柱就已经从
+     * Y=700 的深空发射点连到地面。落地后光柱还停留 16 tick 再收掉（不是闪一下就没了）。
+     *
+     * <p>形态：白热芯 + 电青主束 + 宽辉光三层圆柱，起点一个星芒。它和轨道炮的「弹体」、
+     * 长矛的「锥体」、风暴的「锯齿」都不同 —— 这是唯一一根真正贯穿画面的大光柱，
+     * 因为「从宇宙之外打下来」这件事本身就该长这样。</p>
+     */
+    private static void renderLaserFall(PoseStack pose, VertexConsumer lines,
+                                        MultiBufferSource.BufferSource buffers, Matrix4f matrix,
+                                        double cx, double cz, double gy, int strikeRadius,
+                                        long gameTime, float partial) {
+        // 落地后停留 16 tick 再收
+        long impactAge = OrbitalStrikeClientState.impactAge();
+        float life = impactAge < 0 ? 1.0F : Mth.clamp(1.0F - impactAge / 16.0F, 0.0F, 1.0F);
+        if (life <= 0.01F) {
+            return;
+        }
+        double originY = OrbitalStrikeMode.LASER.originY();
+        double height = originY - gy;
+        double width = Math.max(1.6D, strikeRadius * 0.10D);
+        float pulse = 0.85F + 0.15F * Mth.sin((gameTime + partial) * 1.9F);
+        float a = life * pulse;
+
+        VertexConsumer quads = buffers.getBuffer(RenderType.debugQuads());
+        // 三层：越里面的越白越实
+        cylinderWall(quads, matrix, cx, gy, cz, width * 2.4D, height,
+                CYAN_R, CYAN_G, CYAN_B, 0.18F * a, 12);
+        cylinderWall(quads, matrix, cx, gy, cz, width, height,
+                CYAN_R, CYAN_G, CYAN_B, 0.55F * a, 12);
+        cylinderWall(quads, matrix, cx, gy, cz, width * 0.35D, height,
+                1.0F, 1.0F, 1.0F, 0.95F * a, 12);
+
+        // 深空发射点：星核 + 光晕；落地端一个亮点
+        drawCircle(pose, lines, cx, originY, cz, 2.6D, 1.0F, 1.0F, 1.0F, a);
+        drawCircle(pose, lines, cx, originY, cz, 7.0D, CYAN_R, CYAN_G, CYAN_B, 0.35F * a);
+        drawCircle(pose, lines, cx, gy + 0.10D, cz, width * 1.8D, 1.0F, 1.0F, 1.0F, a);
+    }
+
+    /**
+     * 宇宙激光的落地：三道环一起推开 —— 白热主环 2.4R、电青副环 3.4R、弹坑口余温。
+     * 比其它模式都大一圈，因为这是「极强破坏」的那一发。
+     */
+    private static void renderLaserImpact(VertexConsumer buffer, Matrix4f matrix,
+                                          double cx, double gy, double cz,
+                                          int strikeRadius, float age) {
+        // 白热主环
+        float fast = Mth.clamp(age / 16.0F, 0.0F, 1.0F);
+        if (fast < 1.0F) {
+            double outer = Mth.lerp(fast, 1.0D, strikeRadius * 2.4D);
+            double width = 2.0D + 8.0D * fast;
+            groundRing(buffer, matrix, cx, gy + 0.10D, cz,
+                    Math.max(0.2D, outer - width), outer,
+                    1.0F, 1.0F, 1.0F, 0.95F * (1.0F - fast) * (1.0F - fast), 48);
+        }
+        // 电青副环（更慢、更远）
+        float slow = Mth.clamp(age / 40.0F, 0.0F, 1.0F);
+        if (slow < 1.0F) {
+            double outer = Mth.lerp(slow, 1.0D, strikeRadius * 3.4D);
+            double width = 3.0D + 12.0D * slow;
+            groundRing(buffer, matrix, cx, gy + 0.04D, cz,
+                    Math.max(0.2D, outer - width), outer,
+                    CYAN_R, CYAN_G, CYAN_B, 0.50F * (1.0F - slow) * (1.0F - slow), 48);
+        }
+        // 冲击壳
+        if (fast < 1.0F) {
+            double radius = Mth.lerp(fast, 1.0D, strikeRadius * 1.15D);
+            shell(buffer, matrix, cx, gy, cz, radius, 2.0D + 22.0D * fast,
+                    CYAN_R, CYAN_G, CYAN_B, 0.32F * (1.0F - fast), 36);
+        }
+        // 弹坑口余温
+        float glow = Mth.clamp(1.0F - age / 40.0F, 0.0F, 1.0F);
+        if (glow > 0.01F) {
+            groundRing(buffer, matrix, cx, gy + 0.06D, cz,
+                    strikeRadius * 0.95D, strikeRadius * 1.05D,
+                    CYAN_R, CYAN_G, CYAN_B, 0.30F * glow, 48);
         }
     }
 

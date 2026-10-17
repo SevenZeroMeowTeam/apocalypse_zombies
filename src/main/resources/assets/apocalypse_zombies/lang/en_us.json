@@ -153,5 +153,6 @@
   "orbital_mode.cannon": "Orbital Cannon",
   "orbital_mode.lance": "Sky Lance",
   "orbital_mode.gravity": "Singularity",
-  "orbital_mode.storm": "Plasma Storm"
+  "orbital_mode.storm": "Plasma Storm",
+  "orbital_mode.laser": "Extracosmic Beam"
 }

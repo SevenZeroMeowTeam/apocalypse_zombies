@@ -1,9 +1,12 @@
 package com.apocalypse.zombies.client;
 
+import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import com.apocalypse.zombies.registry.ModParticles;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * 落地之后的余晖：弹坑上方持续 25 秒的悬浮电青碎屑。
@@ -38,6 +41,9 @@ public final class OrbitalAftermath {
             reset();
             return;
         }
+        // 宇宙激光的「灵魂出窍」：镜头被拽出身体的那一段，从眼位持续冒向上飘的碎屑 ——
+        // 玩家回头（或第三人称视角下）能看到自己的「魂」正在离开身体。
+        soulTrail(minecraft, level);
         // 只在「刚落地」的那几 tick 锁定基准 —— 之后状态过期（AFTERGLOW 40 tick）也不影响。
         if (OrbitalStrikeClientState.isActive()) {
             long age = OrbitalStrikeClientState.impactAge();
@@ -71,6 +77,37 @@ public final class OrbitalAftermath {
                     x, y, z,
                     (level.random.nextDouble() - 0.5D) * 0.02D,
                     0.012D + level.random.nextDouble() * 0.03D,
+                    (level.random.nextDouble() - 0.5D) * 0.02D);
+        }
+    }
+
+    /**
+     * 灵魂出窍的上升段：只在宇宙激光的「拉出 → 开火」窗口里撒碎屑。
+     * 窗口与 {@code OrbitalCinematic.PULL_LEAD_TICKS}（14）对齐 —— 镜头开始离开身体的那一 tick
+     * 同时开始冒魂，开火后 8 tick 收尾。
+     */
+    private static void soulTrail(Minecraft minecraft, ClientLevel level) {
+        if (!OrbitalStrikeClientState.isActive()
+                || OrbitalStrikeClientState.mode() != OrbitalStrikeMode.LASER) {
+            return;
+        }
+        long elapsed = OrbitalStrikeClientState.elapsed();
+        int lock = OrbitalStrikeClientState.lockTicks();
+        if (elapsed < lock - 14L || elapsed > lock + 8L) {
+            return;
+        }
+        LocalPlayer player = minecraft.player;
+        if (player == null) {
+            return;
+        }
+        Vec3 eye = player.getEyePosition();
+        for (int i = 0; i < 3; i++) {
+            level.addParticle(ModParticles.ORBITAL_EMBER.get(), true,
+                    eye.x + (level.random.nextDouble() - 0.5D) * 0.7D,
+                    eye.y + (level.random.nextDouble() - 0.2D) * 1.3D,
+                    eye.z + (level.random.nextDouble() - 0.5D) * 0.7D,
+                    (level.random.nextDouble() - 0.5D) * 0.02D,
+                    0.035D + level.random.nextDouble() * 0.045D,
                     (level.random.nextDouble() - 0.5D) * 0.02D);
         }
     }
