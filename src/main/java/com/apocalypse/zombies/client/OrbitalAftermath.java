@@ -1,5 +1,6 @@
 package com.apocalypse.zombies.client;
 
+import com.apocalypse.zombies.client.renderer.OrbitalCinematic;
 import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import com.apocalypse.zombies.registry.ModParticles;
 import net.minecraft.client.Minecraft;
@@ -93,7 +94,9 @@ public final class OrbitalAftermath {
         }
         long elapsed = OrbitalStrikeClientState.elapsed();
         int lock = OrbitalStrikeClientState.lockTicks();
-        if (elapsed < lock - 14L || elapsed > lock + 8L) {
+        // 与 OrbitalCinematic 的拉出时长对齐（灵魂出窍是 40 tick，常规 14 tick）
+        int lead = OrbitalCinematic.pullLeadTicks();
+        if (elapsed < lock - lead || elapsed > lock + 8L) {
             return;
         }
         LocalPlayer player = minecraft.player;

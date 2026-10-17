@@ -63,7 +63,9 @@ public final class OrbitalStrikeHighlighter {
     private static final double PLATFORM_HEIGHT = 6.0D;
     /** 宇宙激光的行星全息图：球心离地面多高 / 半径多大（光柱从球心穿过去）。 */
     private static final double PLANET_HEIGHT = 300.0D;
-    private static final double PLANET_RADIUS = 130.0D;
+    private static final double PLANET_RADIUS = 55.0D;
+    /** 卫星的绘制比例（1 单位 ≈ 本体半宽）。灵魂机位在 84 格外观测，1.8 刚好占画面一角。 */
+    private static final double SATELLITE_SCALE = 1.8D;
 
     /** 打击特效的识别色（电青）。 */
     private static final float CYAN_R = 0.40F;
@@ -178,7 +180,7 @@ public final class OrbitalStrikeHighlighter {
             renderPlanet(pose, lines, cx, gy + PLANET_HEIGHT, cz, PLANET_RADIUS,
                     planetAlpha, gameTime + partial);
             renderSatellite(pose, lines, cx, OrbitalStrikeMode.LASER.originY() + 6.0D, cz,
-                    2.5D, 0.55F, gameTime + partial);
+                    SATELLITE_SCALE, 0.62F, gameTime + partial);
         } else {
             renderPlatform(pose, lines, cx, BEAM_TOP_Y + PLATFORM_HEIGHT, cz, gameTime, partial);
             renderSkyFracture(pose, lines, cx, cz, gameTime, partial, strikeRadius);

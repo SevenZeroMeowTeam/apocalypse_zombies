@@ -46,6 +46,13 @@ public final class OrbitalCinematic {
     private static final int HOLD_TICKS = 28;
     /** 从机位平滑回位的时长（0.6 s；HOLD+OUT = 40 = 客户端状态的余晖长度，不越界）。 */
     private static final int OUT_TICKS = 12;
+    /** 宇宙激光「灵魂出窍」的最低高度（绝对 Y）：卫星在 466，所以至少升到这里。 */
+    private static final double SOUL_HEIGHT = 460.0D;
+    /** 灵魂出窍的上升时长：400 格用 14 tick 会像瞬移，拉到 2 秒。 */
+    private static final int SOUL_PULL_LEAD_TICKS = 40;
+    /** 灵魂出窍的保持/回位：HOLD+OUT 仍要 = 40（= 客户端余晖），所以 16+24。 */
+    private static final int SOUL_HOLD_TICKS = 16;
+    private static final int SOUL_OUT_TICKS = 24;
     /** 落地后机位绕目标点慢摇的角速度（度/tick；40 tick 共 10°）。 */
     private static final double DRIFT_DEGREES_PER_TICK = 0.25D;
     /** 玩家离目标超过这个距离就不演（与屏幕特效的 160 格衰减半径一致，远处看了也是白看）。 */
@@ -61,6 +68,24 @@ public final class OrbitalCinematic {
     /** 机位高度。 */
     private static double pullHeight(int radius) {
         return Mth.clamp(radius * 0.85D + 7.0D, 8.0D, 30.0D);
+    }
+
+    /** 当前是不是宇宙激光的「灵魂出窍」机位（升到卫星高度、看行星）。 */
+    private static boolean isSoulShot() {
+        return OrbitalStrikeClientState.mode() == OrbitalStrikeMode.LASER;
+    }
+
+    /** 拉出时长：灵魂出窍要飞 400 格，得比常规机位慢得多。 */
+    public static int pullLeadTicks() {
+        return isSoulShot() ? SOUL_PULL_LEAD_TICKS : PULL_LEAD_TICKS;
+    }
+
+    private static int holdTicks() {
+        return isSoulShot() ? SOUL_HOLD_TICKS : HOLD_TICKS;
+    }
+
+    private static int outTicks() {
+        return isSoulShot() ? SOUL_OUT_TICKS : OUT_TICKS;
     }
 
     // ------------------------------------------------------------------ 状态
@@ -137,7 +162,10 @@ public final class OrbitalCinematic {
         double elapsed = OrbitalStrikeClientState.elapsed();
         int lock = OrbitalStrikeClientState.lockTicks();
         int fall = OrbitalStrikeClientState.fallTicks();
-        double cinemaStart = lock - (double) PULL_LEAD_TICKS;
+        int pullLead = pullLeadTicks();
+        int hold = holdTicks();
+        int out = outTicks();
+        double cinemaStart = lock - (double) pullLead;
         double impact = lock + (double) fall;
 
         float ease;
@@ -146,13 +174,13 @@ public final class OrbitalCinematic {
             disengage(minecraft);
             return;
         } else if (elapsed < lock) {
-            ease = smooth((float) ((elapsed - cinemaStart) / PULL_LEAD_TICKS));
-        } else if (elapsed < impact + HOLD_TICKS) {
+            ease = smooth((float) ((elapsed - cinemaStart) / pullLead));
+        } else if (elapsed < impact + hold) {
             ease = 1.0F;
         } else {
             // 回位段先还原视角模式：镜头正飞回眼位，眼位附近不能画自己的模型（会穿头）。
             disengage(minecraft);
-            ease = 1.0F - smooth((float) ((elapsed - impact - HOLD_TICKS) / OUT_TICKS));
+            ease = 1.0F - smooth((float) ((elapsed - impact - hold) / out));
         }
         // 还没到全距就不切第三人称（眼位附近渲染自己的模型会穿头）；到了全距玩家入画。
         if (ease >= 0.999F) {
@@ -170,37 +198,38 @@ public final class OrbitalCinematic {
         }
         double angle = baseAngle + drift;
         int radius = OrbitalStrikeClientState.radius();
+        Vec3 anchor = Vec3.atCenterOf(OrbitalStrikeClientState.target());
         double pull = pullDistance(radius);
         double height = pullHeight(radius);
-        // 宇宙激光：镜头不是「拉远」而是「灵魂出窍」—— 垂直升到 92 格高空俯看整根光柱。
-        // 只有从这个高度，才能同时看见弹坑和那根一直捅到 Y=700 深空发射点的光柱；
-        // 水平距离反而收近，让俯角足够陡，弹坑留在画面下缘。
+        // 宇宙激光：镜头不是「拉远」而是「灵魂出窍」—— 一路升到卫星高度（绝对 Y ≥ 460），
+        // 停在卫星旁边俯看整根光柱穿过行星。水平距离拉开到 50~110 格，否则从 400 格高的
+        // 正上方看下去只剩一个点，看不出「穿透行星」的层次。
         boolean soul = OrbitalStrikeClientState.mode() == OrbitalStrikeMode.LASER;
         if (soul) {
-            pull = Mth.clamp(radius * 0.55D + 10.0D, 14.0D, 34.0D);
-            height = 92.0D;
+            pull = Mth.clamp(radius * 2.0D + 20.0D, 50.0D, 110.0D);
+            // height 是「相对落点」的高度：换算成绝对 Y ≥ 460
+            height = Math.max(anchor.y + 92.0D, SOUL_HEIGHT) - anchor.y;
         }
         // dolly-in：落地后的保持段里镜头缓慢「压」向弹坑（44 → 36 格），
         // 与慢摇叠加就是「绕着一个越来越近的坑转」—— 静止机位会显得像截图。
         double push = impactAge >= 0
-                ? smooth(Mth.clamp((float) impactAge / HOLD_TICKS, 0.0F, 1.0F))
+                ? smooth(Mth.clamp((float) impactAge / holdTicks(), 0.0F, 1.0F))
                 : 0.0D;
         pull *= 1.0D - 0.18D * push;
         height *= 1.0D - 0.10D * push;
-        Vec3 anchor = Vec3.atCenterOf(OrbitalStrikeClientState.target());
         double vx = anchor.x + Math.cos(angle) * pull;
         double vz = anchor.z + Math.sin(angle) * pull;
         double vy = anchor.y + height;
         // 注视点：普通模式看落点上方一点（光柱与弹坑同框）；宇宙激光看柱身中段，
-        // 弹坑压在画面下缘、光柱一路往上出画 —— 那才是「从宇宙之外打下来」。
+        // 落地后再用 14 tick 抬头到卫星/行星（见下）。
         double lookX = anchor.x;
         double lookY = anchor.y + radius * (soul ? 1.6D : LOOK_UP_FACTOR);
         double lookZ = anchor.z;
         if (soul && impactAge >= 0) {
-            // 落地后 12 tick 内视线从弹坑抬到天上：看见行星全息图和那颗开火的卫星 ——
-            // 「抬头看看是谁在开火」。抬到行星下缘（约 +170）正好让球体填满画面上半。
-            float k = smooth(Mth.clamp((float) impactAge / 12.0F, 0.0F, 1.0F));
-            lookY = Mth.lerp(k, lookY, anchor.y + 170.0D);
+            // 抬头看「是谁在开火」：卫星在 Y=466、行星球心在落点上方 300 —— 视线抬到
+            // 机位下方 30 格，正好把卫星、行星和穿过去的光柱一起装进画面。
+            float k = smooth(Mth.clamp((float) impactAge / 14.0F, 0.0F, 1.0F));
+            lookY = Mth.lerp(k, lookY, vy - 30.0D);
         }
 
         // 从玩家真实的眼位/视角插值过去（e 的两头正好贴合原版相机，全程无跳变）。
@@ -265,9 +294,9 @@ public final class OrbitalCinematic {
             return false;
         }
         double elapsed = OrbitalStrikeClientState.elapsed();
-        double cinemaStart = OrbitalStrikeClientState.lockTicks() - (double) PULL_LEAD_TICKS;
+        double cinemaStart = OrbitalStrikeClientState.lockTicks() - (double) pullLeadTicks();
         double cinemaEnd = OrbitalStrikeClientState.lockTicks() + OrbitalStrikeClientState.fallTicks()
-                + HOLD_TICKS + OUT_TICKS;
+                + holdTicks() + outTicks();
         return elapsed >= cinemaStart && elapsed <= cinemaEnd;
     }
 
