@@ -236,6 +236,8 @@ public final class ModItems {
             event.accept(COPPER_CHESTPLATE);
             event.accept(COPPER_LEGGINGS);
             event.accept(COPPER_BOOTS);
+            // 轨道打击遥控器属于「战斗」，和枪械同页 —— 之前误挂在刷怪蛋页
+            event.accept(ORBITAL_STRIKE_REMOTE);
         }
         if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
             event.accept(COPPER_PICKAXE);
@@ -252,7 +254,6 @@ public final class ModItems {
             event.accept(SOLDIER_SPAWN_EGG);
             event.accept(OVERLORD_SPAWN_EGG);
             event.accept(CAT_GIRL_SPAWN_EGG);
-            event.accept(ORBITAL_STRIKE_REMOTE);
         }
         if (event.getTabKey() == CreativeModeTabs.INGREDIENTS) {
             event.accept(LOVE_COIN);
