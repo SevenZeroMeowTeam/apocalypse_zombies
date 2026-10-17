@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.2.3` |
+| **当前版本** | `1.2.4` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -266,7 +266,7 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 | `specials` | 特殊敌对生物：`elite_natural_spawn` / `elite_spawn_weight` / `elite_horde_from_wave` / `elite_horde_max_per_wave` |
 | `cat_girl` | 猫耳娘：`auto`（自主模式）、`mine_radius` / `mine_max_blocks`（一键挖掘的范围 / 上限）、`universal_tool`（全功能工具）、`mine_all` / `mine_protected`（挖什么 / 绝不挖什么）、`station_use` / `station_radius` / `station_self_craft`（工作方块） |
 | `ai` | 本机 **LM Studio** 助理（1.1.84 起）：`enabled` / `model` / `endpoint`（默认 `http://127.0.0.1:1234/v1`）/ `timeout_ms` / `num_ctx` / `json_schema` |
-| `player_mine` | **玩家一键挖掘**（1.1.81 起）：`enabled`（默认开）、`targets`（连带哪些方块：0 只矿石 / 1 矿石+自然方块 / 2 任何可挖方块）、`radius` / `max_blocks`（范围 / 上限 64）、`vein_only`（只连带连通矿脉）、`require_correct_tool`（工具不对口不连带）、`consume_durability`（扣耐久）、`sneak_disables`（潜行只挖一格）、`to_inventory`（产物进背包）、`protected`（追加保护名单）、`highlight`（瞄准时把会连带的方块描边画出来，默认开）、`count`（瞄准时在准星下方显示「会连挖几格」，默认开） |
+| `player_mine` | **玩家一键挖掘**（1.1.81 起）：`enabled`（默认开）、`targets`（连带哪些方块：0 只矿石 / 1 矿石+自然方块 / 2 任何可挖方块）、`radius` / `max_blocks`（范围 / 上限 64）、`vein_only`（只连带连通矿脉）、`require_correct_tool`（工具不对口不连带）、`consume_durability`（扣耐久）、`sneak_disables`（潜行只挖一格）、`to_inventory`（产物进背包 —— 连带砸下来的那几格**和你亲手砸的那一格**都算，1.2.4 起）、`protected`（追加保护名单）、`highlight`（瞄准时把会连带的方块描边画出来，默认开）、`count`（瞄准时在准星下方显示「会连挖几格」，默认开） |
 
 > **图形界面**：`模组列表 → 选中 Apocalypse Zombies → 配置`（1.1.79 起真能用了）——
 > 列出**全部 171 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
@@ -277,6 +277,32 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 1.2.4 — 2026-10-17
+
+**一键挖掘的产物现在一件都不落地 —— 连着你亲手砸的那一格，整簇直接进背包。**
+
+- **症状**：挖一簇煤 / 铁矿，连带砸下来的几十格产物直接进背包，唯独**你点的那一格**还躺在地上。
+  一簇挖完总有一件物品孤零零留在坑里，得再走回去捡。
+- **根因**：同一条「一键挖掘」其实分两半。连带格由 `PlayerVeinMine.breakOne` 自己
+  `destroyBlock(pos, false)` + 手动发产物，所以能当场塞背包；**种子格始终留给原版挖**
+  （工具等级 / 耐久 / 声音 / 进度全按原版走，这个决定是对的、保留），原版于是把它的产物掉在地上 ——
+  `BlockEvent.BreakEvent` 里改不了方块自己那一次掉落。
+- **修法**：挖之前先登记，掉落生成的那一瞬领走。
+  - `PlayerVeinMine.awaitSeedDrops`：按「维度 → 位置 → 谁挖的 + 1 tick 时间窗」记一笔；
+  - `PlayerVeinMine.onItemJoin`（`EntityJoinLevelEvent`）：物品实体进场时用「**同一维度 + 同一格 +
+    同一时间窗 + 主人**」四条线索认领，`event.setCanceled(true)` 后直接 `Inventory.add` ——
+    这坨物品压根不会在世界里生成；
+  - 同一格一次掉好几件（树叶掉俩树苗这种）也全领走：登记**不按件删**，到点自然过期；
+  - 背包塞不下就 `player.drop` 掉在你脚下（不留在矿洞里）；认不到主人（离线）就让原版照常掉；
+  - 别处刷出来的、相邻掉落的物品四条线索对不上，不会被误收。
+- **配置还是那一个**：`[player_mine] to_inventory`（默认 **true**）。关掉时整条链一个字节都不碰 ——
+  连带格与种子格全留在原地，和 1.2.3 之前的 `false` 行为一致。
+- **行为不变**：不设按键、不加命令，触发仍是原版「破坏方块」；潜行只挖一格（`sneak_disables`）
+  时根本不接管，那一格照原版掉。
+
+**验证**：`gradlew compileJava` / `gradlew jar` 全绿；包内 `PlayerVeinMine.class` 核到
+`onItemJoin` / `awaitSeedDrops` / `SeedDrop` 三个新符号；装机 1.2.4。
 
 ### 1.2.3 — 2026-10-17
 

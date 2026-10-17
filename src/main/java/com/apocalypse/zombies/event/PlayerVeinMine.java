@@ -4,21 +4,28 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -36,8 +43,13 @@ import com.apocalypse.zombies.entity.CatGirlHarvest;
  *   <li>不需要新按键、不需要网络包、客户端装不装这个 mod 都一样；</li>
  *   <li><b>挖多少 / 挖哪儿 / 给不给产物全部只认服务端读到的配置</b>（{@code [player_mine]} 段），
  *       客户端改自己的 TOML 也影响不了判定；</li>
- *   <li>你砸的那一格交给原版处理（工具等级、掉落、声音都是原版的），我们只补上**多出来的那几格**。</li>
+ *   <li>你砸的那一格交给原版处理（工具等级、耐久、声音、进度都是原版的），我们只补上**多出来的那几格**。</li>
  * </ul>
+ *
+ * <p><b>产物一律进背包，包括你亲手砸的那一格。</b>连带出来的格子在 {@link #breakOne} 里直接塞进背包；
+ * 只剩种子格由原版挖、原版掉 —— 它的掉落物在挖之前登记一下（{@link #awaitSeedDrops}），
+ * 生成的那一瞬（{@link EntityJoinLevelEvent}）捞进背包，于是「一簇挖完地上一个物品都没有」。
+ * 背包塞不下才掉在脚下，找不到主人（离线）就让原版照常掉。</p>
  *
  * <p><b>安全边界复用 {@link CatGirlHarvest}</b>（1.1.7x 起那套约定，一格不改）：保护名单（基岩 / 屏障 /
  * 命令方块 / 传送门 / 刷怪笼…，{@code cat_girl.mine_protected} 与 {@code player_mine.protected} 都生效）、
@@ -56,6 +68,19 @@ public final class PlayerVeinMine {
     /** 配置名单解析缓存：内容一变就重建（照 {@link CatGirlHarvest} 的做法）。 */
     private static String extraKey = "";
     private static Set<Block> extraBlocks = Set.of();
+
+    /**
+     * 种子格（你点的那一格）的掉落物登记：维度 → 位置 → 「谁挖的 / 到哪一 tick 为止算数」。
+     *
+     * <p>原版挖掉种子格时把产物掉在地上，我们没法在 {@code BreakEvent} 里改它的掉落，
+     * 所以改成在挖之前登记，等物品实体进场时按「位置 + 时间窗 + 主人」把它领走。
+     * 服务端单线程，{@link HashMap} 够用；过期的在登记时顺手清掉，不会积压。</p>
+     */
+    private static final Map<ResourceKey<Level>, Map<BlockPos, SeedDrop>> seedDrops = new HashMap<>();
+
+    /** 一条种子格掉落登记。{@code deadline} 用 {@code level.getGameTime()} 同一时间轴。 */
+    private record SeedDrop(UUID owner, long deadline) {
+    }
 
     @SubscribeEvent
     public static void onBreak(BlockEvent.BreakEvent event) {
@@ -83,6 +108,10 @@ public final class PlayerVeinMine {
         Block twin = deepslateTwin(originBlock);
         boolean toInventory = Config.PLAYER_MINE_TO_INVENTORY.get();
         boolean durability = Config.PLAYER_MINE_DURABILITY.get();
+        if (toInventory) {
+            // 种子格留给原版挖（工具等级 / 耐久 / 声音 / 进度都按原版走），产物在这条登记里领回背包。
+            awaitSeedDrops(level, player, originPos);
+        }
         int budget = clampMax(Config.PLAYER_MINE_MAX_BLOCKS.get()) - 1;   // 你砸的那一格算在 max 里
         int done = 0;
         for (BlockPos pos : found) {
@@ -103,6 +132,64 @@ public final class PlayerVeinMine {
                 }
             }
         }
+    }
+
+    /**
+     * 种子格的掉落物进场时，直接领进挖它的人背包（{@code to_inventory} 关着就一个字节都不碰）。
+     *
+     * <p>认人的三条线索缺一不可：<b>同一维度</b>（登记表按维度分）、<b>同一格</b>（原版
+     * {@code Block.popResource} 把物品实体放在方块中心，取整正好是那个 pos）、<b>同一个 tick 前后</b>
+     * （{@code deadline} 只给 1 tick 的余量）。所以别处刷出来的、相邻掉落的物品都不会被误收。</p>
+     */
+    @SubscribeEvent
+    public static void onItemJoin(EntityJoinLevelEvent event) {
+        if (!(event.getLevel() instanceof ServerLevel level)) {
+            return;
+        }
+        if (!(event.getEntity() instanceof ItemEntity item)) {
+            return;
+        }
+        if (!Config.PLAYER_MINE_TO_INVENTORY.get()) {
+            return;
+        }
+        Map<BlockPos, SeedDrop> pending = seedDrops.get(level.dimension());
+        if (pending == null || pending.isEmpty()) {
+            return;
+        }
+        BlockPos pos = item.blockPosition();
+        SeedDrop seeded = pending.get(pos);
+        if (seeded == null) {
+            return;
+        }
+        if (level.getGameTime() > seeded.deadline()) {
+            pending.remove(pos);   // 过期的登记 —— 这一格是别的来源
+            return;
+        }
+        ServerPlayer owner = level.getServer() == null
+                ? null
+                : level.getServer().getPlayerList().getPlayer(seeded.owner());
+        if (owner == null) {
+            pending.remove(pos);   // 人走了 —— 让原版照常掉在地上
+            return;
+        }
+        // 注意：这里**不删**登记 —— 同一格一次可以掉好几件（树叶掉俩树苗这种），
+        // 多出来的那几件还在同一个时间窗里，也得一起领走。登记到点自然过期。
+        ItemStack drop = item.getItem().copy();
+        event.setCanceled(true);              // 收下还是塞不下都别让原版再生成这坨
+        if (drop.isEmpty()) {
+            return;
+        }
+        if (!owner.getInventory().add(drop)) {
+            owner.drop(drop, false);          // 背包满了 —— 掉在他脚下，别留在矿洞里
+        }
+    }
+
+    /** 挖种子格之前登记一次：这一格接下来生成的原版掉落物归这个玩家。 */
+    private static void awaitSeedDrops(ServerLevel level, ServerPlayer player, BlockPos pos) {
+        long now = level.getGameTime();
+        Map<BlockPos, SeedDrop> pending = seedDrops.computeIfAbsent(level.dimension(), k -> new HashMap<>());
+        pending.values().removeIf(drop -> now > drop.deadline());   // 顺手清过期，表不会越攒越大
+        pending.put(pos.immutable(), new SeedDrop(player.getUUID(), now + 1));
     }
 
     /**

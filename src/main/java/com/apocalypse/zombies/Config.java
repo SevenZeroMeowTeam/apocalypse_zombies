@@ -775,7 +775,8 @@ public final class Config {
                 .define("consume_durability", true);
         PLAYER_MINE_SNEAK_DISABLES = b.comment("潜行时只砸你点的那一格（经典 veinminer 手感：想单挖就蹲下）。")
                 .define("sneak_disables", true);
-        PLAYER_MINE_TO_INVENTORY = b.comment("产物直接进背包（塞不下就掉在你脚下）；false = 留在原地。")
+        PLAYER_MINE_TO_INVENTORY = b.comment("产物直接进背包（连着砸下来的那几格 + 你自己砸的那一格都算）。",
+                        "背包塞不下就掉在你脚下；false = 全部留在原地。")
                 .define("to_inventory", true);
         PLAYER_MINE_PROTECTED = b.comment("追加保护名单（方块 id，带不带 minecraft: 都行）。",
                         "挖矿那份 cat_girl.mine_protected 同样生效，两份合并。")
