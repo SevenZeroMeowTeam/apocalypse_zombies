@@ -49,8 +49,8 @@ public final class OrbitalStrikeManager {
 
     /** 从哪个高度开始往下打。Y=320 远高于世界构建上限（Y=256），所以视觉上像「从天上来的」。 */
     private static final double IMPACT_FALL_Y = 320.0D;
-    /** 下落阶段固定走 6 tick（约 0.3 s），与锁定阶段合计约 1.8 s 整。 */
-    private static final int FALL_TICKS = 6;
+    /** 下落阶段固定走 24 tick（约 1.2 s）—— 玩家能看见光柱从太空慢慢压下来（1.3.1 起）。 */
+    private static final int FALL_TICKS = 24;
     /** 下落阶段每 tick 在光柱上的粒子密度。 */
     private static final int FALL_PARTICLES_PER_TICK = 12;
     /** 锁定阶段每 tick 在目标点周围 5x5x5 范围画的锁定粒子数。 */
@@ -164,16 +164,18 @@ public final class OrbitalStrikeManager {
         BlockPos target = strike.target;
         // 地面中心点
         Vec3 ground = Vec3.atCenterOf(target);
-        // 画 24 个 end_rod 粒子在 ±0.5 范围内随机
-        for (int i = 0; i < LOCK_PARTICLES_PER_TICK; i++) {
-            double ox = (level.random.nextDouble() - 0.5D) * 6.0D;
-            double oy = (level.random.nextDouble() - 0.5D) * 3.0D;
-            double oz = (level.random.nextDouble() - 0.5D) * 6.0D;
-            level.sendParticles(ParticleTypes.END_ROD, ground.x + ox, ground.y + oy, ground.z + oz,
-                    1, 0.0D, 0.0D, 0.0D, 0.0D);
-        }
-        // 半 tick 一次的电弧音
+        // 锁定阶段 80 tick（4 s）：每 2 tick 撒一批 end_rod 粒子，避免 4 秒内刷近两千个
         if ((strike.age() & 1) == 0) {
+            for (int i = 0; i < LOCK_PARTICLES_PER_TICK; i++) {
+                double ox = (level.random.nextDouble() - 0.5D) * 6.0D;
+                double oy = (level.random.nextDouble() - 0.5D) * 3.0D;
+                double oz = (level.random.nextDouble() - 0.5D) * 6.0D;
+                level.sendParticles(ParticleTypes.END_ROD, ground.x + ox, ground.y + oy, ground.z + oz,
+                        1, 0.0D, 0.0D, 0.0D, 0.0D);
+            }
+        }
+        // 每 8 tick 一次的电弧音（原来是每 2 tick，4 秒拉长后会太吵）
+        if (strike.age() % 8 == 0) {
             level.playSound(null, target, SoundEvents.BEACON_AMBIENT, SoundSource.PLAYERS,
                     0.6F, 1.8F);
         }
@@ -219,10 +221,12 @@ public final class OrbitalStrikeManager {
             level.sendParticles(ParticleTypes.END_ROD, ground.x + sx, IMPACT_FALL_Y + 4.0D + level.random.nextDouble() * 20.0D,
                     ground.z + sz, 1, 0.0D, -0.2D, 0.0D, 0.0D);
         }
-        // 下落音（从远到近越来越响）
-        float volume = 0.3F + (float) t * 1.4F;
-        float pitch = 0.6F + (float) t * 0.8F;
-        level.playSound(null, strike.target, SoundEvents.BLAZE_SHOOT, SoundSource.PLAYERS, volume, pitch);
+        // 下落音（从远到近越来越响；24 tick 拉长后每 4 tick 一声，否则连成噪音）
+        if (local % 4 == 0) {
+            float volume = 0.3F + (float) t * 1.4F;
+            float pitch = 0.6F + (float) t * 0.8F;
+            level.playSound(null, strike.target, SoundEvents.BLAZE_SHOOT, SoundSource.PLAYERS, volume, pitch);
+        }
     }
 
     private static void tickImpact(ServerLevel level, ActiveStrike strike) {

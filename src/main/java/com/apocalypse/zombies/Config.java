@@ -1085,8 +1085,9 @@ public final class Config {
                         "(spam the remote as fast as you can click it).")
                 .defineInRange("cooldown", 0, 0, 600);
         ORBITAL_STRIKE_LOCK_TICKS = b.comment("Lock phase length in ticks (20 = 1 s). The beam then falls",
-                        "for a fixed 6 ticks regardless. Total = lock + 6.")
-                .defineInRange("lock_ticks", 30, 20, 80);
+                        "for a fixed 24 ticks. Default 80 = 4 s of red laser + countdown before the",
+                        "beam starts moving, so the whole strike is visible from the ground.")
+                .defineInRange("lock_ticks", 80, 20, 400);
         ORBITAL_STRIKE_MAX_HARDNESS = b.comment("Hardness ceiling for blocks that the strike may destroy.",
                         "Anything tougher is skipped (e.g. obsidian=50, ancient debris=50, end stone=3).")
                 .defineInRange("max_hardness", 50.0D, 1.0D, 100.0D);

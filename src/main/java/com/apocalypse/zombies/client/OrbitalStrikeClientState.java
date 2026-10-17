@@ -8,8 +8,9 @@ import net.minecraft.core.BlockPos;
  */
 public final class OrbitalStrikeClientState {
 
-    /** 下落阶段固定 6 tick（与 {@link com.apocalypse.zombies.event.OrbitalStrikeManager} 对齐）。 */
-    public static final int FALL_TICKS = 6;
+    /** 下落阶段固定 tick 数（与 {@link com.apocalypse.zombies.event.OrbitalStrikeManager} 的
+     * {@code FALL_TICKS} 保持一致，1.3.1 起改为 24 = 1.2 s，让光柱下落看得清）。 */
+    public static final int FALL_TICKS = 24;
     /** 落地后的余晖（渲染用，服务端不管）。 */
     public static final int AFTERGLOW_TICKS = 40;
 
