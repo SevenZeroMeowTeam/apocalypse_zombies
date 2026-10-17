@@ -1,5 +1,6 @@
 package com.apocalypse.zombies.client;
 
+import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import net.minecraft.core.BlockPos;
 
 /**
@@ -17,17 +18,19 @@ public final class OrbitalStrikeClientState {
     private static int radius;
     private static int lockTicks;
     private static int fallTicks = DEFAULT_FALL_TICKS;
+    private static OrbitalStrikeMode mode = OrbitalStrikeMode.CANNON;
     private static long startGameTime;
 
     private OrbitalStrikeClientState() {
     }
 
     /** 收到新的打击：覆盖旧的（同一时刻只支持一次打击的观感，够用且不会叠图）。 */
-    public static void start(BlockPos pos, int radius, int lockTicks, int fallTicks) {
+    public static void start(BlockPos pos, int radius, int lockTicks, int fallTicks, OrbitalStrikeMode mode) {
         target = pos.immutable();
         OrbitalStrikeClientState.radius = radius;
         OrbitalStrikeClientState.lockTicks = lockTicks;
         OrbitalStrikeClientState.fallTicks = Math.max(1, fallTicks);
+        OrbitalStrikeClientState.mode = mode == null ? OrbitalStrikeMode.CANNON : mode;
         OrbitalStrikeClientState.startGameTime = now();
     }
 
@@ -50,6 +53,11 @@ public final class OrbitalStrikeClientState {
 
     public static int radius() {
         return radius;
+    }
+
+    /** 本次打击选的是哪种弹种（服务端说的算）。 */
+    public static OrbitalStrikeMode mode() {
+        return mode;
     }
 
     /** 已经走过的 tick 数（用于光束下落进度 / 闪烁节奏）。 */

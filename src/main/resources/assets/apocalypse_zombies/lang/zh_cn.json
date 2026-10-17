@@ -59,7 +59,6 @@
   "item.apocalypse_zombies.rsc_1917": "RSC M1917 半自动步枪",
   "item.apocalypse_zombies.mosin_nagant": "莫辛-纳甘 M91/30",
   "item.apocalypse_zombies.win94": "温彻斯特 M1894",
-  "item.apocalypse_zombies.win94": "温彻斯特 M1894",
   "item.apocalypse_zombies.crossbow": "复合十字弩",
   "item.apocalypse_zombies.uzi": "乌兹冲锋枪",
   "item.apocalypse_zombies.s686": "金板 S686",
@@ -148,5 +147,11 @@
   "item.apocalypse_zombies.copper_helmet": "铜头盔",
   "item.apocalypse_zombies.copper_chestplate": "铜胸甲",
   "item.apocalypse_zombies.copper_leggings": "铜护腿",
-  "item.apocalypse_zombies.copper_boots": "铜靴"
+  "item.apocalypse_zombies.copper_boots": "铜靴",
+  "item.apocalypse_zombies.orbital_strike_remote.hint": "潜行 + 右键切换打击模式",
+  "item.apocalypse_zombies.orbital_strike_remote.bedrock": "可贯穿基岩",
+  "orbital_mode.cannon": "轨道炮",
+  "orbital_mode.lance": "天基长矛",
+  "orbital_mode.gravity": "引力奇点",
+  "orbital_mode.storm": "等离子风暴"
 }

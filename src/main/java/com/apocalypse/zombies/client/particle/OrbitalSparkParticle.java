@@ -23,22 +23,42 @@ import net.minecraft.core.particles.SimpleParticleType;
  */
 public class OrbitalSparkParticle extends TextureSheetParticle {
 
+    private final boolean ember;
+
     OrbitalSparkParticle(ClientLevel level, double x, double y, double z,
                          double vx, double vy, double vz, SpriteSet sprites) {
+        this(level, x, y, z, vx, vy, vz, sprites, false);
+    }
+
+    OrbitalSparkParticle(ClientLevel level, double x, double y, double z,
+                         double vx, double vy, double vz, SpriteSet sprites, boolean ember) {
         super(level, x, y, z, 0.0D, 0.0D, 0.0D);
         this.pickSprite(sprites);
-        this.friction = 0.94F;
-        this.gravity = 0.0F;
+        this.ember = ember;
         this.hasPhysics = false;
-        this.lifetime = 12 + this.random.nextInt(16);
         this.xd = vx;
         this.yd = vy;
         this.zd = vz;
-        float mix = this.random.nextFloat();
-        this.rCol = 1.0F - 0.55F * mix;
-        this.gCol = 1.0F - 0.12F * mix;
-        this.bCol = 1.0F;
-        this.quadSize = 0.07F + this.random.nextFloat() * 0.09F;
+        if (ember) {
+            // 电青余烬：飘得久、几乎不减速（悬浮碎屑，不是火花），白热 → 暗青随机
+            this.friction = 0.985F;
+            this.gravity = 0.0F;
+            this.lifetime = 30 + this.random.nextInt(40);
+            this.rCol = 0.45F + this.random.nextFloat() * 0.25F;
+            this.gCol = 0.90F + this.random.nextFloat() * 0.10F;
+            this.bCol = 1.0F;
+            this.quadSize = 0.05F + this.random.nextFloat() * 0.07F;
+        } else {
+            // 青白能量火花：短命、急速耗散
+            this.friction = 0.94F;
+            this.gravity = 0.0F;
+            this.lifetime = 12 + this.random.nextInt(16);
+            float mix = this.random.nextFloat();
+            this.rCol = 1.0F - 0.55F * mix;
+            this.gCol = 1.0F - 0.12F * mix;
+            this.bCol = 1.0F;
+            this.quadSize = 0.07F + this.random.nextFloat() * 0.09F;
+        }
         this.setAlpha(1.0F);
     }
 
@@ -61,12 +81,23 @@ public class OrbitalSparkParticle extends TextureSheetParticle {
         return ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT;
     }
 
-    /** 原版风格的注册工厂：粒子引擎把 glow 贴图的 {@link SpriteSet} 递给我们。 */
+    /** 原版风格的注册工厂：粒子引擎把 glow 贴图的 {@link SpriteSet} 递给我们。
+     *  {@code ember=true} = 电青余烬（{@link ModParticles#ORBITAL_EMBER}），false = 青白火花。 */
     public static final class Provider implements ParticleEngine.SpriteParticleRegistration<SimpleParticleType> {
+        private final boolean ember;
+
+        public Provider() {
+            this(false);
+        }
+
+        public Provider(boolean ember) {
+            this.ember = ember;
+        }
+
         @Override
         public ParticleProvider<SimpleParticleType> create(SpriteSet sprites) {
             return (type, level, x, y, z, vx, vy, vz) ->
-                    new OrbitalSparkParticle(level, x, y, z, vx, vy, vz, sprites);
+                    new OrbitalSparkParticle(level, x, y, z, vx, vy, vz, sprites, ember);
         }
     }
 }

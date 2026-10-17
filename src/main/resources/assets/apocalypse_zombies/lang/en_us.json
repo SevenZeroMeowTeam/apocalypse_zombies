@@ -147,5 +147,11 @@
   "item.apocalypse_zombies.copper_helmet": "Copper Helmet",
   "item.apocalypse_zombies.copper_chestplate": "Copper Chestplate",
   "item.apocalypse_zombies.copper_leggings": "Copper Leggings",
-  "item.apocalypse_zombies.copper_boots": "Copper Boots"
+  "item.apocalypse_zombies.copper_boots": "Copper Boots",
+  "item.apocalypse_zombies.orbital_strike_remote.hint": "Sneak + right-click to cycle strike modes",
+  "item.apocalypse_zombies.orbital_strike_remote.bedrock": "Pierces bedrock",
+  "orbital_mode.cannon": "Orbital Cannon",
+  "orbital_mode.lance": "Sky Lance",
+  "orbital_mode.gravity": "Singularity",
+  "orbital_mode.storm": "Plasma Storm"
 }

@@ -52,6 +52,8 @@ public final class ClientModBusEvents {
     @SubscribeEvent
     public static void onRegisterParticleProviders(net.minecraftforge.client.event.RegisterParticleProvidersEvent event) {
         event.registerSpriteSet(ModParticles.ORBITAL_SPARK.get(), new OrbitalSparkParticle.Provider());
+        // 电青余烬：落地后的悬浮碎屑，同一渲染逻辑、另一条色带
+        event.registerSpriteSet(ModParticles.ORBITAL_EMBER.get(), new OrbitalSparkParticle.Provider(true));
     }
 
     /**

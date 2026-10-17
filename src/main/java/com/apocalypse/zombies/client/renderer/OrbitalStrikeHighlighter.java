@@ -3,29 +3,47 @@ package com.apocalypse.zombies.client.renderer;
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.client.OrbitalStrikeClientState;
 import com.apocalypse.zombies.item.OrbitalStrikeRemoteItem;
+import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
+import org.joml.Matrix4f;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * 轨道打击的客户端视觉：两层，各自独立开关。
+ * 轨道打击的世界层视觉：选区框、光柱、轨道平台、冲击环、地面裂纹。
  *
  * <ol>
  *   <li><b>选区</b>：手持遥控器时，在准星方块中心画一个空心立方体（边长 = 2 × radius）。
  *       冷却中变红。挂了 {@code AFTER_TRANSLUCENT_BLOCKS} 以被水体/玻璃正确遮挡。</li>
  *   <li><b>光柱</b>：收到 {@code OrbitalStrikePacket} 后，从 Y=320 落下的光束 —— 锁定阶段是
- *       一条自上而下逼近的细柱 + 地面红环闪烁，落地后变白扩散余晖。这是「从宇宙之外打下来」
- *       的观感担当：竖直的白/青线条比原版粒子更硬朗，而粒子负责柔光。</li>
+ *       一条自上而下逼近的细柱 + 地面圆环，落地后留下正在冷却的光轴。</li>
+ *   <li><b>冲击环 / 冲击壳 / 裂纹</b>（1.9.0）：落地后从落点扩散的发光几何 —— 白热快环、
+ *       电青慢浪、向上鼓起的圆柱壳、以及从弹坑边缘向外爬的地面裂缝。</li>
  * </ol>
+ *
+ * <p><b>为什么用 {@code RenderType.debugQuads()} 而不是 {@link RenderType#lightning()}</b>：
+ * 两者顶点格式完全一样（POSITION_COLOR / QUADS，Embeddium 侧没有差别），但 lightning 的输出
+ * 目标是<b>天气帧缓冲</b>，而原版只在 {@code rainLevel > 0} 时才把天气缓冲合成到屏幕
+ * （{@code LevelRenderer.renderSnowAndRain} 在晴天直接 return）—— 也就是说用 lightning 画的
+ * 东西在晴天是隐形的。debugQuads 走主帧缓冲、关剔除、半透明混合，才是这里要的。</p>
+ *
+ * <p><b>配色</b>：本模组自己的「冷白 + 电青」。所有发光几何都用同一条色带，
+ * 与 HUD 的 {@code 0x9BF7FF} 同源。</p>
  */
 public final class OrbitalStrikeHighlighter {
 
@@ -33,7 +51,7 @@ public final class OrbitalStrikeHighlighter {
     private static final double INFLATE = 0.02D;
     /** 立方体默认颜色（青蓝，物品屏幕色）。 */
     private static final float[] READY = new float[]{0.40F, 0.91F, 0.98F};
-    /** 冷却中 / 已锁定的颜色。 */
+    /** 冷却中 / 已锁定的颜色（功能性警告色，不属于打击特效的色板）。 */
     private static final float[] LOCKED = new float[]{0.95F, 0.28F, 0.28F};
     /** 光柱基础半径（格）。实际半径随选区半径缩放，见 {@link #beamRadius(int)}。 */
     private static final double BEAM_RADIUS = 0.7D;
@@ -43,6 +61,23 @@ public final class OrbitalStrikeHighlighter {
     private static final double BEAM_TOP_Y = 320.0D;
     /** 卫星/轨道平台悬浮在光柱顶上方的高度。 */
     private static final double PLATFORM_HEIGHT = 6.0D;
+
+    /** 打击特效的识别色（电青）。 */
+    private static final float CYAN_R = 0.40F;
+    private static final float CYAN_G = 0.91F;
+    private static final float CYAN_B = 0.98F;
+    /** 冲击环的圆周分段：40 段在 44 格外看不出棱角。 */
+    private static final int RING_SEGMENTS = 40;
+    /** 地面裂纹条数 / 每条折点数。 */
+    private static final int CRACK_COUNT = 10;
+    private static final int CRACK_POINTS = 10;
+    /** 裂纹完全淡出所需 tick（与余晖 40 tick 错开，让地面在画面里「留疤」更久）。 */
+    private static final int CRACK_TICKS = 80;
+
+    /** 裂纹几何缓存：以落点 + 半径为止，一击只算一次（高度查询不算便宜）。 */
+    private static BlockPos crackKey;
+    private static int crackRadius = -1;
+    private static List<List<Vec3>> cracks;
 
     private OrbitalStrikeHighlighter() {
     }
@@ -73,7 +108,8 @@ public final class OrbitalStrikeHighlighter {
             return;
         }
         BlockPos pos = hit.getBlockPos();
-        int radius = Mth.clamp(Config.ORBITAL_STRIKE_RADIUS.get(), 1, 16);
+        // 与服务端同一个上限（1..96）：选区框画的就是真正会被抹掉的范围
+        int radius = Mth.clamp(Config.ORBITAL_STRIKE_RADIUS.get(), 1, 96);
         boolean cooling = player.getCooldowns().isOnCooldown(player.getMainHandItem().getItem());
         float[] color = cooling ? LOCKED : READY;
 
@@ -101,19 +137,22 @@ public final class OrbitalStrikeHighlighter {
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.level == null) {
+        ClientLevel level = minecraft.level;
+        if (level == null) {
             return;
         }
         long elapsed = OrbitalStrikeClientState.elapsed();
         int lockTicks = OrbitalStrikeClientState.lockTicks();
-        long gameTime = minecraft.level.getGameTime();
+        long gameTime = level.getGameTime();
+        float partial = event.getPartialTick();
 
         Vec3 camera = event.getCamera().getPosition();
         PoseStack pose = event.getPoseStack();
         MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
-        VertexConsumer buffer = buffers.getBuffer(RenderType.lines());
         pose.pushPose();
         pose.translate(-camera.x, -camera.y, -camera.z);
+        Matrix4f matrix = pose.last().pose();
+        VertexConsumer lines = buffers.getBuffer(RenderType.lines());
 
         double cx = target.getX() + 0.5D;
         double cz = target.getZ() + 0.5D;
@@ -121,130 +160,564 @@ public final class OrbitalStrikeHighlighter {
         // 选区半径 → 光柱半径：大范围打击时束要更粗，否则「范围大」看不出来
         int strikeRadius = OrbitalStrikeClientState.radius();
         double beamR = beamRadius(strikeRadius);
-        long tick = gameTime;
-        float partial = event.getPartialTick();
 
         // —— 「太空里的东西」：轨道平台从锁定第一帧就悬在光柱顶上。
         // 它不是实体/方块，纯渲染 —— 玩家在哪、瞄哪，平台就飘在哪的正上方。
-        renderPlatform(pose, buffer, cx, BEAM_TOP_Y + PLATFORM_HEIGHT, cz, tick, partial);
+        renderPlatform(pose, lines, cx, BEAM_TOP_Y + PLATFORM_HEIGHT, cz, gameTime, partial);
+        renderSkyFracture(pose, lines, cx, cz, gameTime, partial, strikeRadius);
 
-        // —— 天穹裂缝：Y=330 处一圈大环 + 24 条放射裂纹，缓慢旋转。大范围打击时环也跟着放大。
-        {
-            double skyY = BEAM_TOP_Y + 10.0D;
-            double skySpin = (tick + partial) * 0.02D;
-            double skyR = Math.max(40.0D, strikeRadius * 2.5D);
-            drawCircle(pose, buffer, cx, skyY, cz, skyR, 0.35F, 0.65F, 1.0F, 0.30F);
-            for (int i = 0; i < 24; i++) {
-                double a = i * Math.PI * 2.0D / 24.0D + skySpin;
-                double r0 = skyR;
-                double r1 = skyR * 1.45D + Math.sin(a * 3.0D) * 4.0D;
-                line(pose, buffer,
-                        cx + Math.cos(a) * r0, skyY + Math.sin(a * 2.0D) * 2.0D, cz + Math.sin(a) * r0,
-                        cx + Math.cos(a) * r1, skyY + 3.0D, cz + Math.sin(a) * r1,
-                        0.40F, 0.78F, 1.0F, 0.24F, 0, 1, 0);
-            }
-        }
-
+        OrbitalStrikeMode mode = OrbitalStrikeClientState.mode();
         if (elapsed < lockTicks) {
-            // —— 锁定阶段：地面红环闪烁 + 从 Y=320 射下来的红色激光（the-shooting-star 的标志观感）
-            float pulse = 0.55F + 0.45F * Mth.sin((gameTime + partial) * 0.6F);
-            drawCircle(pose, buffer, cx, gy + 0.02D, cz, Math.max(1.5D, OrbitalStrikeClientState.radius()),
-                    0.95F, 0.28F, 0.28F, 0.55F * pulse);
-            // 红激光：一条细红线从天顶笔直落到目标点（锁定期间一直亮着，落地前最亮）
-            float laserAlpha = 0.35F + 0.25F * pulse;
-            line(pose, buffer, cx, BEAM_TOP_Y, cz, cx, gy, cz, 0.98F, 0.22F, 0.22F, laserAlpha, 0, -1, 0);
-            // 激光落点的十字标记（红）
-            double markLen = 0.9D;
-            line(pose, buffer, cx - markLen, gy + 0.02D, cz, cx + markLen, gy + 0.02D, cz,
-                    0.98F, 0.22F, 0.22F, laserAlpha, 0, 1, 0);
-            line(pose, buffer, cx, gy + 0.02D, cz - markLen, cx, gy + 0.02D, cz + markLen,
-                    0.98F, 0.22F, 0.22F, laserAlpha, 0, 1, 0);
+            float progress = Mth.clamp((float) elapsed / Math.max(1, lockTicks), 0.0F, 1.0F);
+            renderLockPhase(pose, lines, cx, cz, gy, beamR, strikeRadius, mode, progress, gameTime, partial);
         } else {
-            // —— 下落 / 余晖阶段
-            long fallElapsed = elapsed - lockTicks;
-            int fallTicks = OrbitalStrikeClientState.fallTicks();
-            float fall = Mth.clamp((float) fallElapsed / fallTicks, 0.0F, 1.0F);
-            // 余晖衰减（落地后 40 tick 内从 1 缩到 0）
-            float glow = fall >= 1.0F
-                    ? Mth.clamp(1.0F - (float) (fallElapsed - fallTicks)
-                    / OrbitalStrikeClientState.AFTERGLOW_TICKS, 0.0F, 1.0F)
-                    : 1.0F;
-            // 光柱的「头」：从头顶点往下走到地面
-            double headY = Mth.lerp(fall, BEAM_TOP_Y, gy);
-            // 颜色：下落白热 → 落地后青白
-            float wr = Mth.lerp(fall, 1.0F, 0.55F);
-            float wg = Mth.lerp(fall, 1.0F, 0.85F);
-            float wb = Mth.lerp(fall, 1.0F, 1.0F);
-            float alpha = 0.9F * glow;
-
-            // —— 发光光柱：RenderType.lightning（原版闪电同款，additive 发光）。
-            // 1.5.0 用 beaconBeam 自建 RenderType 实例，在 Embeddium 的动态
-            // buffer 上崩（Not filled all elements of the vertex，SodiumBufferBuilder
-            // 对 4 元素格式的 uv2 链有兼容问题）；改用 fixed buffer 的 lightning
-            // 类型（POSITION_COLOR 2 元素，原版闪电每帧都在用），双层圆柱叠出辉光。
-            double beamHeight = BEAM_TOP_Y - headY;
-            if (beamHeight > 0.5D) {
-                VertexConsumer beamBuffer = buffers.getBuffer(RenderType.lightning());
-                var matrix = pose.last().pose();
-                int segments = 10;
-                // 内层白热实心 + 外层青色辉光，叠加出「亮得发光」的观感
-                for (int layer = 0; layer < 2; layer++) {
-                    double lr = layer == 0 ? beamR : beamR * 1.55D;
-                    float la = layer == 0 ? alpha : alpha * 0.35F;
-                    float cr = layer == 0 ? wr : 0.35F;
-                    float cg = layer == 0 ? wg : 0.85F;
-                    float cb = layer == 0 ? wb : 1.0F;
-                    for (int i = 0; i < segments; i++) {
-                        double a1 = i * Math.PI * 2.0D / segments;
-                        double a2 = (i + 1) * Math.PI * 2.0D / segments;
-                        float x1 = (float) (cx + Math.cos(a1) * lr);
-                        float z1 = (float) (cz + Math.sin(a1) * lr);
-                        float x2 = (float) (cx + Math.cos(a2) * lr);
-                        float z2 = (float) (cz + Math.sin(a2) * lr);
-                        beamBuffer.vertex(matrix, x1, (float) BEAM_TOP_Y, z1).color(cr, cg, cb, la).endVertex();
-                        beamBuffer.vertex(matrix, x2, (float) BEAM_TOP_Y, z2).color(cr, cg, cb, la).endVertex();
-                        beamBuffer.vertex(matrix, x2, (float) headY, z2).color(cr, cg, cb, la).endVertex();
-                        beamBuffer.vertex(matrix, x1, (float) headY, z1).color(cr, cg, cb, la).endVertex();
-                    }
-                }
-                buffers.endBatch(RenderType.lightning());
-            }
-
-            // 12 条竖线围成圆柱，从 Y=320 到地面（1.2.7：8 边 → 12 边，更圆更粗）
-            for (int i = 0; i < 12; i++) {
-                double angle = i * Math.PI * 2.0D / 12.0D;
-                double bx = cx + Math.cos(angle) * beamR;
-                double bz = cz + Math.sin(angle) * beamR;
-                line(pose, buffer, bx, BEAM_TOP_Y, bz, bx, headY, bz, wr, wg, wb, alpha, 0, -1, 0);
-            }
-            // 中心一条更亮的芯线（芯色偏青）
-            line(pose, buffer, cx, BEAM_TOP_Y, cz, cx, headY, cz, 0.65F, 0.95F, 1.0F, alpha, 0, -1, 0);
-
-            // 能量环：光柱上每隔 20 格一个会随高度脉动的环（旋转的错觉靠相位差做）
-            if (fall < 1.0F) {
-                float pulsePhase = (gameTime + partial) * 0.35F;
-                for (int ring = 0; ring < 3; ring++) {
-                    double ringY = headY + 20.0D + ring * 20.0D;
-                    if (ringY > BEAM_TOP_Y) {
-                        continue;
-                    }
-                    double ringR = beamR + 1.2D + 0.5D * (double) Mth.sin(pulsePhase + ring * 1.3F);
-                    drawCircle(pose, buffer, cx, ringY, cz, ringR,
-                            0.75F, 0.98F, 1.0F, alpha * 0.35F);
-                }
-            }
-
-            // 头部的横向亮圈（像枪口焰/冲击波）
-            drawCircle(pose, buffer, cx, headY, cz, beamR + 0.8D, 1.0F, 1.0F, 1.0F, alpha * 0.8F);
-            // 地面冲击波：落地后扩散
-            if (fall >= 1.0F) {
-                double shockRadius = beamR + 1.2D + (1.0D - glow) * OrbitalStrikeClientState.radius() * 1.8D;
-                drawCircle(pose, buffer, cx, gy + 0.04D, cz, shockRadius, 0.6F, 0.95F, 1.0F, glow * 0.55F);
-            }
+            renderFallPhase(pose, lines, buffers, matrix, level, target, cx, cz, gy,
+                    beamR, strikeRadius, mode, elapsed, lockTicks, gameTime, partial);
         }
+
         pose.popPose();
+        // 先画面、后画线：两类几何现在都落在主帧缓冲并写深度。先画圆柱面会把同一半径上的
+        // 1px 边线挡掉（depth LEQUAL 失败），所以面先落笔、线后落笔，边线还要略微外扩。
+        buffers.endBatch(RenderType.debugQuads());
         buffers.endBatch(RenderType.lines());
     }
+
+    /**
+     * 锁定阶段（前摇动画）。四条线索一起走：
+     * <ol>
+     *   <li><b>收拢环</b>：地面上的环从 1.8R 收到 0.95R，进度越满越亮 —— 这是「前摇在推进」的主读数；</li>
+     *   <li><b>模式签名</b>：轨道炮一根激光、长矛三根更实的矛线、奇点三圈悬空环、风暴五个落点；</li>
+     *   <li><b>平台充能</b>：{@link #renderPlatform} 的核心随进度加速脉动；</li>
+     *   <li><b>落点标记</b>：只在自己的模式里出现，避免四种形态互相打架。</li>
+     * </ol>
+     */
+    private static void renderLockPhase(PoseStack pose, VertexConsumer lines,
+                                        double cx, double cz, double gy,
+                                        double beamR, int strikeRadius,
+                                        OrbitalStrikeMode mode, float progress,
+                                        long gameTime, float partial) {
+        float pulse = 0.55F + 0.45F * Mth.sin((gameTime + partial) * 0.6F);
+
+        // —— 收拢环：前摇动画的主线索
+        double ringR = Mth.lerp(progress, strikeRadius * 1.8D, strikeRadius * 0.95D);
+        float ringAlpha = (0.18F + 0.62F * progress) * (0.7F + 0.3F * pulse);
+        drawCircle(pose, lines, cx, gy + 0.04D, cz, ringR, CYAN_R, CYAN_G, CYAN_B, ringAlpha);
+        // 第二圈错相位，随进度一起收紧（「两个环在夹」）
+        double outerR = ringR + strikeRadius * (0.30D - 0.24D * progress);
+        drawCircle(pose, lines, cx, gy + 0.07D, cz, outerR, CYAN_R, CYAN_G, CYAN_B,
+                ringAlpha * 0.40F * (1.0F - pulse));
+
+        switch (mode) {
+            case LANCE -> {
+                // 长矛：矛尖从平台缓缓向下伸（没有整根激光），沿途三圈是「矛身正在成形」
+                double topY = BEAM_TOP_Y + PLATFORM_HEIGHT - 2.0D;
+                double tipY = Mth.lerp(progress, BEAM_TOP_Y, BEAM_TOP_Y - 90.0D);
+                float a = 0.30F + 0.62F * progress;
+                line(pose, lines, cx, topY, cz, cx, tipY, cz, CYAN_R, CYAN_G, CYAN_B, a, 0, -1, 0);
+                // 尖端：一小段白热 + 一个亮点
+                line(pose, lines, cx, tipY, cz, cx, tipY - 6.0D, cz, 1.0F, 1.0F, 1.0F, 0.9F * progress, 0, -1, 0);
+                for (int i = 0; i < 3; i++) {
+                    double ry = Mth.lerp(i / 3.0D, tipY, topY);
+                    drawCircle(pose, lines, cx, ry, cz, 0.45D + 0.55D * i,
+                            CYAN_R, CYAN_G, CYAN_B, 0.30F * progress);
+                }
+                drawCircle(pose, lines, cx, gy + 0.10D, cz, Math.max(0.8D, beamR * 1.4D),
+                        CYAN_R, CYAN_G, CYAN_B, 0.85F * progress);
+            }
+            case GRAVITY -> {
+                // 奇点：三圈倾斜的环绕着一个悬空焦点旋转、收缩（没有激光）
+                double focusY = gy + 6.0D + 4.0D * (1.0D - progress);
+                double orbit = Mth.lerp(progress, strikeRadius * 1.15D, Math.max(0.8D, strikeRadius * 0.28D));
+                for (int ring = 0; ring < 3; ring++) {
+                    double tilt = (gameTime + partial) * 0.05D + ring * (Math.PI * 2.0D / 3.0D);
+                    drawTiltedRing(pose, lines, cx, focusY, cz, orbit, tilt,
+                            CYAN_R, CYAN_G, CYAN_B, 0.35F + 0.45F * progress);
+                }
+                drawCircle(pose, lines, cx, gy + 0.10D, cz, ringR * 0.55D,
+                        CYAN_R, CYAN_G, CYAN_B, 0.55F * progress);
+            }
+            case STORM -> {
+                // 风暴：五个落点各自冒电，相邻落点之间拉出锯齿电弧 —— 一片雷暴在蓄势
+                double[][] offsets = OrbitalStrikeMode.stormOffsets(
+                        OrbitalStrikeClientState.target(), strikeRadius);
+                float a = 0.22F + 0.58F * progress;
+                for (double[] offset : offsets) {
+                    drawCircle(pose, lines, cx + offset[0], gy + 0.08D, cz + offset[1],
+                            Math.max(0.8D, strikeRadius * 0.30D), CYAN_R, CYAN_G, CYAN_B, 0.50F * progress);
+                }
+                for (int i = 0; i < offsets.length; i++) {
+                    double[] p1 = offsets[i];
+                    double[] p2 = offsets[(i + 1) % offsets.length];
+                    jaggedArc(pose, lines,
+                            cx + p1[0], gy + 0.25D, cz + p1[1],
+                            cx + p2[0], gy + 0.25D, cz + p2[1],
+                            i * 1.7D, gameTime + partial, a * 0.65F);
+                }
+            }
+            default -> {
+                // 轨道炮：地面瞄准标（同心环 + 四角标）+ 平台下方的弹体充能球 —— 没有激光
+                double r1 = strikeRadius * (1.15D - 0.10D * progress);
+                drawCircle(pose, lines, cx, gy + 0.05D, cz, r1,
+                        CYAN_R, CYAN_G, CYAN_B, 0.30F + 0.45F * progress);
+                drawCircle(pose, lines, cx, gy + 0.05D, cz, r1 * 0.55D,
+                        CYAN_R, CYAN_G, CYAN_B, (0.22F + 0.42F * progress) * pulse);
+                for (int i = 0; i < 4; i++) {
+                    double a = i * Math.PI / 2.0D + Math.PI / 4.0D;
+                    double ix = cx + Math.cos(a) * r1 * 0.82D;
+                    double iz = cz + Math.sin(a) * r1 * 0.82D;
+                    double ox = cx + Math.cos(a) * r1 * 1.18D;
+                    double oz = cz + Math.sin(a) * r1 * 1.18D;
+                    line(pose, lines, ix, gy + 0.05D, iz, ox, gy + 0.05D, oz,
+                            CYAN_R, CYAN_G, CYAN_B, 0.45F + 0.40F * progress, 0, 1, 0);
+                }
+                // 抬头能看到平台下面有一颗弹体在充能
+                double chargeR = 0.8D + 2.2D * progress;
+                double chargeY = BEAM_TOP_Y + PLATFORM_HEIGHT - 1.6D;
+                for (int i = 0; i < 3; i++) {
+                    drawTiltedRing(pose, lines, cx, chargeY, cz, chargeR,
+                            i * Math.PI / 3.0D + (gameTime + partial) * 0.10D,
+                            1.0F, 1.0F, 1.0F, 0.55F * progress);
+                }
+            }
+        }
+    }
+
+    /** 一段锯齿电弧：两端固定、中间随机偏移，随时间抖动（风暴的地面放电）。 */
+    private static void jaggedArc(PoseStack pose, VertexConsumer buffer,
+                                  double x1, double y1, double z1,
+                                  double x2, double y2, double z2,
+                                  double seed, double time, float alpha) {
+        int segments = 8;
+        double prevX = x1;
+        double prevY = y1;
+        double prevZ = z1;
+        for (int i = 1; i <= segments; i++) {
+            double t = i / (double) segments;
+            double x = Mth.lerp(t, x1, x2);
+            double y = Mth.lerp(t, y1, y2);
+            double z = Mth.lerp(t, z1, z2);
+            if (i < segments) {
+                double jitter = Math.sin(t * Math.PI) * 1.1D;
+                x += Math.sin(seed + i * 2.1D + time * 0.5D) * jitter;
+                z += Math.cos(seed * 1.3D + i * 1.9D + time * 0.4D) * jitter;
+            }
+            line(pose, buffer, prevX, prevY, prevZ, x, y, z, CYAN_R, CYAN_G, CYAN_B, alpha, 0, -1, 0);
+            prevX = x;
+            prevY = y;
+            prevZ = z;
+        }
+    }
+
+    /** 一道锯齿闪电：两端固定在轴上、中间抖动，从 {@code topY} 打到 {@code bottomY}。 */
+    private static void jaggedBolt(PoseStack pose, VertexConsumer buffer,
+                                   double cx, double cz, double topY, double bottomY,
+                                   double time, double seed, float alpha) {
+        int segments = 14;
+        double prevX = cx;
+        double prevY = topY;
+        double prevZ = cz;
+        for (int i = 1; i <= segments; i++) {
+            double t = i / (double) segments;
+            double y = Mth.lerp(t, topY, bottomY);
+            double jitter = Math.sin(t * Math.PI) * 2.4D;
+            double x = cx + Math.sin(seed + i * 2.3D + time * 0.9D) * jitter;
+            double z = cz + Math.cos(seed * 1.3D + i * 1.9D + time * 0.7D) * jitter;
+            line(pose, buffer, prevX, prevY, prevZ, x, y, z, CYAN_R, CYAN_G, CYAN_B, alpha, 0, -1, 0);
+            prevX = x;
+            prevY = y;
+            prevZ = z;
+        }
+        drawCircle(pose, buffer, cx, bottomY, cz, 0.85D, 1.0F, 1.0F, 1.0F, alpha);
+    }
+
+    /** 一个绕 X 轴倾斜 {@code phase} 弧度的圆环（奇点的轨道环）。 */
+    private static void drawTiltedRing(PoseStack pose, VertexConsumer buffer,
+                                       double cx, double cy, double cz,
+                                       double radius, double phase,
+                                       float r, float g, float b, float a) {
+        int segments = 24;
+        double sinPhase = Math.sin(phase);
+        double cosPhase = Math.cos(phase);
+        for (int i = 0; i < segments; i++) {
+            double a1 = i * Math.PI * 2.0D / segments;
+            double a2 = (i + 1) * Math.PI * 2.0D / segments;
+            line(pose, buffer,
+                    cx + Math.cos(a1) * radius,
+                    cy + Math.sin(a1) * radius * sinPhase,
+                    cz + Math.sin(a1) * radius * cosPhase,
+                    cx + Math.cos(a2) * radius,
+                    cy + Math.sin(a2) * radius * sinPhase,
+                    cz + Math.sin(a2) * radius * cosPhase,
+                    r, g, b, a, 0, 1, 0);
+        }
+    }
+
+    /** 下落 / 落地 / 余晖阶段。 */
+    private static void renderFallPhase(PoseStack pose, VertexConsumer lines,
+                                        MultiBufferSource.BufferSource buffers, Matrix4f matrix,
+                                        ClientLevel level, BlockPos target,
+                                        double cx, double cz, double gy,
+                                        double beamR, int strikeRadius, OrbitalStrikeMode mode,
+                                        long elapsed, int lockTicks,
+                                        long gameTime, float partial) {
+        long fallElapsed = elapsed - lockTicks;
+        int fallTicks = OrbitalStrikeClientState.fallTicks();
+        float fall = Mth.clamp((float) fallElapsed / fallTicks, 0.0F, 1.0F);
+        // 余晖衰减（落地后 40 tick 内从 1 缩到 0）
+        float glow = fall >= 1.0F
+                ? Mth.clamp(1.0F - (float) (fallElapsed - fallTicks)
+                / OrbitalStrikeClientState.AFTERGLOW_TICKS, 0.0F, 1.0F)
+                : 1.0F;
+        // 弹体/矛尖的「头」：从 Y=320 往下走到地面
+        double headY = Mth.lerp(fall, BEAM_TOP_Y, gy);
+
+        // —— 四种模式四套形态：炮弹 / 长矛 / 奇点 / 闪电 —— 不再共用一根激光柱
+        switch (mode) {
+            case GRAVITY -> renderSingularityFall(pose, lines, cx, cz, gy, headY, fall,
+                    strikeRadius, gameTime, partial);
+            case LANCE -> renderSpearFall(pose, lines, buffers, matrix, cx, cz, headY, fall, gameTime, partial);
+            case STORM -> renderStormFall(pose, lines, cx, cz, gy, fallElapsed, fallTicks,
+                    strikeRadius, gameTime, partial);
+            default -> renderShellFall(pose, lines, buffers, matrix, cx, cz, headY, fall,
+                    strikeRadius, gameTime, partial);
+        }
+
+        // —— 落地形态同样按模式分
+        long impactAge = OrbitalStrikeClientState.impactAge();
+        if (impactAge >= 0) {
+            float age = impactAge + partial;
+            VertexConsumer quads = buffers.getBuffer(RenderType.debugQuads());
+            switch (mode) {
+                case LANCE -> renderLanceImpact(quads, matrix, cx, gy, cz, beamR, strikeRadius, age);
+                case GRAVITY -> renderImplosion(quads, matrix, cx, gy, cz, beamR, strikeRadius, age);
+                case STORM -> renderStormImpact(quads, lines, matrix, cx, gy, cz, beamR,
+                        strikeRadius, age, target, pose, gameTime, partial);
+                default -> {
+                    renderImpactRings(quads, matrix, cx, gy, cz, beamR, strikeRadius, age, glow);
+                    renderCracks(quads, matrix, level, target, strikeRadius, age);
+                }
+            }
+        }
+    }
+
+    /**
+     * 轨道炮的下落：一颗<b>动能弹</b>，不是激光。
+     *
+     * <p>弹体是一个短粗的发光圆柱（外壳）+ 头部三圈十字环（球感）+ 向上拖出的一串尾迹环。
+     * 从地面抬头看是「一个东西在掉下来」，而不是「一道光一直照着地面」——
+     * 这是它和长矛/风暴最直观的区别。</p>
+     */
+    private static void renderShellFall(PoseStack pose, VertexConsumer lines,
+                                        MultiBufferSource.BufferSource buffers, Matrix4f matrix,
+                                        double cx, double cz, double headY, float fall,
+                                        int strikeRadius, long gameTime, float partial) {
+        // 落地帧交给冲击特效，弹体不再往下画
+        if (fall >= 0.999F) {
+            return;
+        }
+        double shellR = Math.max(1.1D, strikeRadius * 0.20D);
+        VertexConsumer quads = buffers.getBuffer(RenderType.debugQuads());
+        // 弹体外壳：底边跟着 headY 走
+        cylinderWall(quads, matrix, cx, headY, cz, shellR, 5.5D, 1.0F, 0.96F, 0.88F, 0.95F, 12);
+        cylinderWall(quads, matrix, cx, headY, cz, shellR * 1.45D, 3.6D,
+                CYAN_R, CYAN_G, CYAN_B, 0.30F, 12);
+        // 尾迹：一串越来越小的环往上拖（读作「大气被烧出来的尾」）
+        for (int i = 1; i <= 7; i++) {
+            double y = headY + 6.0D + i * 4.0D;
+            double r = Math.max(0.12D, shellR * (1.15D - i * 0.13D));
+            drawCircle(pose, lines, cx, y, cz, r, CYAN_R, CYAN_G, CYAN_B, 0.38F * (1.0F - i / 8.0F));
+        }
+        // 头部三圈：给弹体一点体积感
+        for (int i = 0; i < 3; i++) {
+            drawTiltedRing(pose, lines, cx, headY + 2.5D, cz, shellR * 1.2D,
+                    i * Math.PI / 3.0D + (gameTime + partial) * 0.08D,
+                    1.0F, 1.0F, 1.0F, 0.55F);
+        }
+        drawCircle(pose, lines, cx, headY, cz, shellR * 0.9D, 1.0F, 1.0F, 1.0F, 0.85F);
+    }
+
+    /**
+     * 天基长矛的下落：一根<b>上宽下尖的四面锥</b>，尖端朝下扎。
+     *
+     * <p>没有圆柱光柱 —— 矛身是实心渐收的几何，外加一条细芯线与沿矛身盘旋的能量环。
+     * 落地后由 {@link #renderLanceImpact} 接成一根继续向下的锥形穿刺。</p>
+     */
+    private static void renderSpearFall(PoseStack pose, VertexConsumer lines,
+                                        MultiBufferSource.BufferSource buffers, Matrix4f matrix,
+                                        double cx, double cz, double headY, float fall,
+                                        long gameTime, float partial) {
+        if (fall >= 0.999F) {
+            return;
+        }
+        double topY = headY + 52.0D;
+        double topR = 0.55D;
+        double tipR = 0.02D;
+        VertexConsumer quads = buffers.getBuffer(RenderType.debugQuads());
+        // 四个侧面：上宽下尖（QUADS 关剔除，绕序不影响可见性）
+        for (int i = 0; i < 4; i++) {
+            double a1 = i * Math.PI / 2.0D;
+            double a2 = (i + 1) * Math.PI / 2.0D;
+            double c1 = Math.cos(a1);
+            double s1 = Math.sin(a1);
+            double c2 = Math.cos(a2);
+            double s2 = Math.sin(a2);
+            quad(quads, matrix,
+                    cx + c1 * topR, topY, cz + s1 * topR,
+                    cx + c2 * topR, topY, cz + s2 * topR,
+                    cx + c2 * tipR, headY, cz + s2 * tipR,
+                    cx + c1 * tipR, headY, cz + s1 * tipR,
+                    1.0F, 1.0F, 1.0F, 0.85F);
+        }
+        // 芯线：从尖端一直拖到矛尾之上，像一道被拉长的光
+        line(pose, lines, cx, headY, cz, cx, topY + 60.0D, cz, CYAN_R, CYAN_G, CYAN_B, 0.55F, 0, -1, 0);
+        // 沿矛身盘旋的能量环
+        for (int i = 0; i < 6; i++) {
+            double y = headY + 6.0D + i * 8.0D;
+            if (y > topY) {
+                break;
+            }
+            double rr = 0.72D + 0.18D * (y - headY) / 52.0D;
+            drawCircle(pose, lines, cx, y, cz, rr, CYAN_R, CYAN_G, CYAN_B, 0.30F);
+        }
+        // 尖端亮点
+        drawCircle(pose, lines, cx, headY, cz, 0.5D, 1.0F, 1.0F, 1.0F, 0.95F);
+    }
+
+    /**
+     * 等离子风暴的下落：五个落点各一道<b>锯齿闪电</b>，逐道错开 2 tick 落下。
+     *
+     * <p>闪电每帧重新抖动（用时间当相位），所以是「噼啪作响」而不是一根静止的柱子；
+     * 两端固定在轴上，中间随机偏移，落点必然精确。</p>
+     */
+    private static void renderStormFall(PoseStack pose, VertexConsumer lines,
+                                        double cx, double cz, double gy,
+                                        long fallElapsed, int fallTicks, int strikeRadius,
+                                        long gameTime, float partial) {
+        double[][] offsets = OrbitalStrikeMode.stormOffsets(
+                OrbitalStrikeClientState.target(), strikeRadius);
+        for (int i = 0; i < offsets.length; i++) {
+            // 每道闪电错开 2 tick 起落 —— 五声连成一片「雷暴」
+            double boltFall = Mth.clamp((fallElapsed - i * 2.0D) / fallTicks, 0.0D, 1.0D);
+            if (boltFall >= 0.999D) {
+                continue;
+            }
+            double bottom = Mth.lerp(boltFall, BEAM_TOP_Y, gy);
+            jaggedBolt(pose, lines, cx + offsets[i][0], cz + offsets[i][1],
+                    BEAM_TOP_Y, bottom, gameTime + partial, i * 3.7D, 0.85F);
+        }
+    }
+
+    /** 奇点的下落：没有光柱，只有一个发光的焦点在下坠，三圈轨道环跟着收。 */
+    private static void renderSingularityFall(PoseStack pose, VertexConsumer lines,
+                                              double cx, double cz, double gy,
+                                              double headY, float fall, int strikeRadius,
+                                              long gameTime, float partial) {
+        // 落地帧交给 renderImplosion，不再画下坠形态
+        if (fall >= 0.999F) {
+            return;
+        }
+        double t = gameTime + partial;
+        double orbit = strikeRadius * (0.35D + 0.55D * (1.0D - fall));
+        for (int ring = 0; ring < 3; ring++) {
+            double tilt = t * 0.09D + ring * (Math.PI * 2.0D / 3.0D);
+            drawTiltedRing(pose, lines, cx, headY, cz, orbit, tilt,
+                    CYAN_R, CYAN_G, CYAN_B, 0.55F);
+        }
+        // 下坠的轨迹：一条暗线 + 地面收拢环
+        line(pose, lines, cx, BEAM_TOP_Y, cz, cx, headY, cz, CYAN_R, CYAN_G, CYAN_B, 0.18F, 0, -1, 0);
+        double groundR = Mth.lerp(fall, strikeRadius * 2.0D, strikeRadius * 0.55D);
+        drawCircle(pose, lines, cx, gy + 0.08D, cz, groundR, CYAN_R, CYAN_G, CYAN_B, 0.30F + 0.45F * fall);
+        // 焦点
+        drawCircle(pose, lines, cx, headY, cz, 0.45D, 1.0F, 1.0F, 1.0F, 0.95F);
+    }
+
+    /** 奇点落地：先收（环从 2.2R 收到 0.35R），再炸（白环冲出去）——「塌缩 → 反弹」。 */
+    private static void renderImplosion(VertexConsumer buffer, Matrix4f matrix,
+                                        double cx, double gy, double cz,
+                                        double beamR, int strikeRadius, float age) {
+        float in = Mth.clamp(age / 10.0F, 0.0F, 1.0F);
+        if (in < 1.0F) {
+            double r = Mth.lerp(in, strikeRadius * 2.2D, strikeRadius * 0.35D);
+            groundRing(buffer, matrix, cx, gy + 0.04D, cz, Math.max(0.1D, r - 1.6D), r,
+                    CYAN_R, CYAN_G, CYAN_B, 0.75F * (1.0F - in), RING_SEGMENTS);
+            shell(buffer, matrix, cx, gy, cz, Math.max(0.5D, r), 18.0D * (1.0F - in) + 1.5D,
+                    CYAN_R, CYAN_G, CYAN_B, 0.40F * (1.0F - in), 28);
+        }
+        float out = Mth.clamp((age - 10.0F) / 14.0F, 0.0F, 1.0F);
+        if (age >= 10.0F && out < 1.0F) {
+            double r = Mth.lerp(out, beamR, strikeRadius * 1.9D);
+            groundRing(buffer, matrix, cx, gy + 0.09D, cz,
+                    Math.max(beamR * 0.4D, r - (1.2D + 5.0D * out)), r,
+                    1.0F, 1.0F, 1.0F, 0.85F * (1.0F - out) * (1.0F - out), RING_SEGMENTS);
+        }
+    }
+
+    /** 长矛落地：一根穿到地下几十格的细柱 + 一圈小环 —— 「扎穿」而不是「炸开」。 */
+    private static void renderLanceImpact(VertexConsumer buffer, Matrix4f matrix,
+                                          double cx, double gy, double cz,
+                                          double beamR, int strikeRadius, float age) {
+        float t = Mth.clamp(age / 16.0F, 0.0F, 1.0F);
+        double r = Math.max(0.35D, beamR * 0.35D);
+        float a = 0.90F * (1.0F - t);
+        // 阶梯收细的三段：读作一根扎进地层的锥形矛（不是一根等粗的柱子）
+        cylinderWall(buffer, matrix, cx, gy - 34.0D, cz, r * 0.30D, 26.0D,
+                1.0F, 1.0F, 1.0F, a * 0.55F, 8);
+        cylinderWall(buffer, matrix, cx, gy - 10.0D, cz, r * 0.70D, 12.0D,
+                1.0F, 1.0F, 1.0F, a * 0.75F, 10);
+        cylinderWall(buffer, matrix, cx, gy, cz, r * 1.35D, 8.0D,
+                1.0F, 1.0F, 1.0F, a, 10);
+        // 矛尾的余焰：从地面往上快速缩掉
+        cylinderWall(buffer, matrix, cx, gy, cz, r * 0.8D, 14.0D * (1.0F - t),
+                CYAN_R, CYAN_G, CYAN_B, 0.40F * (1.0F - t), 8);
+        groundRing(buffer, matrix, cx, gy + 0.06D, cz, Math.max(0.2D, r * 2.0D),
+                Math.max(0.4D, beamR * 1.4D) + strikeRadius * 0.5D * t,
+                1.0F, 1.0F, 1.0F, 0.85F * (1.0F - t) * (1.0F - t), RING_SEGMENTS);
+    }
+
+    /** 风暴落地：五个小落点各自一圈环 + 一根短光柱。 */
+    private static void renderStormImpact(VertexConsumer buffer, VertexConsumer lines, Matrix4f matrix,
+                                          double cx, double gy, double cz,
+                                          double beamR, int strikeRadius, float age, BlockPos target,
+                                          PoseStack pose, long gameTime, float partial) {
+        double[][] offsets = OrbitalStrikeMode.stormOffsets(target, strikeRadius);
+        float t = Mth.clamp(age / 14.0F, 0.0F, 1.0F);
+        // 与服务端同一个夹取范围：小半径时坑不会小于 2，大半径时封顶 12
+        double subR = Mth.clamp(strikeRadius * 0.45D, 2.0D, 12.0D);
+        for (int i = 0; i < offsets.length; i++) {
+            double sx = cx + offsets[i][0];
+            double sz = cz + offsets[i][1];
+            double outer = Mth.lerp(t, Math.max(0.3D, beamR * 0.5D), subR * 1.8D);
+            groundRing(buffer, matrix, sx, gy + 0.06D, sz,
+                    Math.max(0.1D, outer - (1.0D + 3.0D * t)), outer,
+                    CYAN_R, CYAN_G, CYAN_B, 0.70F * (1.0F - t) * (1.0F - t), 24);
+            // 闪电残影：从落点往上 14 格，先亮后收（写进 lines 缓冲 —— POSITION_COLOR 不能塞法线）
+            if (t < 1.0F) {
+                jaggedBolt(pose, lines, sx, sz, gy + 14.0D * (1.0F - t), gy,
+                        gameTime + partial, i * 3.7D, 0.55F * (1.0F - t));
+            }
+        }
+    }
+
+    /**
+     * 落地后的扩散几何 —— 参考包最值得学的一点：冲击波要是「世界里的一个环」，
+     * 不是贴在屏幕上的一张图。这里用真正的环形四边形带，半径随时间外扩、宽度变粗、
+     * 亮度按 (1-t)² 衰减；再加一面向上鼓起的圆柱壳，做出「空气被整片推起来」的体积感。
+     */
+    private static void renderImpactRings(VertexConsumer buffer, Matrix4f matrix,
+                                          double cx, double gy, double cz,
+                                          double beamR, int strikeRadius,
+                                          float age, float glowAlpha) {
+        // —— 电青慢浪：能量本身在铺开（1.4 s）。最宽最淡，先落笔
+        float slow = Mth.clamp(age / 28.0F, 0.0F, 1.0F);
+        if (slow < 1.0F) {
+            double outer = Mth.lerp(slow, beamR, strikeRadius * 2.2D);
+            double width = 2.5D + 9.0D * slow;
+            groundRing(buffer, matrix, cx, gy + 0.04D, cz,
+                    Math.max(0.10D, outer - width), outer,
+                    CYAN_R, CYAN_G, CYAN_B, 0.45F * (1.0F - slow) * (1.0F - slow), RING_SEGMENTS);
+        }
+        // —— 冲击壳：向上鼓起的圆柱墙（空气被整片推起来）
+        float fast = Mth.clamp(age / 10.0F, 0.0F, 1.0F);
+        if (fast < 1.0F) {
+            double radius = Mth.lerp(fast, beamR, strikeRadius * 1.10D);
+            double height = 2.0D + 16.0D * fast;
+            shell(buffer, matrix, cx, gy, cz, radius, height,
+                    CYAN_R, CYAN_G, CYAN_B, 0.32F * (1.0F - fast), 32);
+        }
+        // —— 白热快环：空气被推开的头一圈（0.5 s 内冲出去）。最亮，最后落笔
+        if (fast < 1.0F) {
+            double outer = Mth.lerp(fast, beamR, strikeRadius * 1.45D);
+            double width = 1.4D + 5.0D * fast;
+            groundRing(buffer, matrix, cx, gy + 0.09D, cz,
+                    Math.max(beamR * 0.4D, outer - width), outer,
+                    1.0F, 1.0F, 1.0F, 0.90F * (1.0F - fast) * (1.0F - fast), RING_SEGMENTS);
+        }
+        // —— 弹坑口余温环：余晖还在时一直亮着，慢慢熄灭
+        if (glowAlpha > 0.01F) {
+            double pulse = 1.0D + 0.03D * Math.sin(age * 0.35D);
+            groundRing(buffer, matrix, cx, gy + 0.05D, cz,
+                    strikeRadius * 0.93D * pulse, strikeRadius * 1.02D * pulse,
+                    CYAN_R, CYAN_G, CYAN_B, 0.30F * glowAlpha, RING_SEGMENTS);
+        }
+    }
+
+    // ---------------------------------------------------------------- 裂纹
+
+    /**
+     * 地面裂纹：从方形弹坑的边缘向外爬的发光裂缝。几何只算一次（按落点缓存），
+     * 之后只做「生长 / 淡出」的时间动画 —— 每帧重算高度查询会明显掉帧。
+     */
+    private static void renderCracks(VertexConsumer buffer, Matrix4f matrix,
+                                     ClientLevel level, BlockPos target, int radius, float age) {
+        float reveal = Mth.clamp(age / 10.0F, 0.0F, 1.0F);
+        float fade = age < 24.0F ? 1.0F : Mth.clamp(1.0F - (age - 24.0F) / CRACK_TICKS, 0.0F, 1.0F);
+        if (fade <= 0.01F) {
+            return;
+        }
+        List<List<Vec3>> all = crackGeometry(level, target, radius);
+        for (int c = 0; c < all.size(); c++) {
+            List<Vec3> points = all.get(c);
+            // 每条裂纹错开一点起裂，像真的从中心一路裂过去
+            float grown = Mth.clamp((reveal - c * 0.02F) / 0.8F, 0.0F, 1.0F);
+            if (grown <= 0.0F) {
+                continue;
+            }
+            int last = (int) (grown * (points.size() - 1));
+            for (int i = 0; i < last; i++) {
+                Vec3 p = points.get(i);
+                Vec3 q = points.get(i + 1);
+                double t = i / (double) (points.size() - 1);
+                double width = 0.26D * (1.0D - 0.65D * t);
+                // 先铺一层宽的弱光，再压一条细的亮芯 —— 加色叠加出「裂口里在发光」
+                ribbon(buffer, matrix, p, q, width * 3.0D, CYAN_R, CYAN_G, CYAN_B, 0.16F * fade);
+                ribbon(buffer, matrix, p, q, width, 1.0F, 1.0F, 1.0F, 0.52F * fade);
+            }
+        }
+    }
+
+    private static List<List<Vec3>> crackGeometry(ClientLevel level, BlockPos target, int radius) {
+        if (cracks != null && target.equals(crackKey) && radius == crackRadius) {
+            return cracks;
+        }
+        List<List<Vec3>> out = new ArrayList<>(CRACK_COUNT);
+        // 用落点坐标做种子：同一击每帧的裂纹长得一模一样，换个落点就换一套
+        RandomSource random = RandomSource.create(target.asLong() * 0x9E3779B97F4A7C15L);
+        double cx = target.getX() + 0.5D;
+        double cz = target.getZ() + 0.5D;
+        int baseY = target.getY() + 1;
+        for (int i = 0; i < CRACK_COUNT; i++) {
+            double angle = (i + (random.nextFloat() - 0.5F) * 0.5F)
+                    * (Math.PI * 2.0D / CRACK_COUNT);
+            double cos = Math.cos(angle);
+            double sin = Math.sin(angle);
+            // 方形弹坑的边界距离：沿这个方向走多远才出坑（对角线上更远）
+            double rim = radius / Math.max(1.0E-4D, Math.max(Math.abs(cos), Math.abs(sin)));
+            double start = rim * 1.02D + 0.7D;
+            double length = rim * (0.28D + random.nextDouble() * 0.34D);
+            double phase = random.nextDouble() * Math.PI * 2.0D;
+            List<Vec3> points = new ArrayList<>(CRACK_POINTS);
+            for (int k = 0; k < CRACK_POINTS; k++) {
+                double t = k / (double) (CRACK_POINTS - 1);
+                double radial = start + length * t;
+                // 横向抖动 + 越远越收敛（裂纹从边缘散开、末端收尖）
+                double lateral = Math.sin(t * 4.4D + phase) * (1.0D - t) * 1.5D
+                        + Math.sin(t * 9.7D + phase * 2.0D) * 0.4D;
+                double x = cx + cos * radial - sin * lateral;
+                double z = cz + sin * radial + cos * lateral;
+                double y = level.getHeight(Heightmap.Types.MOTION_BLOCKING, Mth.floor(x), Mth.floor(z)) + 0.06D;
+                // 别顺着山爬：裂缝贴着落点附近的原始地表
+                y = Mth.clamp(y, baseY - 2.0D, baseY + 7.0D);
+                points.add(new Vec3(x, y, z));
+            }
+            out.add(points);
+        }
+        cracks = out;
+        crackKey = target.immutable();
+        crackRadius = radius;
+        return out;
+    }
+
+    // ---------------------------------------------------------------- 轨道平台 / 天穹
 
     /**
      * 「轨道平台」：悬浮在光柱顶上方 6 格的一个发光体 —— 三层套方框（核心 / 外环 / 内环）
@@ -261,16 +734,13 @@ public final class OrbitalStrikeHighlighter {
         for (int ring = 0; ring < 2; ring++) {
             double phase = t * 0.08D + ring * Math.PI;
             double radius = 3.2D;
-            // 圆环的「倾角」用 y 随角度起伏实现：y = cy + sin(angle*2 + phase) * 0.8
             int segments = 24;
             for (int i = 0; i < segments; i++) {
                 double a1 = i * Math.PI * 2.0D / segments;
                 double a2 = (i + 1) * Math.PI * 2.0D / segments;
-                double y1 = cy + Math.sin(a1 * 2.0D + phase) * 0.8D;
-                double y2 = cy + Math.sin(a2 * 2.0D + phase) * 0.8D;
                 line(pose, buffer,
-                        cx + Math.cos(a1) * radius, y1, cz + Math.sin(a1) * radius,
-                        cx + Math.cos(a2) * radius, y2, cz + Math.sin(a2) * radius,
+                        cx + Math.cos(a1) * radius, cy + Math.sin(a1 * 2.0D + phase) * 0.8D, cz + Math.sin(a1) * radius,
+                        cx + Math.cos(a2) * radius, cy + Math.sin(a2 * 2.0D + phase) * 0.8D, cz + Math.sin(a2) * radius,
                         0.55F, 0.90F, 1.0F, 0.55F, 0, 1, 0);
             }
         }
@@ -282,14 +752,139 @@ public final class OrbitalStrikeHighlighter {
             for (int i = 0; i < segments; i++) {
                 double a1 = i * Math.PI * 2.0D / segments;
                 double a2 = (i + 1) * Math.PI * 2.0D / segments;
-                double y1 = cy + Math.sin(a1 * 3.0D + phase) * 0.5D;
-                double y2 = cy + Math.sin(a2 * 3.0D + phase) * 0.5D;
                 line(pose, buffer,
-                        cx + Math.cos(a1) * radius, y1, cz + Math.sin(a1) * radius,
-                        cx + Math.cos(a2) * radius, y2, cz + Math.sin(a2) * radius,
+                        cx + Math.cos(a1) * radius, cy + Math.sin(a1 * 3.0D + phase) * 0.5D, cz + Math.sin(a1) * radius,
+                        cx + Math.cos(a2) * radius, cy + Math.sin(a2 * 3.0D + phase) * 0.5D, cz + Math.sin(a2) * radius,
                         0.45F, 0.80F, 1.0F, 0.35F, 0, 1, 0);
             }
         }
+    }
+
+    /** 天穹裂缝：Y=330 一圈大环 + 24 条放射裂纹，缓慢旋转。大范围打击时环也跟着放大。 */
+    private static void renderSkyFracture(PoseStack pose, VertexConsumer buffer,
+                                          double cx, double cz, long gameTime, float partial, int strikeRadius) {
+        double skyY = BEAM_TOP_Y + 10.0D;
+        double skySpin = (gameTime + partial) * 0.02D;
+        double skyR = Math.max(40.0D, strikeRadius * 2.5D);
+        drawCircle(pose, buffer, cx, skyY, cz, skyR, 0.35F, 0.65F, 1.0F, 0.30F);
+        for (int i = 0; i < 24; i++) {
+            double a = i * Math.PI * 2.0D / 24.0D + skySpin;
+            double r0 = skyR;
+            double r1 = skyR * 1.45D + Math.sin(a * 3.0D) * 4.0D;
+            line(pose, buffer,
+                    cx + Math.cos(a) * r0, skyY + Math.sin(a * 2.0D) * 2.0D, cz + Math.sin(a) * r0,
+                    cx + Math.cos(a) * r1, skyY + 3.0D, cz + Math.sin(a) * r1,
+                    0.40F, 0.78F, 1.0F, 0.24F, 0, 1, 0);
+        }
+    }
+
+    // ---------------------------------------------------------------- 加色几何
+
+    /**
+     * 朝上的圆环带：内圈 → 外圈之间的四边形带。
+     * debugQuads 关剔除，绕序不影响可见性（但这里仍按上法线排，便于将来换回剔除型 RenderType）。
+     */
+    private static void groundRing(VertexConsumer buffer, Matrix4f matrix,
+                                   double cx, double cy, double cz,
+                                   double inner, double outer,
+                                   float r, float g, float b, float a, int segments) {
+        double innerR = Math.max(0.02D, inner);
+        double outerR = Math.max(innerR + 0.02D, outer);
+        for (int i = 0; i < segments; i++) {
+            double a1 = i * Math.PI * 2.0D / segments;
+            double a2 = (i + 1) * Math.PI * 2.0D / segments;
+            double c1 = Math.cos(a1);
+            double s1 = Math.sin(a1);
+            double c2 = Math.cos(a2);
+            double s2 = Math.sin(a2);
+            quad(buffer, matrix,
+                    cx + c1 * innerR, cy, cz + s1 * innerR,
+                    cx + c2 * innerR, cy, cz + s2 * innerR,
+                    cx + c2 * outerR, cy, cz + s2 * outerR,
+                    cx + c1 * outerR, cy, cz + s1 * outerR,
+                    r, g, b, a);
+        }
+    }
+
+    /**
+     * 竖直圆柱壁：底边满亮度、顶边透明（能量往上升就淡掉）。
+     * debugQuads 关剔除，单面几何从里外都看得见 —— 不必再补一遍内壁。
+     */
+    private static void shell(VertexConsumer buffer, Matrix4f matrix,
+                              double cx, double cy, double cz,
+                              double radius, double height,
+                              float r, float g, float b, float a, int segments) {
+        double top = cy + height;
+        for (int i = 0; i < segments; i++) {
+            double a1 = i * Math.PI * 2.0D / segments;
+            double a2 = (i + 1) * Math.PI * 2.0D / segments;
+            float x1 = (float) (cx + Math.cos(a1) * radius);
+            float z1 = (float) (cz + Math.sin(a1) * radius);
+            float x2 = (float) (cx + Math.cos(a2) * radius);
+            float z2 = (float) (cz + Math.sin(a2) * radius);
+            vertex(buffer, matrix, x1, (float) top, z1, r, g, b, 0.0F);
+            vertex(buffer, matrix, x2, (float) top, z2, r, g, b, 0.0F);
+            vertex(buffer, matrix, x2, (float) cy, z2, r, g, b, a);
+            vertex(buffer, matrix, x1, (float) cy, z1, r, g, b, a);
+        }
+    }
+
+    /** 不透明圆柱壁（光柱本体）：从底到顶同亮度、同颜色。 */
+    private static void cylinderWall(VertexConsumer buffer, Matrix4f matrix,
+                                     double cx, double bottom, double cz,
+                                     double radius, double height,
+                                     float r, float g, float b, float a, int segments) {
+        double top = bottom + height;
+        for (int i = 0; i < segments; i++) {
+            double a1 = i * Math.PI * 2.0D / segments;
+            double a2 = (i + 1) * Math.PI * 2.0D / segments;
+            float x1 = (float) (cx + Math.cos(a1) * radius);
+            float z1 = (float) (cz + Math.sin(a1) * radius);
+            float x2 = (float) (cx + Math.cos(a2) * radius);
+            float z2 = (float) (cz + Math.sin(a2) * radius);
+            vertex(buffer, matrix, x1, (float) top, z1, r, g, b, a);
+            vertex(buffer, matrix, x2, (float) top, z2, r, g, b, a);
+            vertex(buffer, matrix, x2, (float) bottom, z2, r, g, b, a);
+            vertex(buffer, matrix, x1, (float) bottom, z1, r, g, b, a);
+        }
+    }
+
+    /** 贴地飘带（裂纹用）：沿 p→q 铺一条宽 2w 的四边形，法线朝上。 */
+    private static void ribbon(VertexConsumer buffer, Matrix4f matrix,
+                               Vec3 p, Vec3 q, double halfWidth,
+                               float r, float g, float b, float a) {
+        double dx = q.x - p.x;
+        double dz = q.z - p.z;
+        double len = Math.sqrt(dx * dx + dz * dz);
+        if (len < 1.0E-4D) {
+            return;
+        }
+        double px = -dz / len * halfWidth;
+        double pz = dx / len * halfWidth;
+        quad(buffer, matrix,
+                p.x + px, p.y, p.z + pz,
+                q.x + px, q.y, q.z + pz,
+                q.x - px, q.y, q.z - pz,
+                p.x - px, p.y, p.z - pz,
+                r, g, b, a);
+    }
+
+    private static void quad(VertexConsumer buffer, Matrix4f matrix,
+                             double x1, double y1, double z1,
+                             double x2, double y2, double z2,
+                             double x3, double y3, double z3,
+                             double x4, double y4, double z4,
+                             float r, float g, float b, float a) {
+        vertex(buffer, matrix, x1, y1, z1, r, g, b, a);
+        vertex(buffer, matrix, x2, y2, z2, r, g, b, a);
+        vertex(buffer, matrix, x3, y3, z3, r, g, b, a);
+        vertex(buffer, matrix, x4, y4, z4, r, g, b, a);
+    }
+
+    private static void vertex(VertexConsumer buffer, Matrix4f matrix,
+                               double x, double y, double z,
+                               float r, float g, float b, float a) {
+        buffer.vertex(matrix, (float) x, (float) y, (float) z).color(r, g, b, a).endVertex();
     }
 
     // ---------------------------------------------------------------- 基础图元

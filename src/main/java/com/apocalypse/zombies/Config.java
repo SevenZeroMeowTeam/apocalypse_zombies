@@ -455,7 +455,7 @@ public final class Config {
     // ===== 轨道打击遥控器 =====
     /** 全局开关。关掉 = 物品右键 use 立刻 noop，描边也不再画。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_ENABLED;
-    /** 选区边长的一半（半径），单位格。1..16。 */
+    /** 选区边长的一半（半径），单位格。1..96。各模式再按自己的倍率缩放。 */
     public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_RADIUS;
     /** 落地后对中心 100% 伤害，边缘按 1 - 0.7 * (d/radius) 衰减。单位：半颗心。 */
     public static final ForgeConfigSpec.DoubleValue ORBITAL_STRIKE_DAMAGE;
@@ -471,7 +471,7 @@ public final class Config {
     public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_FALL_TICKS;
     /** 玩家两次右键之间的冷却（秒）。 */
     public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_COOLDOWN;
-    /** 锁定阶段时长（tick）。默认 30 = 1.5 s。 */
+    /** 锁定阶段时长（tick）。默认 140 = 7 s；各模式再按倍率缩放。 */
     public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_LOCK_TICKS;
     /** 摧毁方块时的「硬度上限」。超过这个硬度的方块跳过（避免卡顿 / 误打黑曜石）。 */
     public static final ForgeConfigSpec.DoubleValue ORBITAL_STRIKE_MAX_HARDNESS;
@@ -479,6 +479,12 @@ public final class Config {
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ORBITAL_STRIKE_PROTECTED;
     /** 演出机位：锁定末段把镜头拉远看完整一击（关掉就全程跟在玩家眼里）。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_CINEMATIC;
+    /** 打击是否能把基岩一起抹掉（整列模式会一直挖到世界底层，注意可能出现虚空）。 */
+    public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_BREAK_BEDROCK;
+    /** 新造/未选择的遥控器默认用哪种打击模式（cannon / lance / gravity / storm）。 */
+    public static final ForgeConfigSpec.ConfigValue<String> ORBITAL_STRIKE_DEFAULT_MODE;
+    /** 是否允许手持遥控器潜行右键切换打击模式。 */
+    public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_ALLOW_MODE_SWITCH;
 
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
@@ -1084,12 +1090,16 @@ public final class Config {
                         "caller and their allies if the crosshair is on top of them).")
                 .define("damage_mobs", true);
         ORBITAL_STRIKE_DESTROY_BLOCKS = b.comment("Destroy the blocks inside the cube. Block-entity tiles",
-                        "(chests, furnaces, spawners, signs) are NEVER destroyed regardless; bedrock,",
-                        "barriers, command blocks and hardness > max_hardness are also skipped.")
+                        "(chests, furnaces, spawners, signs) are NEVER destroyed regardless; barriers,",
+                        "command blocks and hardness > max_hardness are also skipped.",
+                        "Bedrock is governed by break_bedrock.")
                 .define("destroy_blocks", true);
         ORBITAL_STRIKE_DESTROY_MODE = b.comment("How the ground is removed: 'cube' (a box around the target)",
                         "or 'column' (the whole column from build limit down to the void, watching the",
                         "terrain fall away layer by layer — the signature look of the reference mod).",
+                        "The cannon and the lance ALWAYS pierce: they ignore this setting and dig a",
+                        "column to the world floor (bedrock included when break_bedrock is on).",
+                        "This setting only decides what gravity / storm do.",
                         "Column mode is much heavier: radius 32 is ~1.6M positions, so it drops at the",
                         "same per-tick budget and takes ~20s to finish. Anything not 'column' = cube.")
                 .define("destroy_mode", "cube");
@@ -1100,9 +1110,10 @@ public final class Config {
                         "(spam the remote as fast as you can click it).")
                 .defineInRange("cooldown", 0, 0, 600);
         ORBITAL_STRIKE_LOCK_TICKS = b.comment("Lock phase length in ticks (20 = 1 s). The beam then falls",
-                        "for a fixed 24 ticks. Default 80 = 4 s of red laser + countdown before the",
-                        "beam starts moving, so the whole strike is visible from the ground.")
-                .defineInRange("lock_ticks", 80, 20, 400);
+                        "for fall_ticks. Default 140 = 7 s of charge-up before the beam starts moving --",
+                        "long enough to read the charge animation and to run for cover. Each strike",
+                        "mode scales this (lance x1.35, singularity x1.25, storm x1.10).")
+                .defineInRange("lock_ticks", 140, 20, 400);
         ORBITAL_STRIKE_MAX_HARDNESS = b.comment("Hardness ceiling for blocks that the strike may destroy.",
                         "Anything tougher is skipped (e.g. obsidian=50, ancient debris=50, end stone=3).")
                 .defineInRange("max_hardness", 50.0D, 1.0D, 100.0D);
@@ -1116,9 +1127,40 @@ public final class Config {
                         "collapsing crater (with a slow pan), then ease it back. Set false to keep",
                         "the camera on the player the whole time.")
                 .define("cinematic_camera", true);
+        ORBITAL_STRIKE_BREAK_BEDROCK = b.comment("Allow the strike to destroy bedrock (and only bedrock --",
+                        "barriers, command blocks and block entities stay protected).",
+                        "In column mode the beam digs all the way to the world floor, so this can",
+                        "open a hole into the void. Set false to keep the old 'bedrock is forever' rule.")
+                .define("break_bedrock", true);
+        ORBITAL_STRIKE_DEFAULT_MODE = b.comment("Default strike mode for a remote that has never been switched:",
+                        "cannon / lance / gravity / storm. Players cycle modes with sneak + right click")
+                .define("default_mode", "cannon");
+        ORBITAL_STRIKE_ALLOW_MODE_SWITCH = b.comment("Allow cycling strike modes with sneak + right click.",
+                        "False = every remote stays on default_mode.")
+                .define("allow_mode_switch", true);
         b.pop();
 
         SPEC = b.build();
+    }
+
+    /**
+     * 一次性配置迁移（2.0.0）：把轨道打击的前摇默认值从 80 tick（4 s）抬到 140 tick（7 s）。
+     *
+     * <p>同样的老问题：Forge 只写默认值、从不覆盖已存在的值。老实例的 toml 里写着
+     * {@code lock_ticks = 80}，代码里改默认值对它们一点用都没有 —— 前摇还是 4 秒，
+     * 而 2.0.0 的打击模式（长矛 ×1.35 等）本该建立在更长的前摇上。</p>
+     *
+     * <p>判定故意收窄：<b>只有恰好等于旧默认值 80</b> 才改。玩家自己填的 60 / 120 / 200 一律不动。</p>
+     *
+     * @return 改了什么（给日志用）；没改则 {@code null}
+     */
+    public static String migrateLegacyOrbitalLock() {
+        if (ORBITAL_STRIKE_LOCK_TICKS.get() != 80) {
+            return null;
+        }
+        ORBITAL_STRIKE_LOCK_TICKS.set(140);
+        SPEC.save();
+        return "orbital_strike.lock_ticks 80 → 140";
     }
 
     /**

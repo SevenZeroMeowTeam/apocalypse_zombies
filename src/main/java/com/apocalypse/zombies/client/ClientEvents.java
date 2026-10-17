@@ -125,12 +125,16 @@ public final class ClientEvents {
         ClientMoonState.reset();
         ClientZombieTiers.clear();
         GunAimState.reset();
+        // 轨道余晖是本地粒子状态：换服/退世界后不能把上一局的弹坑带过去。
+        OrbitalAftermath.reset();
         // 轮盘是本地状态：世界没了还挂着的话，回到主菜单会留一圈弹种名，而且鼠标还是释放状态。
         AmmoWheel.dismiss(Minecraft.getInstance());
     }
 
     @SubscribeEvent
     public static void onComputeFogColor(ViewportEvent.ComputeFogColor event) {
+        // 月相雾色在前（事件语义：雾色基线）。轨道打击不再染色雾 —— 屏幕层的青白泛光
+        // 已经够表达「能量拍在脸上」，而整片地形改色会和月亮事件抢同一个混合通道。
         MoonEvent moon = ClientMoonState.getMoonEvent();
         if (!moon.isActive()) {
             return;
@@ -162,6 +166,10 @@ public final class ClientEvents {
 
         // 演出机位的兜底还原（比如刚退出世界、演出窗口被掐断）：每 tick 检查一次，幂等。
         OrbitalCinematic.tickRestore(minecraft);
+
+        // 落地余晖：弹坑上方的电青余烬（纯客户端粒子，飘 25 s）。要排在下面那些提前 return 之前 ——
+        // 手里换成别的物品时，余烬也该继续飘。
+        OrbitalAftermath.tick(minecraft);
 
         // Local-only: the zoom and the raised pose ease in over the gun's aim time, so this runs every tick.
         GunAimState.tick(minecraft);
@@ -223,6 +231,8 @@ public final class ClientEvents {
      */
     @SubscribeEvent
     public static void onComputeFov(ViewportEvent.ComputeFov event) {
+        // 轨道打击的 FOV punch 先加（独立于瞄准变焦，两边各自往自己的方向加）。
+        OrbitalScreenFX.impactFovPunch(event, Minecraft.getInstance());
         float progress = GunAimState.getAimProgress();
         if (progress <= 0.0F || !event.usedConfiguredFov()) {
             return;
@@ -281,6 +291,12 @@ public final class ClientEvents {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRenderHand(RenderHandEvent event) {
+        // 见证机位：镜头已经飞出去了，手里的遥控器（和手臂）不该跟着镜头悬在半空。
+        // 参考 mod 在过场里也是整只手一起藏掉；我们只在这段演出内取消，不改视角设置本身。
+        if (OrbitalCinematic.isEngaged()) {
+            event.setCanceled(true);
+            return;
+        }
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
         if (player == null || minecraft.level == null) {
@@ -496,10 +512,14 @@ public final class ClientEvents {
     public static void onRenderGui(RenderGuiEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
 
-        // 轨道打击的屏幕级特效：倒计时 / 边缘红晕 / 能量泛光 / 落地白闪（各自判断阶段与开关）
+        // 轨道打击的屏幕级特效：演出黑边 → 能量泛光 → 落地白闪 → 火控 HUD。
+        // 黑边最先画（后面的角框/白闪都叠在黑边之上），泛光次之（更暗的一层），白闪最后（最亮）。
+        OrbitalScreenFX.renderCinematicBars(event.getGuiGraphics(), minecraft);
         OrbitalScreenFX.renderImpactGlow(event.getGuiGraphics(), minecraft);
         OrbitalScreenFX.renderImpactFlash(event.getGuiGraphics(), minecraft);
         OrbitalScreenFX.renderHud(event.getGuiGraphics(), minecraft, event.getPartialTick());
+        OrbitalScreenFX.renderTargetingHud(event.getGuiGraphics(), minecraft, event.getPartialTick());
+        OrbitalScreenFX.renderModeHint(event.getGuiGraphics(), minecraft);
 
         // 弹种轮盘画在整个 HUD 之上。必须排在下面那个「今晚没有月相就直接返回」之前 ——
         // 轮盘与月亮无关，不能因为是个平凡的夜晚就不显示。

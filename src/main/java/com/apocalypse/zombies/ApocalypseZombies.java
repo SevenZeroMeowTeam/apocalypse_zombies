@@ -103,6 +103,12 @@ public class ApocalypseZombies {
                 LOGGER.info("Migrated legacy cat_girl.ai config: {} (Forge never overwrites existing values).",
                         migrated);
             }
+            // 2.0.0：前摇默认值 80 → 140 tick。老实例文件里还写着 80，代码改默认值对它们无效。
+            String orbital = Config.migrateLegacyOrbitalLock();
+            if (orbital != null) {
+                LOGGER.info("Migrated orbital_strike config: {} (Forge never overwrites existing values).",
+                        orbital);
+            }
         }
         LOGGER.info("Cat girl mining: mine_max_blocks={} (domain 1..64), mine_radius={} (domain 4..64).",
                 Config.CAT_GIRL_MINE_MAX_BLOCKS.get(), Config.CAT_GIRL_MINE_RADIUS.get());

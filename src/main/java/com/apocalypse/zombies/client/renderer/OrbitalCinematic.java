@@ -68,6 +68,8 @@ public final class OrbitalCinematic {
     private static CameraType restoreType;
     /** 机位方向角（目标 → 玩家，弧度）：演出开始时定格，途中玩家的走动/转视角不影响构图。 */
     private static float baseAngle;
+    /** 本帧的演出权重（0 = 完全在玩家眼里，1 = 全距机位）。HUD 黑边 / FOV 收窄读它。 */
+    private static float lastWeight;
 
     // ------------------------------------------------------------------ 反射（Camera.setPosition / setRotation）
 
@@ -114,11 +116,14 @@ public final class OrbitalCinematic {
     /** 每帧渲染调用（在 {@code OrbitalScreenFX.shakeCamera} 之前，让落地震动叠在演出机位上）。 */
     public static void apply(ViewportEvent.ComputeCameraAngles event, Minecraft minecraft) {
         if (!inWindow()) {
+            lastWeight = 0.0F;
             disengage(minecraft);
             return;
         }
         if (minecraft.player == null || minecraft.level == null
-                || minecraft.player.isSpectator() || !Config.ORBITAL_STRIKE_CINEMATIC.get()) {
+                || minecraft.player.isSpectator() || !Config.ORBITAL_STRIKE_CINEMATIC.get()
+                || OrbitalStrikeClientState.distanceToPlayer() > MAX_DISTANCE) {
+            lastWeight = 0.0F;
             disengage(minecraft);
             return;
         }
@@ -136,6 +141,7 @@ public final class OrbitalCinematic {
 
         float ease;
         if (elapsed < cinemaStart) {
+            lastWeight = 0.0F;
             disengage(minecraft);
             return;
         } else if (elapsed < lock) {
@@ -151,17 +157,27 @@ public final class OrbitalCinematic {
         if (ease >= 0.999F) {
             engage(minecraft);
         }
+        // HUD 黑边 / 长焦压缩读这个权重：与镜头的位置插值同一拍，收尾不会跳。
+        lastWeight = ease;
 
-        // 落地后慢摇：机位绕目标缓缓转过一小段弧。
+        // 落地后慢摇：机位绕目标缓缓转过一小段弧。落地帧先冻结 2 tick（伪 hit-stop，
+        // 与 OrbitalScreenFX 的白闪顶格/震动延迟同一拍），再起摇。
         double drift = 0.0D;
         long impactAge = OrbitalStrikeClientState.impactAge();
         if (impactAge >= 0) {
-            drift = Math.toRadians(impactAge * DRIFT_DEGREES_PER_TICK);
+            drift = Math.toRadians(Math.max(0L, impactAge - 2L) * DRIFT_DEGREES_PER_TICK);
         }
         double angle = baseAngle + drift;
         int radius = OrbitalStrikeClientState.radius();
         double pull = pullDistance(radius);
         double height = pullHeight(radius);
+        // dolly-in：落地后的保持段里镜头缓慢「压」向弹坑（44 → 36 格），
+        // 与慢摇叠加就是「绕着一个越来越近的坑转」—— 静止机位会显得像截图。
+        double push = impactAge >= 0
+                ? smooth(Mth.clamp((float) impactAge / HOLD_TICKS, 0.0F, 1.0F))
+                : 0.0D;
+        pull *= 1.0D - 0.18D * push;
+        height *= 1.0D - 0.10D * push;
         Vec3 anchor = Vec3.atCenterOf(OrbitalStrikeClientState.target());
         double vx = anchor.x + Math.cos(angle) * pull;
         double vz = anchor.z + Math.sin(angle) * pull;
@@ -198,11 +214,29 @@ public final class OrbitalCinematic {
         // 渲染矩阵读的是事件值，相机本体只喂声音监听等 —— 两处都改才算改了。
         event.setYaw(cyaw);
         event.setPitch(cpitch);
+        // 轻微荷兰角：拉远的镜头带 1.4° 侧倾 —— 一眼就能读出「这不是第一人称」。
+        event.setRoll(event.getRoll() + 1.4F * ease);
+    }
+
+    /**
+     * 本帧的演出权重：0 = 完全在玩家眼里，1 = 全距机位。
+     * HUD 黑边（{@link OrbitalScreenFX#renderCinematicBars}）与长焦压缩
+     * （{@link OrbitalScreenFX#impactFovPunch}）都读它 —— 这样它们和镜头位置插值同一拍，
+     * 不会出现「镜头还没飞回来、黑边先没了」的断层。
+     */
+    public static float weight() {
+        return OrbitalStrikeClientState.isActive() ? lastWeight : 0.0F;
+    }
+
+    /** 演出机位是否还在（用于藏手：拉远时手里的遥控器不该跟着镜头飞）。 */
+    public static boolean isEngaged() {
+        return weight() > 0.01F;
     }
 
     /** 每客户端 tick 兜底：窗口外但还挂着第三人称（比如刚退出世界）就立刻还原。 */
     public static void tickRestore(Minecraft minecraft) {
         if (restoreType != null && !inWindow()) {
+            lastWeight = 0.0F;
             disengage(minecraft);
         }
     }
