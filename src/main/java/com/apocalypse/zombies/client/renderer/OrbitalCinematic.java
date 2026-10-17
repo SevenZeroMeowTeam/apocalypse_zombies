@@ -204,7 +204,8 @@ public final class OrbitalCinematic {
         // 宇宙激光：镜头不是「拉远」而是「灵魂出窍」—— 一路升到卫星高度（绝对 Y ≥ 460），
         // 停在卫星旁边俯看整根光柱穿过行星。水平距离拉开到 50~110 格，否则从 400 格高的
         // 正上方看下去只剩一个点，看不出「穿透行星」的层次。
-        boolean soul = OrbitalStrikeClientState.mode() == OrbitalStrikeMode.LASER;
+        OrbitalStrikeMode mode = OrbitalStrikeClientState.mode();
+        boolean soul = mode == OrbitalStrikeMode.LASER;
         if (soul) {
             pull = Mth.clamp(radius * 2.0D + 20.0D, 50.0D, 110.0D);
             // height 是「相对落点」的高度：换算成绝对 Y ≥ 460
@@ -230,6 +231,19 @@ public final class OrbitalCinematic {
             // 机位下方 30 格，正好把卫星、行星和穿过去的光柱一起装进画面。
             float k = smooth(Mth.clamp((float) impactAge / 14.0F, 0.0F, 1.0F));
             lookY = Mth.lerp(k, lookY, vy - 30.0D);
+        }
+        if (mode == OrbitalStrikeMode.PLANET) {
+            // 陨石是从天边斜切进来的：锁定末 30 tick 先抬头看行星，
+            // 下落段跟着陨石一路把视线压回地面 —— 一颗陨石从天上砸下来该有的「跟拍」。
+            double fallElapsed = elapsed - lock;
+            if (fallElapsed < 0.0D) {
+                float k = smooth(Mth.clamp((float) ((elapsed - (lock - 30.0D)) / 30.0F), 0.0F, 1.0F));
+                lookY = Mth.lerp(k, lookY, anchor.y + 230.0D);
+            } else {
+                float fp = Mth.clamp((float) (fallElapsed / Math.max(1, fall)), 0.0F, 1.0F);
+                double down = impactAge >= 0 ? anchor.y + radius * LOOK_UP_FACTOR : anchor.y;
+                lookY = Mth.lerp(smooth(fp), anchor.y + 230.0D, down);
+            }
         }
 
         // 从玩家真实的眼位/视角插值过去（e 的两头正好贴合原版相机，全程无跳变）。

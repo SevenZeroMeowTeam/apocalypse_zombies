@@ -64,6 +64,9 @@ public final class OrbitalStrikeHighlighter {
     /** 宇宙激光的行星全息图：球心离地面多高 / 半径多大（光柱从球心穿过去）。 */
     private static final double PLANET_HEIGHT = 300.0D;
     private static final double PLANET_RADIUS = 55.0D;
+    /** 行星陨落的那颗「NASA 行星」：更大更远，斜向陨石从它的方向切进来。 */
+    private static final double PLANET_SKY_HEIGHT = 330.0D;
+    private static final double PLANET_SKY_RADIUS = 95.0D;
     /** 卫星的绘制比例（1 单位 ≈ 本体半宽）。灵魂机位在 84 格外观测，1.8 刚好占画面一角。 */
     private static final double SATELLITE_SCALE = 1.8D;
 
@@ -186,6 +189,16 @@ public final class OrbitalStrikeHighlighter {
             }
             renderSatellite(pose, lines, cx, OrbitalStrikeMode.LASER.originY() + 6.0D, cz,
                     SATELLITE_SCALE, satAlpha, gameTime + partial);
+        } else if (mode == OrbitalStrikeMode.PLANET) {
+            // 行星陨落：天边浮起一颗 NASA 风格的行星（大陆 + 极冠 + 大气层）
+            float lockProgress = Mth.clamp((float) elapsed / Math.max(1, lockTicks), 0.0F, 1.0F);
+            long impactAge = OrbitalStrikeClientState.impactAge();
+            float planetAlpha = 0.14F + 0.26F * lockProgress;
+            if (impactAge >= 0) {
+                planetAlpha *= Mth.clamp(1.0F - impactAge / 50.0F, 0.0F, 1.0F);
+            }
+            renderPlanetNasa(pose, lines, cx, gy + PLANET_SKY_HEIGHT, cz,
+                    PLANET_SKY_RADIUS, planetAlpha, gameTime + partial);
         } else {
             renderPlatform(pose, lines, cx, BEAM_TOP_Y + PLATFORM_HEIGHT, cz, gameTime, partial);
             renderSkyFracture(pose, lines, cx, cz, gameTime, partial, strikeRadius);
@@ -298,6 +311,25 @@ public final class OrbitalStrikeHighlighter {
                     line(pose, lines, cx, originY, cz, cx, gy, cz,
                             CYAN_R, CYAN_G, CYAN_B, 0.30F * k, 0, -1, 0);
                 }
+            }
+            case PLANET -> {
+                // 陨石落点：一圈大准星 + 行星方向一颗正在脱离的亮点
+                double targetR = strikeRadius * (1.25D - 0.15D * progress);
+                drawCircle(pose, lines, cx, gy + 0.05D, cz, targetR,
+                        CYAN_R, CYAN_G, CYAN_B, 0.25F + 0.50F * progress);
+                for (int i = 0; i < 4; i++) {
+                    double a = i * Math.PI / 2.0D;
+                    line(pose, lines,
+                            cx + Math.cos(a) * targetR * 0.80D, gy + 0.05D, cz + Math.sin(a) * targetR * 0.80D,
+                            cx + Math.cos(a) * targetR * 1.25D, gy + 0.05D, cz + Math.sin(a) * targetR * 1.25D,
+                            CYAN_R, CYAN_G, CYAN_B, 0.50F + 0.40F * progress, 0, 1, 0);
+                }
+                double[] offset = OrbitalStrikeMode.meteorOffset(OrbitalStrikeClientState.target());
+                double px = cx + offset[0] * 0.55D;
+                double pz = cz + offset[1] * 0.55D;
+                double py = gy + PLANET_SKY_HEIGHT - 60.0D;
+                drawCircle(pose, lines, px, py, pz, 1.2D + 2.0D * progress,
+                        1.0F, 1.0F, 1.0F, 0.20F + 0.70F * progress);
             }
             default -> {
                 // 轨道炮：地面瞄准标（同心环 + 四角标）+ 平台下方的弹体充能球 —— 没有激光
@@ -425,6 +457,8 @@ public final class OrbitalStrikeHighlighter {
                     strikeRadius, gameTime, partial);
             case LASER -> renderLaserFall(pose, lines, buffers, matrix, cx, cz, gy,
                     strikeRadius, gameTime, partial);
+            case PLANET -> renderMeteorFall(pose, lines, buffers, matrix, cx, cz, gy,
+                    fall, strikeRadius, target, gameTime, partial);
             default -> renderShellFall(pose, lines, buffers, matrix, cx, cz, headY, fall,
                     strikeRadius, gameTime, partial);
         }
@@ -966,6 +1000,123 @@ public final class OrbitalStrikeHighlighter {
                         CYAN_R, CYAN_G, CYAN_B, alpha * 0.30F, 0, 1, 0);
             }
         }
+    }
+
+    /**
+     * NASA 风格的行星：密集经纬网 + 绿色大陆斑块 + 白色极冠 + 大气层外晕。
+     * 和宇宙激光那张纯线框全息图不同 —— 这张有「地表」的层次。
+     */
+    private static void renderPlanetNasa(PoseStack pose, VertexConsumer buffer,
+                                         double cx, double cy, double cz, double radius,
+                                         float alpha, double time) {
+        if (alpha <= 0.01F) {
+            return;
+        }
+        double spin = time * 0.012D;
+        // 9 条纬线：赤道偏青、两极偏白（极冠）
+        for (int lat = -4; lat <= 4; lat++) {
+            double phi = lat * (Math.PI / 10.0D);
+            double r = radius * Math.cos(phi);
+            double y = cy + radius * Math.sin(phi);
+            float polar = Math.abs(lat) / 4.0F;
+            drawCircle(pose, buffer, cx, y, cz, r,
+                    Mth.lerp(polar, CYAN_R, 1.0F),
+                    Mth.lerp(polar, CYAN_G, 1.0F),
+                    Mth.lerp(polar, CYAN_B, 1.0F),
+                    alpha * 0.55F);
+        }
+        // 18 条经线
+        int meridians = 18;
+        int segments = 36;
+        for (int m = 0; m < meridians; m++) {
+            double theta = spin + m * Math.PI / meridians;
+            double cosT = Math.cos(theta);
+            double sinT = Math.sin(theta);
+            for (int i = 0; i < segments; i++) {
+                double a1 = i * Math.PI * 2.0D / segments;
+                double a2 = (i + 1) * Math.PI * 2.0D / segments;
+                double c1 = Math.cos(a1);
+                double c2 = Math.cos(a2);
+                line(pose, buffer,
+                        cx + c1 * cosT * radius, cy + Math.sin(a1) * radius, cz + c1 * sinT * radius,
+                        cx + c2 * cosT * radius, cy + Math.sin(a2) * radius, cz + c2 * sinT * radius,
+                        CYAN_R, CYAN_G, CYAN_B, alpha * 0.26F, 0, 1, 0);
+            }
+        }
+        // 大陆：6 个斑块（每个是三条平行的纬向短弧）—— 绿色，读作陆地
+        RandomSource random = RandomSource.create(0x4E415341L);
+        for (int c = 0; c < 6; c++) {
+            double lat = -0.8D + random.nextDouble() * 1.6D;
+            double lon0 = random.nextDouble() * Math.PI * 2.0D;
+            double span = 0.35D + random.nextDouble() * 0.6D;
+            for (int k = 0; k < 3; k++) {
+                double phi = Mth.clamp(lat + k * 0.075D, -1.3D, 1.3D);
+                double rr = radius * Math.cos(phi);
+                double y = cy + radius * Math.sin(phi);
+                int steps = 9;
+                for (int i = 0; i < steps; i++) {
+                    double a1 = lon0 + spin + (i / (double) steps) * span;
+                    double a2 = lon0 + spin + ((i + 1) / (double) steps) * span;
+                    line(pose, buffer,
+                            cx + Math.cos(a1) * rr, y, cz + Math.sin(a1) * rr,
+                            cx + Math.cos(a2) * rr, y, cz + Math.sin(a2) * rr,
+                            0.55F, 0.88F, 0.62F, alpha * 0.80F, 0, 1, 0);
+                }
+            }
+        }
+        // 大气层：两圈外晕
+        drawCircle(pose, buffer, cx, cy, cz, radius * 1.02D, CYAN_R, CYAN_G, CYAN_B, alpha * 0.50F);
+        drawCircle(pose, buffer, cx, cy, cz, radius * 1.07D, CYAN_R, CYAN_G, CYAN_B, alpha * 0.18F);
+    }
+
+    /**
+     * 行星陨落的陨石：从行星方向**斜着**切进来，头部是一个发光的小柱体 + 三圈光环，
+     * 身后拖 12 节越来越小的尾环和一条火线。
+     */
+    private static void renderMeteorFall(PoseStack pose, VertexConsumer lines,
+                                         MultiBufferSource.BufferSource buffers, Matrix4f matrix,
+                                         double cx, double cz, double gy,
+                                         float fall, int strikeRadius, BlockPos target,
+                                         long gameTime, float partial) {
+        double[] offset = OrbitalStrikeMode.meteorOffset(target);
+        double startX = cx + offset[0];
+        double startZ = cz + offset[1];
+        double startY = OrbitalStrikeMode.PLANET.originY();
+        double hx = Mth.lerp(fall, startX, cx);
+        double hy = Mth.lerp(fall, startY, gy);
+        double hz = Mth.lerp(fall, startZ, cz);
+        double dx = cx - startX;
+        double dy = gy - startY;
+        double dz = cz - startZ;
+        double len = Math.max(1.0E-4D, Math.sqrt(dx * dx + dy * dy + dz * dz));
+        dx /= len;
+        dy /= len;
+        dz /= len;
+        double meteorR = Math.max(1.4D, strikeRadius * 0.16D);
+        VertexConsumer quads = buffers.getBuffer(RenderType.debugQuads());
+        // 弹体 + 头部三圈
+        cylinderWall(quads, matrix, hx, hy, hz, meteorR, meteorR * 2.2D,
+                1.0F, 0.90F, 0.72F, 0.95F, 10);
+        for (int i = 0; i < 3; i++) {
+            drawTiltedRing(pose, lines, hx, hy + meteorR, hz, meteorR * 1.4D,
+                    i * Math.PI / 3.0D + (gameTime + partial) * 0.20D,
+                    1.0F, 1.0F, 1.0F, 0.55F);
+        }
+        // 尾迹：沿反方向 12 节环
+        for (int i = 1; i <= 12; i++) {
+            double d = i * (meteorR * 2.2D + 1.0D);
+            double tx = hx - dx * d;
+            double ty = hy - dy * d;
+            double tz = hz - dz * d;
+            double rr = Math.max(0.15D, meteorR * (1.25D - i * 0.09D));
+            drawCircle(pose, lines, tx, ty, tz, rr, CYAN_R, CYAN_G, CYAN_B,
+                    0.55F * (1.0F - i / 14.0F));
+        }
+        // 火线 + 头部亮点
+        line(pose, lines, hx, hy, hz,
+                hx - dx * 46.0D, hy - dy * 46.0D, hz - dz * 46.0D,
+                1.0F, 0.62F, 0.42F, 0.55F, 0, -1, 0);
+        drawCircle(pose, lines, hx, hy, hz, meteorR * 0.9D, 1.0F, 1.0F, 1.0F, 0.92F);
     }
 
     /**

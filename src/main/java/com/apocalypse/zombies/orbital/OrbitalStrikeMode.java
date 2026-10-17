@@ -50,7 +50,17 @@ public enum OrbitalStrikeMode {
      * 破坏性也是全场最强：半径 1.35×、伤害 3×、秒杀几率 +30 个百分点，且贯穿到虚空。</p>
      */
     LASER("laser", "宇宙激光", "EXTRACOSMIC BEAM",
-            1.35F, 3.00F, 1.60F, 0.20F, 3.00F, true, 30, 460.0D);
+            1.35F, 3.00F, 1.60F, 0.20F, 3.00F, true, 30, 460.0D),
+
+    /**
+     * 行星陨落：参考 NASA 行星图的打法 —— 天边浮起一颗带大陆、云带和大气层的星球，
+     * 一颗陨石从它的边缘脱离，**斜着**拖着一整条火尾砸下来。
+     *
+     * <p>机械上它和轨道炮不同：不是垂直贯穿的井，而是一个**又大又浅的坑**（立方体模式），
+     * 落地带强径向击退；入射方向由落点哈希决定，每次都不一样。</p>
+     */
+    PLANET("planet", "行星陨落", "PLANETARY IMPACT",
+            1.60F, 1.80F, 1.50F, 1.80F, 2.00F, false, 10, 380.0D);
 
     /** 风暴模式的落点数（服务端挖地 + 客户端画环都用同一个常量）。 */
     public static final int STORM_POINTS = 5;
@@ -168,6 +178,19 @@ public enum OrbitalStrikeMode {
             }
         }
         return CANNON;
+    }
+
+    /**
+     * 行星陨落的入射点偏移（相对落点的 x/z，单位格）。
+     *
+     * <p>陨石不是垂直落下，而是从天边斜着切进来 —— 方向与距离由落点坐标哈希决定，
+     * 服务端和客户端用同一个函数，保证火尾和弹体始终重合。</p>
+     */
+    public static double[] meteorOffset(BlockPos target) {
+        RandomSource random = RandomSource.create(target.asLong() * 0x9E3779B97F4A7C15L ^ 0x504C4CL);
+        double angle = random.nextDouble() * Math.PI * 2.0D;
+        double dist = 120.0D + random.nextDouble() * 60.0D;
+        return new double[]{Math.cos(angle) * dist, Math.sin(angle) * dist};
     }
 
     /**

@@ -329,6 +329,28 @@ public final class OrbitalStrikeManager {
                 broadcast(level, ModParticles.ORBITAL_SPARK.get(), sx, sy, sz, 0,
                         (ground.x - sx) * speed, (y - sy) * speed, (ground.z - sz) * speed, 0.0D);
             }
+        } else if (strike.mode == OrbitalStrikeMode.PLANET) {
+            // 行星陨落：陨石斜着切进来，沿路径拖一条火尾 + 烟
+            double[] offset = OrbitalStrikeMode.meteorOffset(strike.target);
+            double startX = ground.x + offset[0];
+            double startZ = ground.z + offset[1];
+            double headX = Mth.lerp(t, startX, ground.x);
+            double headY = Mth.lerp(t, strike.mode.originY(), ground.y);
+            double headZ = Mth.lerp(t, startZ, ground.z);
+            for (int i = 0; i < 8; i++) {
+                double jx = (level.random.nextDouble() - 0.5D) * 3.0D;
+                double jy = (level.random.nextDouble() - 0.5D) * 3.0D;
+                double jz = (level.random.nextDouble() - 0.5D) * 3.0D;
+                broadcast(level, ParticleTypes.FLAME, headX + jx, headY + jy, headZ + jz,
+                        1, 0.0D, -0.15D, 0.0D, 0.03D);
+                if ((i & 1) == 0) {
+                    broadcast(level, ParticleTypes.LARGE_SMOKE, headX + jx * 1.6D,
+                            headY + jy * 1.6D, headZ + jz * 1.6D,
+                            1, 0.0D, 0.02D, 0.0D, 0.01D);
+                }
+                broadcast(level, ModParticles.ORBITAL_SPARK.get(), headX + jx, headY + jy, headZ + jz,
+                        1, 0.35D, -0.25D, 0.35D, 0.20D);
+            }
         } else if (strike.mode == OrbitalStrikeMode.LASER) {
             // 宇宙激光：整根柱子同时亮 —— 光没有飞行时间，没有「下落头」可画
             for (int i = 0; i < 18; i++) {
@@ -435,7 +457,74 @@ public final class OrbitalStrikeManager {
                 impactStormBolt(level, strike, 0);
             }
             case LASER -> impactLaser(level, strike, ground, strike.radius, destroy, damage);
+            case PLANET -> impactPlanet(level, strike, ground, strike.radius, destroy, damage);
             default -> impactCannon(level, strike, ground, strike.radius, destroy, damage);
+        }
+    }
+
+    /**
+     * 行星陨落：一颗陨石斜着砸下来 —— 又大又浅的坑 + 强径向击退 + 漫天火雨。
+     * 和轨道炮的垂直贯穿不同，它是「撞击事件」：范围更大、坑更浅、击退更狠。
+     */
+    private static void impactPlanet(ServerLevel level, ActiveStrike strike, Vec3 ground,
+                                     int radius, boolean destroy, boolean damage) {
+        BlockPos target = strike.target;
+        if (destroy) {
+            enqueueDestroy(level, target, radius, strike.mode.pierces());
+        }
+        if (damage) {
+            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.PLANET);
+        }
+        spawnSurfaceDebris(level, target, radius);
+        // 声音：一记闷到胸口的地动 + 高频碎裂
+        level.playSound(null, target, SoundEvents.GENERIC_EXPLODE, SoundSource.PLAYERS, 5.0F, 0.45F);
+        level.playSound(null, target, SoundEvents.WARDEN_SONIC_BOOM, SoundSource.PLAYERS, 5.0F, 0.40F);
+        level.playSound(null, target, SoundEvents.ENDER_DRAGON_GROWL, SoundSource.PLAYERS, 4.0F, 0.35F);
+        level.playSound(null, target, SoundEvents.ANVIL_LAND, SoundSource.PLAYERS, 4.0F, 0.35F);
+        // 大爆 + 火雨 + 蘑菇云
+        int impactParticles = Math.min(420, 80 + radius * 9);
+        for (int i = 0; i < impactParticles; i++) {
+            double ox = (level.random.nextDouble() - 0.5D) * radius * 1.8D;
+            double oy = (level.random.nextDouble() - 0.5D) * radius * 1.0D;
+            double oz = (level.random.nextDouble() - 0.5D) * radius * 1.8D;
+            broadcast(level, ParticleTypes.EXPLOSION, ground.x + ox, ground.y + oy, ground.z + oz,
+                    1, 0.0D, 0.0D, 0.0D, 0.0D);
+            broadcast(level, ParticleTypes.SOUL_FIRE_FLAME, ground.x + ox, ground.y + 0.4D + oy * 0.3D, ground.z + oz,
+                    1, 0.0D, 0.0D, 0.0D, 0.0D);
+            if ((i & 1) == 0) {
+                broadcast(level, ParticleTypes.FLAME, ground.x + ox, ground.y + 0.6D + oy * 0.4D, ground.z + oz,
+                        1, 0.0D, 0.12D, 0.0D, 0.04D);
+            }
+        }
+        int rings = Math.min(8, 3 + radius / 10);
+        for (int r = 0; r < rings; r++) {
+            double ringR = 1.0D + r * (radius / (double) rings) * 1.5D;
+            broadcast(level, ParticleTypes.SONIC_BOOM, ground.x + ringR, ground.y + 0.5D, ground.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            broadcast(level, ParticleTypes.SONIC_BOOM, ground.x - ringR, ground.y + 0.5D, ground.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            broadcast(level, ParticleTypes.SONIC_BOOM, ground.x, ground.y + 0.5D, ground.z + ringR, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            broadcast(level, ParticleTypes.SONIC_BOOM, ground.x, ground.y + 0.5D, ground.z - ringR, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        }
+        broadcast(level, ModParticles.ORBITAL_SPARK.get(), ground.x, ground.y + 0.8D, ground.z,
+                Math.min(120, 36 + radius * 3), radius * 0.6D, 2.6D, radius * 0.6D, 0.9D);
+        int embers = Math.min(140, 50 + radius * 3);
+        for (int i = 0; i < embers; i++) {
+            double ox = (level.random.nextDouble() - 0.5D) * radius * 1.7D;
+            double oz = (level.random.nextDouble() - 0.5D) * radius * 1.7D;
+            double oy = 0.3D + level.random.nextDouble() * radius * 0.7D;
+            broadcast(level, ModParticles.ORBITAL_EMBER.get(),
+                    ground.x + ox, ground.y + oy, ground.z + oz, 0,
+                    (level.random.nextDouble() - 0.5D) * 0.14D,
+                    0.06D + level.random.nextDouble() * 0.09D,
+                    (level.random.nextDouble() - 0.5D) * 0.14D, 0.0D);
+        }
+        int cloud = Math.min(300, 60 + radius * 7);
+        for (int i = 0; i < cloud; i++) {
+            double ox = (level.random.nextDouble() - 0.5D) * radius * 1.3D;
+            double oz = (level.random.nextDouble() - 0.5D) * radius * 1.3D;
+            double oy = level.random.nextDouble() * radius * 1.0D;
+            broadcast(level, ParticleTypes.LARGE_SMOKE,
+                    ground.x + ox, ground.y + oy, ground.z + oz,
+                    1, 0.0D, 0.07D + level.random.nextDouble() * 0.10D, 0.0D, 0.03D);
         }
     }
 
@@ -1084,10 +1173,13 @@ public final class OrbitalStrikeManager {
             // 常规伤害：中心 100%，边缘 30% —— 越靠近中心伤害越高
             float scale = (float) (1.0D - 0.7D * (d / max));
             entity.hurt(source, base * scale);
-            // 击退方向按模式：引力奇点是「向上掀飞」，其余是中心向外的径向推力。
+            // 击退方向按模式：引力奇点「向上掀飞」、行星陨落「炸开式击退」，其余径向推力。
             if (!entity.isSpectator()) {
                 if (mode == OrbitalStrikeMode.GRAVITY) {
                     entity.push(0.0D, 1.6D, 0.0D);
+                } else if (mode == OrbitalStrikeMode.PLANET) {
+                    Vec3 push = entity.position().subtract(center).normalize().scale(1.4D);
+                    entity.push(push.x, 1.0D, push.z);
                 } else {
                     Vec3 push = entity.position().subtract(center).normalize().scale(0.6D);
                     entity.push(push.x, 0.4D, push.z);
