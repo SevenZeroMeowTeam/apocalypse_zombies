@@ -452,6 +452,28 @@ public final class Config {
     /** 是否在原版背景音乐要开播时把它压下去（不压就会两首歌重叠）。 */
     public static final ForgeConfigSpec.BooleanValue FRIENDS_WINE_SUPPRESS_VANILLA;
 
+    // ===== 轨道打击遥控器 =====
+    /** 全局开关。关掉 = 物品右键 use 立刻 noop，描边也不再画。 */
+    public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_ENABLED;
+    /** 选区边长的一半（半径），单位格。1..16。 */
+    public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_RADIUS;
+    /** 落地后对中心 100% 伤害，边缘按 1 - 0.7 * (d/radius) 衰减。单位：半颗心。 */
+    public static final ForgeConfigSpec.DoubleValue ORBITAL_STRIKE_DAMAGE;
+    /** 每次命中时的秒杀几率（百分比 0~100）。命中判定通过后直接处死，绕过血量/护甲。 */
+    public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_KILL_CHANCE;
+    /** 是否对生物造成伤害（中心 100% / 边缘 30% 衰减 + 径向击退）。 */
+    public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_DAMAGE_MOBS;
+    /** 是否摧毁选区内方块（不掉落物）。关闭后只打生物 + 视觉。 */
+    public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_DESTROY_BLOCKS;
+    /** 玩家两次右键之间的冷却（秒）。 */
+    public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_COOLDOWN;
+    /** 锁定阶段时长（tick）。默认 30 = 1.5 s。 */
+    public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_LOCK_TICKS;
+    /** 摧毁方块时的「硬度上限」。超过这个硬度的方块跳过（避免卡顿 / 误打黑曜石）。 */
+    public static final ForgeConfigSpec.DoubleValue ORBITAL_STRIKE_MAX_HARDNESS;
+    /** 额外保护名单（资源位置字符串，例：{@code ["minecraft:spawner"]}）。名单内的方块不会被摧毁。 */
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ORBITAL_STRIKE_PROTECTED;
+
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
 
@@ -1031,6 +1053,45 @@ public final class Config {
         FRIENDS_WINE_SUPPRESS_VANILLA = b.comment("Keep vanilla background music from starting underneath it.",
                         "Off means you may hear both at once.")
                 .define("suppress_vanilla", true);
+        b.pop();
+
+        // 「轨道打击」总开关。锁定阶段、Y=320 下落、方块摧毁、伤害生物全在这一个段里。
+        b.comment("Orbital Strike Remote: a sci-fi handheld switch. Aim at a spot, right-click to lock,",
+                        "and a beam fires from above (Y=320) and razes the surrounding blocks. The lock",
+                        "phase + falling beam + impact add up to about 1.8 s before any terrain is touched.")
+                .push("orbital_strike");
+        ORBITAL_STRIKE_ENABLED = b.comment("Master switch. False = the remote is inert, no outline is drawn.")
+                .define("enabled", true);
+        ORBITAL_STRIKE_RADIUS = b.comment("Half edge of the targeted cube, in blocks. 1..16. A radius of 8",
+                        "is a 16x16x16 explosion that will level most minor structures in one go.")
+                .defineInRange("radius", 8, 1, 16);
+        ORBITAL_STRIKE_DAMAGE = b.comment("Damage at the centre. Falls linearly to 30% at the edge of the",
+                        "cube. Half-hearts: 20 = 10 hearts, 60 = 30 hearts.")
+                .defineInRange("damage", 60.0D, 0.0D, 200.0D);
+        ORBITAL_STRIKE_KILL_CHANCE = b.comment("Per-hit execute chance, in percent (0~100). A successful",
+                        "roll kills the target outright, ignoring health, armour and damage caps.",
+                        "This is the 'instant kill' that makes the strike feel like a weapon from orbit.")
+                .defineInRange("kill_chance", 35, 0, 100);
+        ORBITAL_STRIKE_DAMAGE_MOBS = b.comment("Apply the AOE damage to living entities (including the",
+                        "caller and their allies if the crosshair is on top of them).")
+                .define("damage_mobs", true);
+        ORBITAL_STRIKE_DESTROY_BLOCKS = b.comment("Destroy the blocks inside the cube. Block-entity tiles",
+                        "(chests, furnaces, spawners, signs) are NEVER destroyed regardless; bedrock,",
+                        "barriers, command blocks and hardness > max_hardness are also skipped.")
+                .define("destroy_blocks", true);
+        ORBITAL_STRIKE_COOLDOWN = b.comment("Cooldown between strikes, in seconds.")
+                .defineInRange("cooldown", 60, 5, 600);
+        ORBITAL_STRIKE_LOCK_TICKS = b.comment("Lock phase length in ticks (20 = 1 s). The beam then falls",
+                        "for a fixed 6 ticks regardless. Total = lock + 6.")
+                .defineInRange("lock_ticks", 30, 20, 80);
+        ORBITAL_STRIKE_MAX_HARDNESS = b.comment("Hardness ceiling for blocks that the strike may destroy.",
+                        "Anything tougher is skipped (e.g. obsidian=50, ancient debris=50, end stone=3).")
+                .defineInRange("max_hardness", 50.0D, 1.0D, 100.0D);
+        ORBITAL_STRIKE_PROTECTED = b.comment("Extra block-id whitelist that the strike will NEVER destroy,",
+                        "on top of the hard-coded bedrock / barrier / command-block / block-entity rules.",
+                        "Format: \"modid:block_id\" (no '#').")
+                .defineList("protected", List.<String>of(),
+                        value -> value instanceof String);
         b.pop();
 
         SPEC = b.build();

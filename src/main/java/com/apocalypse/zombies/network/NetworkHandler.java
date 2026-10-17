@@ -34,5 +34,7 @@ public final class NetworkHandler {
                 FirePacket::encode, FirePacket::decode, FirePacket::handle);
         CHANNEL.registerMessage(id++, CollectPacket.class,
                 CollectPacket::encode, CollectPacket::decode, CollectPacket::handle);
+        CHANNEL.registerMessage(id++, OrbitalStrikePacket.class,
+                OrbitalStrikePacket::encode, OrbitalStrikePacket::decode, OrbitalStrikePacket::handle);
     }
 }

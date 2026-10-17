@@ -77,6 +77,8 @@ public class ApocalypseZombies {
         MinecraftForge.EVENT_BUS.addListener(this::onRegisterCommands);
 
         NetworkHandler.register();
+        // 轨道打击的服务器侧 tick 循环（CommonEvents 那条已够承担其它玩家/世界事件；这里另起一个类）
+        com.apocalypse.zombies.event.OrbitalStrikeManager.register();
 
         LOGGER.info("Apocalypse Zombies loaded: the night is no longer yours.");
     }

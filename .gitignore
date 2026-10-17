@@ -14,6 +14,8 @@
 /x/
 # DSH 的本地 skill 配置（.dsh/skills/...）是本机 AI 工具的东西，不进仓库
 /.dsh/
+# 参考用的第三方模组 jar（All Rights Reserved 授权，不分发进仓库；本地留作对照）
+/参考/
 
 # ===== 建模会话在仓库根丢下的一次性文件 =====
 # MCP 的 save_project 会写根目录（模型源已归档到 art/<name>/）；其余是贴图遮罩、裁剪图、探针 JSON。

@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.2.4` |
+| **当前版本** | `1.2.5` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -267,6 +267,7 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 | `cat_girl` | 猫耳娘：`auto`（自主模式）、`mine_radius` / `mine_max_blocks`（一键挖掘的范围 / 上限）、`universal_tool`（全功能工具）、`mine_all` / `mine_protected`（挖什么 / 绝不挖什么）、`station_use` / `station_radius` / `station_self_craft`（工作方块） |
 | `ai` | 本机 **LM Studio** 助理（1.1.84 起）：`enabled` / `model` / `endpoint`（默认 `http://127.0.0.1:1234/v1`）/ `timeout_ms` / `num_ctx` / `json_schema` |
 | `player_mine` | **玩家一键挖掘**（1.1.81 起）：`enabled`（默认开）、`targets`（连带哪些方块：0 只矿石 / 1 矿石+自然方块 / 2 任何可挖方块）、`radius` / `max_blocks`（范围 / 上限 64）、`vein_only`（只连带连通矿脉）、`require_correct_tool`（工具不对口不连带）、`consume_durability`（扣耐久）、`sneak_disables`（潜行只挖一格）、`to_inventory`（产物进背包 —— 连带砸下来的那几格**和你亲手砸的那一格**都算，1.2.4 起）、`protected`（追加保护名单）、`highlight`（瞄准时把会连带的方块描边画出来，默认开）、`count`（瞄准时在准星下方显示「会连挖几格」，默认开） |
+| `orbital_strike` | **轨道打击遥控器**（1.2.5 起，科幻武器）：`enabled`（总开关）、`radius`（选区半边长 1~16）、`damage`（中心伤害，半心单位）、`kill_chance`（**每次命中秒杀几率 %**，默认 35）、`damage_mobs`（打不打生物）、`destroy_blocks`（碎不碎方块）、`cooldown`（冷却秒）、`lock_ticks`（锁定 tick）、`max_hardness`（方块硬度上限）、`protected`（额外保护名单） |
 
 > **图形界面**：`模组列表 → 选中 Apocalypse Zombies → 配置`（1.1.79 起真能用了）——
 > 列出**全部 171 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
@@ -277,6 +278,44 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 1.2.5 — 2026-10-17
+
+**新增科幻武器「轨道打击遥控器」—— 手持遥控器时准星处实时画出立方体选区，右键调来一发从
+Y=320 之外打下来的光柱，炸碎选区内方块、对生物造成大额伤害，并且每次命中带 35% 的必杀几率。**
+参考了本机 `the-shooting-star-demo`（Stellar Remote：红激光标记 → 倒计时 → 天降光束 → 区域全杀 +
+整列挖穿）的玩法骨架，但把它的 200 格半径 / 18 秒演出收成我们项目的口径：可配置半径 1~16 格、
+锁定 1.5 秒、立方体选区、纯冷却。
+
+- **怎么用**：
+  - 主手拿「轨道打击遥控器」（`item/orbital_strike_remote`，创造模式「战斗」页）；
+  - 准星对着地面时，选区立方体（边长 = `radius × 2`）实时画出来 —— **冷却中红色、就绪青色**；
+  - 右键锁定 → `lock_ticks`（默认 30 tick = 1.5 s）锁定阶段 → 6 tick 下落 → 落地；
+  - 落地：选区方块被抹掉（**不掉落物**）、中心 AOE 伤害生物、每次命中 35% 秒杀；
+  - 冷却 60 s（`cooldown`）。
+- **三段观感**（客户端画线 + 服务端发粒子，两边各管一半）：
+  - **锁定**：地面红环脉冲 + 一道红色引线指向目标，叠加服务端 `END_ROD` 粒子；
+  - **下落**：一根 8 边白/青竖线光柱从 Y=320 压下来，服务端同步 `SOUL_FIRE_FLAME` + `END_ROD` 粒子拖尾；
+  - **落地**：白/青扩散冲击波 + 大爆炸粒子（`EXPLOSION` / `SOUL_FIRE_FLAME` / `FLASH`）。
+- **为什么是 Y=320**：原版世界构建上限在 Y=256 左右；我们不会把玩家送到 320，那只是一个「比
+  最高建筑还高」的发射高度 —— 光柱从那儿笔直落下来，在视线上就和从宇宙之外打下来一样。
+  客户端渲染的高度是常量 `BEAM_TOP_Y = 320` 与服务端 `IMPACT_FALL_Y = 320` 对齐。
+- **秒杀**：`kill_chance`（默认 **35%**）每次命中独立掷一次 —— 过了直接 `hurt(Float.MAX_VALUE)`，
+  如果因为抗性 / 事件拦截还没死就 `setHealth(0)` + `die()` 兜底。设置 0 就是纯 AOE 伤害。
+- **不炸什么**：基岩 / 屏障 / 命令方块 / 结构方块 / 带 BlockEntity 的方块（箱子、熔炉、刷怪箱、
+  告示牌）/ 硬度 > `max_hardness`（默认 50，黑曜石刚好在边界外）/ 配置 `protected` 名单。
+- **安全**：站在选区里自己也会被炸（伤害来源标成玩家造成的爆炸）。创造模式不特殊处理 ——
+  和原版爆炸一致；参考模组那种「创造模式会被提前拉走」没有实现。
+- **配置**：`[orbital_strike]` 段 10 项，全可一键关；`enabled=false` 时物品右键 noop、
+  选区/光柱/圆环全部不画（客户端与服务端各自早退）。
+- **美术资产**：16×16 图标在 `art/orbital_strike_remote/textures/item/`，交付台账同目录 `DELIVERY.md`。
+  不走 GeckoLib 通道（没有 geo/ 和动画），`art_audit.py` 不覆盖它。
+- **新符号**：`OrbitalStrikeRemoteItem` / `OrbitalStrikeManager` / `OrbitalStrikeHighlighter` /
+  `OrbitalStrikePacket` / `OrbitalStrikeClientState`。
+
+**验证**：`gradlew compileJava` 全绿；包内核到上面 5 个新符号 + `mods.toml` 版本 1.2.5；装机 1.2.5。
+**未验证**：选区立方体、光柱、冲击波、秒杀判定都只过了静态编译 —— 还没在真实客户端里看过
+（「右键真的调得下来」「光柱有多粗」「35% 秒杀手感」必须进游戏看）。
 
 ### 1.2.4 — 2026-10-17
 

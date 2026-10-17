@@ -1,6 +1,7 @@
 package com.apocalypse.zombies.client;
 
 import com.apocalypse.zombies.ApocalypseZombies;
+import com.apocalypse.zombies.client.renderer.OrbitalStrikeHighlighter;
 import com.apocalypse.zombies.client.renderer.VeinMineHighlighter;
 import com.apocalypse.zombies.client.weapon.WeaponArms;
 import com.apocalypse.zombies.client.weapon.WeaponHandGrip;
@@ -361,6 +362,7 @@ public final class ClientEvents {
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
         VeinMineHighlighter.render(event);   // 1.1.82：玩家一键挖掘的描边（自己判断 stage / 开关）
+        OrbitalStrikeHighlighter.render(event);   // 1.2.5：轨道打击选区立方体描边（自己判断 stage / 开关）
         MoonEvent moon = ClientMoonState.getMoonEvent();
         if (!moon.isActive()) {
             return;

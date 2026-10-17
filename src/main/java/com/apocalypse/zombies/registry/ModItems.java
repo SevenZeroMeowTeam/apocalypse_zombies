@@ -5,6 +5,7 @@ import com.apocalypse.zombies.item.AWMItem;
 import com.apocalypse.zombies.item.CrossbowItem;
 import com.apocalypse.zombies.item.M1GarandItem;
 import com.apocalypse.zombies.item.MosinNagantItem;
+import com.apocalypse.zombies.item.OrbitalStrikeRemoteItem;
 import com.apocalypse.zombies.item.Rsc1917Item;
 import com.apocalypse.zombies.item.Colt1878Item;
 import com.apocalypse.zombies.item.S686Item;
@@ -129,6 +130,16 @@ public final class ModItems {
     public static final RegistryObject<Item> LOVE_COIN =
             ITEMS.register("love_coin", () -> new Item(new Item.Properties().stacksTo(64)));
 
+    /**
+     * 轨道打击遥控器（科幻武器）：手持时准星处画选区立方体，右键触发轨道打击
+     * —— 详见 {@link com.apocalypse.zombies.event.OrbitalStrikeManager}。
+     * stacksTo(1) + 不可用附魔台。注册在 {@code apocalypse_zombies:item/orbital_strike_remote}。
+     */
+    public static final RegistryObject<Item> ORBITAL_STRIKE_REMOTE =
+            ITEMS.register("orbital_strike_remote",
+                    () -> new OrbitalStrikeRemoteItem(new Item.Properties().stacksTo(1).rarity(
+                            net.minecraft.world.item.Rarity.RARE)));
+
     // ------------------------------------------------------------------ 铜装备
 
     /**
@@ -241,6 +252,7 @@ public final class ModItems {
             event.accept(SOLDIER_SPAWN_EGG);
             event.accept(OVERLORD_SPAWN_EGG);
             event.accept(CAT_GIRL_SPAWN_EGG);
+            event.accept(ORBITAL_STRIKE_REMOTE);
         }
         if (event.getTabKey() == CreativeModeTabs.INGREDIENTS) {
             event.accept(LOVE_COIN);
