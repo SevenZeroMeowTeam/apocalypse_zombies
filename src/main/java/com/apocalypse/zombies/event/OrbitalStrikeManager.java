@@ -218,6 +218,8 @@ public final class OrbitalStrikeManager {
         level.playSound(null, target, SoundEvents.BEACON_DEACTIVATE, SoundSource.PLAYERS, 1.2F, 0.5F);
         // 远雷：光柱砸到地面那一下，别处也能听见（音量按距离衰减，玩家 120 格内可闻）
         level.playSound(null, target, SoundEvents.LIGHTNING_BOLT_THUNDER, SoundSource.WEATHER, 2.4F, 0.55F);
+        // 龙吼压低：给「从宇宙来的东西」一点沉重感（音高 0.5 = 低两个八度左右）
+        level.playSound(null, target, SoundEvents.ENDER_DRAGON_GROWL, SoundSource.PLAYERS, 0.9F, 0.5F);
         // 起源：Y=320 处的太空爆点，六角星尘向外散开 —— 强调「这一击来自宇宙之外」
         for (int i = 0; i < 32; i++) {
             double angle = i * Math.PI * 2.0D / 32.0D;

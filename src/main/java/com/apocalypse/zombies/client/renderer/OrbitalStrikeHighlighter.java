@@ -123,6 +123,23 @@ public final class OrbitalStrikeHighlighter {
         // 它不是实体/方块，纯渲染 —— 玩家在哪、瞄哪，平台就飘在哪的正上方。
         renderPlatform(pose, buffer, cx, BEAM_TOP_Y + PLATFORM_HEIGHT, cz, tick, partial);
 
+        // —— 天穹裂缝：Y=330 处一圈 40 格的大环 + 24 条放射裂纹，缓慢旋转。
+        // 让「从宇宙打下来」这件事在抬头时就有压迫感（不只是脚底下的红圈）。
+        {
+            double skyY = BEAM_TOP_Y + 10.0D;
+            double skySpin = (tick + partial) * 0.02D;
+            drawCircle(pose, buffer, cx, skyY, cz, 40.0D, 0.35F, 0.65F, 1.0F, 0.30F);
+            for (int i = 0; i < 24; i++) {
+                double a = i * Math.PI * 2.0D / 24.0D + skySpin;
+                double r0 = 40.0D;
+                double r1 = 58.0D + Math.sin(a * 3.0D) * 4.0D;
+                line(pose, buffer,
+                        cx + Math.cos(a) * r0, skyY + Math.sin(a * 2.0D) * 2.0D, cz + Math.sin(a) * r0,
+                        cx + Math.cos(a) * r1, skyY + 3.0D, cz + Math.sin(a) * r1,
+                        0.40F, 0.78F, 1.0F, 0.24F, 0, 1, 0);
+            }
+        }
+
         if (elapsed < lockTicks) {
             // —— 锁定阶段：地面红环闪烁 + 地面上方一小段引线
             float pulse = 0.55F + 0.45F * Mth.sin((gameTime + partial) * 0.6F);

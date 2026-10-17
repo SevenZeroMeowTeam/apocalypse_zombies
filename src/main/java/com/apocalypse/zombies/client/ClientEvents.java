@@ -1,6 +1,7 @@
 package com.apocalypse.zombies.client;
 
 import com.apocalypse.zombies.ApocalypseZombies;
+import com.apocalypse.zombies.client.renderer.OrbitalScreenFX;
 import com.apocalypse.zombies.client.renderer.OrbitalStrikeHighlighter;
 import com.apocalypse.zombies.client.renderer.VeinMineHighlighter;
 import com.apocalypse.zombies.client.weapon.WeaponArms;
@@ -235,6 +236,12 @@ public final class ClientEvents {
                 && event.getOverlay().id().equals(VanillaGuiOverlay.CROSSHAIR.id())) {
             event.setCanceled(true);
         }
+    }
+
+    /** 轨道打击落地瞬间的镜头抖动（自己判断阶段 / 距离，越远越弱）。 */
+    @SubscribeEvent
+    public static void onComputeCameraAngles(ViewportEvent.ComputeCameraAngles event) {
+        OrbitalScreenFX.shakeCamera(event, Minecraft.getInstance());
     }
 
     // ------------------------------------------------------------------ sky
@@ -482,6 +489,10 @@ public final class ClientEvents {
     @SubscribeEvent
     public static void onRenderGui(RenderGuiEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
+
+        // 轨道打击的屏幕级特效：倒计时 / 边缘红晕 / 落地白闪（各自判断阶段与开关）
+        OrbitalScreenFX.renderImpactFlash(event.getGuiGraphics(), minecraft);
+        OrbitalScreenFX.renderHud(event.getGuiGraphics(), minecraft, event.getPartialTick());
 
         // 弹种轮盘画在整个 HUD 之上。必须排在下面那个「今晚没有月相就直接返回」之前 ——
         // 轮盘与月亮无关，不能因为是个平凡的夜晚就不显示。
