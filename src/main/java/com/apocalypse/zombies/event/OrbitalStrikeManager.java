@@ -271,6 +271,24 @@ public final class OrbitalStrikeManager {
                 level.sendParticles(ParticleTypes.FLASH, ground.x, ground.y + 0.5D, ground.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
             }
         }
+        // 音爆光环：SONIC_BOOM 是原版最像「能量冲击波」的粒子（青色圆环），一圈圈往外推
+        int rings = Math.min(6, 2 + radius / 8);
+        for (int r = 0; r < rings; r++) {
+            double ringR = 1.0D + r * (radius / (double) rings);
+            level.sendParticles(ParticleTypes.SONIC_BOOM, ground.x + ringR, ground.y + 0.5D, ground.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            level.sendParticles(ParticleTypes.SONIC_BOOM, ground.x - ringR, ground.y + 0.5D, ground.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            level.sendParticles(ParticleTypes.SONIC_BOOM, ground.x, ground.y + 0.5D, ground.z + ringR, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            level.sendParticles(ParticleTypes.SONIC_BOOM, ground.x, ground.y + 0.5D, ground.z - ringR, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        }
+        // 电弧：ELECTRIC_SPARK 从落点向四周乱窜 —— 参考 mod 那种「能量还在放电」的感觉
+        int sparks = Math.min(80, 20 + radius * 2);
+        for (int i = 0; i < sparks; i++) {
+            level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
+                    ground.x + (level.random.nextDouble() - 0.5D) * radius,
+                    ground.y + 0.4D + level.random.nextDouble() * 2.0D,
+                    ground.z + (level.random.nextDouble() - 0.5D) * radius,
+                    1, 0.0D, 0.25D, 0.0D, 0.4D);
+        }
         // 蘑菇云：从地面向上翻腾的浓烟 + 火舌（落点越近越密，往外围越来越稀；数量随半径缩放）
         int cloudParticles = Math.min(240, 48 + radius * 6);
         for (int i = 0; i < cloudParticles; i++) {

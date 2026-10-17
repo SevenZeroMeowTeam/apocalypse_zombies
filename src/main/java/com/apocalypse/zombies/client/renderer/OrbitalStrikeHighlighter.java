@@ -39,6 +39,9 @@ public final class OrbitalStrikeHighlighter {
     private static final double BEAM_RADIUS = 0.7D;
     /** 光柱半径上限（格）—— 半径 64 的选区也不要画成一根 8 格粗的水桶。 */
     private static final double BEAM_RADIUS_MAX = 4.0D;
+    /** 信标光束纹理：加色、半透明、沿高度平铺 —— 原版信标光柱同款，比线框更像真光束。 */
+    private static final net.minecraft.resources.ResourceLocation BEAM_TEXTURE =
+            new net.minecraft.resources.ResourceLocation("textures/entity/beacon_beam.png");
     /** 光柱顶点高度（Y=320 与配置一致，但客户端不读服务端配置，用常量同步感）。 */
     private static final double BEAM_TOP_Y = 320.0D;
     /** 卫星/轨道平台悬浮在光柱顶上方的高度。 */
@@ -176,6 +179,42 @@ public final class OrbitalStrikeHighlighter {
             float wg = Mth.lerp(fall, 1.0F, 0.85F);
             float wb = Mth.lerp(fall, 1.0F, 1.0F);
             float alpha = 0.9F * glow;
+
+            // —— 真正的发光光柱：beaconBeam 纹理（加色混合 + 沿高度平铺纹理），
+            // 和线框叠在一起 —— 线框给形状，纹理给「亮得发光」的质感。
+            double beamHeight = BEAM_TOP_Y - headY;
+            if (beamHeight > 0.5D) {
+                net.minecraft.client.renderer.RenderType beamType =
+                        net.minecraft.client.renderer.RenderType.beaconBeam(BEAM_TEXTURE, true);
+                VertexConsumer beamBuffer = buffers.getBuffer(beamType);
+                int segments = 8;
+                float vMax = (float) (beamHeight / 4.0D);
+                var matrix = pose.last().pose();
+                for (int i = 0; i < segments; i++) {
+                    double a1 = i * Math.PI * 2.0D / segments;
+                    double a2 = (i + 1) * Math.PI * 2.0D / segments;
+                    double x1 = cx + Math.cos(a1) * beamR;
+                    double z1 = cz + Math.sin(a1) * beamR;
+                    double x2 = cx + Math.cos(a2) * beamR;
+                    double z2 = cz + Math.sin(a2) * beamR;
+                    float u1 = i / (float) segments;
+                    float u2 = (i + 1) / (float) segments;
+                    float a = alpha * 0.75F;
+                    beamBuffer.vertex(matrix, (float) x1, (float) BEAM_TOP_Y, (float) z1)
+                            .color(wr, wg, wb, a).uv(u1, 0.0F)
+                            .uv2(240, 240).endVertex();
+                    beamBuffer.vertex(matrix, (float) x2, (float) BEAM_TOP_Y, (float) z2)
+                            .color(wr, wg, wb, a).uv(u2, 0.0F)
+                            .uv2(240, 240).endVertex();
+                    beamBuffer.vertex(matrix, (float) x2, (float) headY, (float) z2)
+                            .color(wr, wg, wb, a).uv(u2, vMax)
+                            .uv2(240, 240).endVertex();
+                    beamBuffer.vertex(matrix, (float) x1, (float) headY, (float) z1)
+                            .color(wr, wg, wb, a).uv(u1, vMax)
+                            .uv2(240, 240).endVertex();
+                }
+                buffers.endBatch(beamType);
+            }
 
             // 12 条竖线围成圆柱，从 Y=320 到地面（1.2.7：8 边 → 12 边，更圆更粗）
             for (int i = 0; i < 12; i++) {
