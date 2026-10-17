@@ -1062,9 +1062,10 @@ public final class Config {
                 .push("orbital_strike");
         ORBITAL_STRIKE_ENABLED = b.comment("Master switch. False = the remote is inert, no outline is drawn.")
                 .define("enabled", true);
-        ORBITAL_STRIKE_RADIUS = b.comment("Half edge of the targeted cube, in blocks. 1..16. A radius of 8",
-                        "is a 16x16x16 explosion that will level most minor structures in one go.")
-                .defineInRange("radius", 8, 1, 16);
+        ORBITAL_STRIKE_RADIUS = b.comment("Half edge of the targeted cube, in blocks. 1..64. The default 24",
+                        "is a 49x49x49 strike; anything above ~32 is crushed in batches over several",
+                        "ticks so the game stays playable while the ground is being erased.")
+                .defineInRange("radius", 24, 1, 64);
         ORBITAL_STRIKE_DAMAGE = b.comment("Damage at the centre. Falls linearly to 30% at the edge of the",
                         "cube. Half-hearts: 20 = 10 hearts, 100 = 50 hearts (enough to one-shot an",
                         "iron golem).")
@@ -1080,8 +1081,9 @@ public final class Config {
                         "(chests, furnaces, spawners, signs) are NEVER destroyed regardless; bedrock,",
                         "barriers, command blocks and hardness > max_hardness are also skipped.")
                 .define("destroy_blocks", true);
-        ORBITAL_STRIKE_COOLDOWN = b.comment("Cooldown between strikes, in seconds.")
-                .defineInRange("cooldown", 60, 5, 600);
+        ORBITAL_STRIKE_COOLDOWN = b.comment("Cooldown between strikes, in seconds. 0 = no cooldown at all",
+                        "(spam the remote as fast as you can click it).")
+                .defineInRange("cooldown", 0, 0, 600);
         ORBITAL_STRIKE_LOCK_TICKS = b.comment("Lock phase length in ticks (20 = 1 s). The beam then falls",
                         "for a fixed 6 ticks regardless. Total = lock + 6.")
                 .defineInRange("lock_ticks", 30, 20, 80);

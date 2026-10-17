@@ -35,8 +35,10 @@ public final class OrbitalStrikeHighlighter {
     private static final float[] READY = new float[]{0.40F, 0.91F, 0.98F};
     /** 冷却中 / 已锁定的颜色。 */
     private static final float[] LOCKED = new float[]{0.95F, 0.28F, 0.28F};
-    /** 光柱：中心半径（格）。1.2.7 起从 0.42 加粗到 0.7 —— 天基炮的束应该更「粗实」。 */
+    /** 光柱基础半径（格）。实际半径随选区半径缩放，见 {@link #beamRadius(int)}。 */
     private static final double BEAM_RADIUS = 0.7D;
+    /** 光柱半径上限（格）—— 半径 64 的选区也不要画成一根 8 格粗的水桶。 */
+    private static final double BEAM_RADIUS_MAX = 4.0D;
     /** 光柱顶点高度（Y=320 与配置一致，但客户端不读服务端配置，用常量同步感）。 */
     private static final double BEAM_TOP_Y = 320.0D;
     /** 卫星/轨道平台悬浮在光柱顶上方的高度。 */
@@ -116,6 +118,9 @@ public final class OrbitalStrikeHighlighter {
         double cx = target.getX() + 0.5D;
         double cz = target.getZ() + 0.5D;
         double gy = target.getY() + 1.0D;
+        // 选区半径 → 光柱半径：大范围打击时束要更粗，否则「范围大」看不出来
+        int strikeRadius = OrbitalStrikeClientState.radius();
+        double beamR = beamRadius(strikeRadius);
         long tick = gameTime;
         float partial = event.getPartialTick();
 
@@ -123,16 +128,16 @@ public final class OrbitalStrikeHighlighter {
         // 它不是实体/方块，纯渲染 —— 玩家在哪、瞄哪，平台就飘在哪的正上方。
         renderPlatform(pose, buffer, cx, BEAM_TOP_Y + PLATFORM_HEIGHT, cz, tick, partial);
 
-        // —— 天穹裂缝：Y=330 处一圈 40 格的大环 + 24 条放射裂纹，缓慢旋转。
-        // 让「从宇宙打下来」这件事在抬头时就有压迫感（不只是脚底下的红圈）。
+        // —— 天穹裂缝：Y=330 处一圈大环 + 24 条放射裂纹，缓慢旋转。大范围打击时环也跟着放大。
         {
             double skyY = BEAM_TOP_Y + 10.0D;
             double skySpin = (tick + partial) * 0.02D;
-            drawCircle(pose, buffer, cx, skyY, cz, 40.0D, 0.35F, 0.65F, 1.0F, 0.30F);
+            double skyR = Math.max(40.0D, strikeRadius * 2.5D);
+            drawCircle(pose, buffer, cx, skyY, cz, skyR, 0.35F, 0.65F, 1.0F, 0.30F);
             for (int i = 0; i < 24; i++) {
                 double a = i * Math.PI * 2.0D / 24.0D + skySpin;
-                double r0 = 40.0D;
-                double r1 = 58.0D + Math.sin(a * 3.0D) * 4.0D;
+                double r0 = skyR;
+                double r1 = skyR * 1.45D + Math.sin(a * 3.0D) * 4.0D;
                 line(pose, buffer,
                         cx + Math.cos(a) * r0, skyY + Math.sin(a * 2.0D) * 2.0D, cz + Math.sin(a) * r0,
                         cx + Math.cos(a) * r1, skyY + 3.0D, cz + Math.sin(a) * r1,
@@ -141,12 +146,19 @@ public final class OrbitalStrikeHighlighter {
         }
 
         if (elapsed < lockTicks) {
-            // —— 锁定阶段：地面红环闪烁 + 地面上方一小段引线
+            // —— 锁定阶段：地面红环闪烁 + 从 Y=320 射下来的红色激光（the-shooting-star 的标志观感）
             float pulse = 0.55F + 0.45F * Mth.sin((gameTime + partial) * 0.6F);
             drawCircle(pose, buffer, cx, gy + 0.02D, cz, Math.max(1.5D, OrbitalStrikeClientState.radius()),
                     0.95F, 0.28F, 0.28F, 0.55F * pulse);
-            // 引线：从目标上方 6 格的一点指向目标
-            line(pose, buffer, cx, gy + 6.0D, cz, cx, gy, cz, 0.95F, 0.28F, 0.28F, 0.65F, 0, -1, 0);
+            // 红激光：一条细红线从天顶笔直落到目标点（锁定期间一直亮着，落地前最亮）
+            float laserAlpha = 0.35F + 0.25F * pulse;
+            line(pose, buffer, cx, BEAM_TOP_Y, cz, cx, gy, cz, 0.98F, 0.22F, 0.22F, laserAlpha, 0, -1, 0);
+            // 激光落点的十字标记（红）
+            double markLen = 0.9D;
+            line(pose, buffer, cx - markLen, gy + 0.02D, cz, cx + markLen, gy + 0.02D, cz,
+                    0.98F, 0.22F, 0.22F, laserAlpha, 0, 1, 0);
+            line(pose, buffer, cx, gy + 0.02D, cz - markLen, cx, gy + 0.02D, cz + markLen,
+                    0.98F, 0.22F, 0.22F, laserAlpha, 0, 1, 0);
         } else {
             // —— 下落 / 余晖阶段
             long fallElapsed = elapsed - lockTicks;
@@ -167,8 +179,8 @@ public final class OrbitalStrikeHighlighter {
             // 12 条竖线围成圆柱，从 Y=320 到地面（1.2.7：8 边 → 12 边，更圆更粗）
             for (int i = 0; i < 12; i++) {
                 double angle = i * Math.PI * 2.0D / 12.0D;
-                double bx = cx + Math.cos(angle) * BEAM_RADIUS;
-                double bz = cz + Math.sin(angle) * BEAM_RADIUS;
+                double bx = cx + Math.cos(angle) * beamR;
+                double bz = cz + Math.sin(angle) * beamR;
                 line(pose, buffer, bx, BEAM_TOP_Y, bz, bx, headY, bz, wr, wg, wb, alpha, 0, -1, 0);
             }
             // 中心一条更亮的芯线（芯色偏青）
@@ -182,17 +194,17 @@ public final class OrbitalStrikeHighlighter {
                     if (ringY > BEAM_TOP_Y) {
                         continue;
                     }
-                    double ringR = BEAM_RADIUS + 1.2D + 0.5D * (double) Mth.sin(pulsePhase + ring * 1.3F);
+                    double ringR = beamR + 1.2D + 0.5D * (double) Mth.sin(pulsePhase + ring * 1.3F);
                     drawCircle(pose, buffer, cx, ringY, cz, ringR,
                             0.75F, 0.98F, 1.0F, alpha * 0.35F);
                 }
             }
 
             // 头部的横向亮圈（像枪口焰/冲击波）
-            drawCircle(pose, buffer, cx, headY, cz, BEAM_RADIUS + 0.8D, 1.0F, 1.0F, 1.0F, alpha * 0.8F);
+            drawCircle(pose, buffer, cx, headY, cz, beamR + 0.8D, 1.0F, 1.0F, 1.0F, alpha * 0.8F);
             // 地面冲击波：落地后扩散
             if (fall >= 1.0F) {
-                double shockRadius = BEAM_RADIUS + 1.2D + (1.0D - glow) * OrbitalStrikeClientState.radius() * 1.8D;
+                double shockRadius = beamR + 1.2D + (1.0D - glow) * OrbitalStrikeClientState.radius() * 1.8D;
                 drawCircle(pose, buffer, cx, gy + 0.04D, cz, shockRadius, 0.6F, 0.95F, 1.0F, glow * 0.55F);
             }
         }
@@ -247,6 +259,11 @@ public final class OrbitalStrikeHighlighter {
     }
 
     // ---------------------------------------------------------------- 基础图元
+
+    /** 选区半径 → 光柱半径：小范围细束，大范围粗柱（上限 {@link #BEAM_RADIUS_MAX}）。 */
+    private static double beamRadius(int strikeRadius) {
+        return Math.max(BEAM_RADIUS, Math.min(BEAM_RADIUS_MAX, strikeRadius * 0.12D));
+    }
 
     /** 12 条棱组成的空心立方体。 */
     private static void drawCube(PoseStack pose, VertexConsumer buffer,

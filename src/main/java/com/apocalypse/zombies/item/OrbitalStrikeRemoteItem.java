@@ -43,7 +43,9 @@ public class OrbitalStrikeRemoteItem extends Item {
         if (!(player instanceof ServerPlayer serverPlayer)) {
             return InteractionResultHolder.pass(stack);
         }
-        if (player.getCooldowns().isOnCooldown(this)) {
+        // 冷却为 0 表示「完全无冷却」：跳过 isOnCooldown 检查，也不写冷却。
+        int cooldownSeconds = Config.ORBITAL_STRIKE_COOLDOWN.get();
+        if (cooldownSeconds > 0 && player.getCooldowns().isOnCooldown(this)) {
             return InteractionResultHolder.fail(stack);
         }
         // 准星取点：射线末端必须是 BLOCK 才算「瞄到地」—— 瞄到空气就让玩家自己再想想。
@@ -52,7 +54,9 @@ public class OrbitalStrikeRemoteItem extends Item {
             return InteractionResultHolder.fail(stack);
         }
         OrbitalStrikeManager.schedule(serverPlayer, blockHit.getBlockPos().immutable());
-        player.getCooldowns().addCooldown(this, Config.ORBITAL_STRIKE_COOLDOWN.get() * 20);
+        if (cooldownSeconds > 0) {
+            player.getCooldowns().addCooldown(this, cooldownSeconds * 20);
+        }
         return InteractionResultHolder.consume(stack);
     }
 }

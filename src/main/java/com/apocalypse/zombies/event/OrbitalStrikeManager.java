@@ -60,6 +60,14 @@ public final class OrbitalStrikeManager {
 
     private static final Map<UUID, ActiveStrike> ACTIVE = new HashMap<>();
 
+    /**
+     * 大范围破坏的分批任务队列。radius=24 时选区是 49×49×49 ≈ 11.7 万个方块 ——
+     * 一个 tick 里全挖掉会把主线程卡死几秒，所以拆成每 tick 最多 {@link #BLOCKS_PER_TICK} 个，
+     * 顺带获得「地面从中间向外一圈圈塌下去」的观感。
+     */
+    private static final List<DestroyTask> DESTROY_QUEUE = new ArrayList<>();
+    private static final int BLOCKS_PER_TICK = 2500;
+
     /** 调试用 —— 暂时不开。{@code Config.ORBITAL_STRIKE_DEBUG.get()} 才打开。 */
     private static final boolean DEBUG = false;
 
@@ -89,7 +97,24 @@ public final class OrbitalStrikeManager {
 
     @SubscribeEvent
     public static void onServerTick(TickEvent.ServerTickEvent event) {
-        if (event.phase != TickEvent.Phase.END || ACTIVE.isEmpty()) {
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
+        // 先推进「分批破坏」队列 —— 它和打击生命期无关（打击早结束了地还在塌）。
+        // 全局预算：不管同时排了几个任务，每 tick 总共最多挖 BLOCKS_PER_TICK 个，
+        // 无冷却狂点时任务会排队而不是一次全砸下来。
+        if (!DESTROY_QUEUE.isEmpty()) {
+            int budget = BLOCKS_PER_TICK;
+            Iterator<DestroyTask> dit = DESTROY_QUEUE.iterator();
+            while (dit.hasNext() && budget > 0) {
+                DestroyTask task = dit.next();
+                budget -= task.step(budget);
+                if (task.done()) {
+                    dit.remove();
+                }
+            }
+        }
+        if (ACTIVE.isEmpty()) {
             return;
         }
         if (!Config.ORBITAL_STRIKE_ENABLED.get()) {
@@ -208,7 +233,7 @@ public final class OrbitalStrikeManager {
         boolean damage = Config.ORBITAL_STRIKE_DAMAGE_MOBS.get();
 
         if (destroy) {
-            destroyArea(level, target, radius);
+            enqueueDestroy(level, target, radius);
         }
         if (damage) {
             damageArea(level, target, radius, strike.owner);
@@ -228,8 +253,9 @@ public final class OrbitalStrikeManager {
                     ground.x, IMPACT_FALL_Y, ground.z,
                     1, Math.cos(angle) * spread, 0.3D + level.random.nextDouble() * 0.6D, Math.sin(angle) * spread, 0.25D);
         }
-        // 大爆 FLASH + 多色粉尘
-        for (int i = 0; i < IMPACT_PARTICLES; i++) {
+        // 大爆 FLASH + 多色粉尘（数量随半径缩放，上限防止一次刷上万粒子）
+        int impactParticles = Math.min(360, 64 + radius * 8);
+        for (int i = 0; i < impactParticles; i++) {
             double ox = (level.random.nextDouble() - 0.5D) * radius * 1.6D;
             double oy = (level.random.nextDouble() - 0.5D) * radius * 1.0D;
             double oz = (level.random.nextDouble() - 0.5D) * radius * 1.6D;
@@ -241,8 +267,9 @@ public final class OrbitalStrikeManager {
                 level.sendParticles(ParticleTypes.FLASH, ground.x, ground.y + 0.5D, ground.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
             }
         }
-        // 蘑菇云：从地面向上翻腾的浓烟 + 火舌（落点越近越密，往外围越来越稀）
-        for (int i = 0; i < 56; i++) {
+        // 蘑菇云：从地面向上翻腾的浓烟 + 火舌（落点越近越密，往外围越来越稀；数量随半径缩放）
+        int cloudParticles = Math.min(240, 48 + radius * 6);
+        for (int i = 0; i < cloudParticles; i++) {
             double ox = (level.random.nextDouble() - 0.5D) * radius * 1.2D;
             double oz = (level.random.nextDouble() - 0.5D) * radius * 1.2D;
             double oy = level.random.nextDouble() * radius * 0.9D;
@@ -258,44 +285,76 @@ public final class OrbitalStrikeManager {
     }
 
     /**
-     * 摧毁 AABB 内方块，规则：
+     * 排队一次大范围破坏。真正挖方块在 {@link #onServerTick} 里分 tick 推进 ——
+     * radius=24 时选区约 11.7 万格，一个 tick 全挖会让主线程卡住好几秒。
+     */
+    private static void enqueueDestroy(ServerLevel level, BlockPos center, int radius) {
+        AABB box = new AABB(center).inflate(radius);
+        DESTROY_QUEUE.add(new DestroyTask(level, collectBox(box)));
+    }
+
+    /**
+     * 单个方块的处理，规则：
      * <ul>
      *   <li>流体/空气不动；</li>
      *   <li>{@link Blocks#BEDROCK} / 屏障 / 命令方块 不动；</li>
-     *   <li>硬度 &gt; {@code MAX_HARDNESS} 不动（避开黑曜石等需时很长的方块，避免卡顿）；</li>
      *   <li>方块实体类（箱子、熔炉、刷怪箱、告示牌）不动；</li>
+     *   <li>不可破坏 / 硬度 &gt; 配置上限 不动；</li>
      *   <li>配置里 {@code protected} 名单不动；</li>
      *   <li>其余 destroyBlock(pos, false)：不掉落物，但触发 BreakEvent 留给其它 mod 处理。</li>
      * </ul>
      */
-    private static void destroyArea(ServerLevel level, BlockPos center, int radius) {
-        AABB box = new AABB(center).inflate(radius);
-        List<BlockPos> positions = collectBox(box);
-        for (BlockPos pos : positions) {
-            BlockState state = level.getBlockState(pos);
-            if (state.isAir()) {
-                continue;
+    private static void destroyOne(ServerLevel level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        if (state.isAir()) {
+            return;
+        }
+        Block block = state.getBlock();
+        if (block == Blocks.BEDROCK || block == Blocks.BARRIER || block == Blocks.COMMAND_BLOCK
+                || block == Blocks.CHAIN_COMMAND_BLOCK || block == Blocks.REPEATING_COMMAND_BLOCK
+                || block == Blocks.STRUCTURE_BLOCK || block == Blocks.JIGSAW) {
+            return;
+        }
+        if (state.hasBlockEntity()) {
+            return;
+        }
+        float hardness = state.getDestroySpeed(level, pos);
+        if (hardness < 0.0F) {
+            return;   // 不可破坏
+        }
+        if (hardness > Config.ORBITAL_STRIKE_MAX_HARDNESS.get().floatValue()) {
+            return;   // 太硬（避开黑曜石、远古残骸的尴尬 50/50 临界）
+        }
+        if (isProtected(block)) {
+            return;
+        }
+        level.destroyBlock(pos, false);
+    }
+
+    /** 分批破坏任务：每 tick 处理最多 {@link #BLOCKS_PER_TICK} 个方块，直到列表走完。 */
+    private static final class DestroyTask {
+        private final ServerLevel level;
+        private final List<BlockPos> blocks;
+        private int cursor;
+
+        DestroyTask(ServerLevel level, List<BlockPos> blocks) {
+            this.level = level;
+            this.blocks = blocks;
+        }
+
+        /** 处理至多 {@code budget} 个方块，返回实际处理数。 */
+        int step(int budget) {
+            int end = Math.min(cursor + budget, blocks.size());
+            int count = end - cursor;
+            for (int i = cursor; i < end; i++) {
+                destroyOne(level, blocks.get(i));
             }
-            Block block = state.getBlock();
-            if (block == Blocks.BEDROCK || block == Blocks.BARRIER || block == Blocks.COMMAND_BLOCK
-                    || block == Blocks.CHAIN_COMMAND_BLOCK || block == Blocks.REPEATING_COMMAND_BLOCK
-                    || block == Blocks.STRUCTURE_BLOCK || block == Blocks.JIGSAW) {
-                continue;
-            }
-            if (state.getBlock().defaultBlockState().hasBlockEntity()) {
-                continue;
-            }
-            if (state.getDestroySpeed(level, pos) < 0.0F) {
-                continue;   // 不可破坏
-            }
-            if (state.getDestroySpeed(level, pos) > Config.ORBITAL_STRIKE_MAX_HARDNESS.get().floatValue()) {
-                continue;   // 太硬（避开黑曜石、远古残骸的尴尬 50/50 临界）
-            }
-            // 保护名单（如果配置了）
-            if (isProtected(block)) {
-                continue;
-            }
-            level.destroyBlock(pos, false);
+            cursor = end;
+            return count;
+        }
+
+        boolean done() {
+            return cursor >= blocks.size();
         }
     }
 
@@ -367,7 +426,7 @@ public final class OrbitalStrikeManager {
         return false;
     }
 
-    /** Box 内整数 BlockPos（顺序：自上而下、从北到南；不重复不遗漏）。 */
+    /** Box 内整数 BlockPos，**从高到低**逐层（分批挖掘时一层层往下塌，观感比乱序好）。 */
     private static List<BlockPos> collectBox(AABB box) {
         int minX = Mth.floor(box.minX);
         int minY = Mth.floor(box.minY);
@@ -376,8 +435,8 @@ public final class OrbitalStrikeManager {
         int maxY = Mth.floor(box.maxY);
         int maxZ = Mth.floor(box.maxZ);
         List<BlockPos> out = new ArrayList<>((maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1));
-        for (int x = minX; x <= maxX; x++) {
-            for (int y = minY; y <= maxY; y++) {
+        for (int y = maxY; y >= minY; y--) {
+            for (int x = minX; x <= maxX; x++) {
                 for (int z = minZ; z <= maxZ; z++) {
                     out.add(new BlockPos(x, y, z));
                 }
