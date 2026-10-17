@@ -1,6 +1,7 @@
 package com.apocalypse.zombies.client;
 
 import com.apocalypse.zombies.ApocalypseZombies;
+import com.apocalypse.zombies.client.renderer.OrbitalCinematic;
 import com.apocalypse.zombies.client.renderer.OrbitalScreenFX;
 import com.apocalypse.zombies.client.renderer.OrbitalStrikeHighlighter;
 import com.apocalypse.zombies.client.renderer.VeinMineHighlighter;
@@ -159,6 +160,9 @@ public final class ClientEvents {
         }
         Minecraft minecraft = Minecraft.getInstance();
 
+        // 演出机位的兜底还原（比如刚退出世界、演出窗口被掐断）：每 tick 检查一次，幂等。
+        OrbitalCinematic.tickRestore(minecraft);
+
         // Local-only: the zoom and the raised pose ease in over the gun's aim time, so this runs every tick.
         GunAimState.tick(minecraft);
 
@@ -241,6 +245,8 @@ public final class ClientEvents {
     /** 轨道打击落地瞬间的镜头抖动（自己判断阶段 / 距离，越远越弱）。 */
     @SubscribeEvent
     public static void onComputeCameraAngles(ViewportEvent.ComputeCameraAngles event) {
+        // 先摆「见证机位」，震动叠在它上面 —— 落地那一下的抖是打在远景上的。
+        OrbitalCinematic.apply(event, Minecraft.getInstance());
         OrbitalScreenFX.shakeCamera(event, Minecraft.getInstance());
     }
 

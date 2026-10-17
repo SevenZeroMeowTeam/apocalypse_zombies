@@ -477,6 +477,8 @@ public final class Config {
     public static final ForgeConfigSpec.DoubleValue ORBITAL_STRIKE_MAX_HARDNESS;
     /** 额外保护名单（资源位置字符串，例：{@code ["minecraft:spawner"]}）。名单内的方块不会被摧毁。 */
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ORBITAL_STRIKE_PROTECTED;
+    /** 演出机位：锁定末段把镜头拉远看完整一击（关掉就全程跟在玩家眼里）。 */
+    public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_CINEMATIC;
 
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
@@ -1109,6 +1111,11 @@ public final class Config {
                         "Format: \"modid:block_id\" (no '#').")
                 .defineList("protected", List.<String>of(),
                         value -> value instanceof String);
+        ORBITAL_STRIKE_CINEMATIC = b.comment("Pull the camera away from your eyes during the last second of the",
+                        "lock phase, hold it far above the impact through the beam fall and the",
+                        "collapsing crater (with a slow pan), then ease it back. Set false to keep",
+                        "the camera on the player the whole time.")
+                .define("cinematic_camera", true);
         b.pop();
 
         SPEC = b.build();
