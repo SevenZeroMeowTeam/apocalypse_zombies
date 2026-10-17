@@ -179,8 +179,13 @@ public final class OrbitalStrikeHighlighter {
             }
             renderPlanet(pose, lines, cx, gy + PLANET_HEIGHT, cz, PLANET_RADIUS,
                     planetAlpha, gameTime + partial);
+            // 卫星在光柱烧井的几十秒里会一直挂着，落地 40 tick 后淡出，别一直杵在天上
+            float satAlpha = 0.62F;
+            if (impactAge >= 0) {
+                satAlpha *= Mth.clamp(1.0F - impactAge / 40.0F, 0.0F, 1.0F);
+            }
             renderSatellite(pose, lines, cx, OrbitalStrikeMode.LASER.originY() + 6.0D, cz,
-                    SATELLITE_SCALE, 0.62F, gameTime + partial);
+                    SATELLITE_SCALE, satAlpha, gameTime + partial);
         } else {
             renderPlatform(pose, lines, cx, BEAM_TOP_Y + PLATFORM_HEIGHT, cz, gameTime, partial);
             renderSkyFracture(pose, lines, cx, cz, gameTime, partial, strikeRadius);
@@ -554,38 +559,54 @@ public final class OrbitalStrikeHighlighter {
 
     /**
      * 宇宙激光的下落 —— 严格说没有「下落」：光速，充能完成的那一帧整根光柱就已经从
-     * Y=700 的深空发射点连到地面。落地后光柱还停留 16 tick 再收掉（不是闪一下就没了）。
-     *
-     * <p>形态：白热芯 + 电青主束 + 宽辉光三层圆柱，起点一个星芒。它和轨道炮的「弹体」、
-     * 长矛的「锥体」、风暴的「锯齿」都不同 —— 这是唯一一根真正贯穿画面的大光柱，
-     * 因为「从宇宙之外打下来」这件事本身就该长这样。</p>
+     * Y=460 的卫星连到地面。落地后它**不停**：一路往下烧，光柱一直延伸到世界底层，
+     * 随着整列挖掘一层层变深，直到井挖穿到虚空才熄灭 —— 「激光不消失，直到虚空」。
      */
     private static void renderLaserFall(PoseStack pose, VertexConsumer lines,
                                         MultiBufferSource.BufferSource buffers, Matrix4f matrix,
                                         double cx, double cz, double gy, int strikeRadius,
                                         long gameTime, float partial) {
-        // 落地后停留 16 tick 再收
         long impactAge = OrbitalStrikeClientState.impactAge();
-        float life = impactAge < 0 ? 1.0F : Mth.clamp(1.0F - impactAge / 16.0F, 0.0F, 1.0F);
+        int digTicks = OrbitalStrikeClientState.estimateDigTicks();
+        // 前 80% 满亮度（一直在烧），最后 20% 才收 —— 对应「井快挖到底了才熄」
+        float life;
+        if (impactAge < 0) {
+            life = 1.0F;
+        } else {
+            float fadeStart = digTicks * 0.8F;
+            life = Mth.clamp(1.0F - (impactAge - fadeStart) / Math.max(1.0F, digTicks - fadeStart),
+                    0.0F, 1.0F);
+        }
         if (life <= 0.01F) {
             return;
         }
         double originY = OrbitalStrikeMode.LASER.originY();
-        double height = originY - gy;
+        // 落地前光柱止于地表；落地后一路延伸到世界底层（被挖开的部分才会露出来）
+        double bottomY = gy;
+        if (impactAge >= 0) {
+            ClientLevel level = Minecraft.getInstance().level;
+            if (level != null) {
+                bottomY = Math.min(gy, level.getMinBuildHeight());
+            }
+        }
+        double height = originY - bottomY;
+        if (height <= 0.5D) {
+            return;
+        }
         double width = Math.max(1.6D, strikeRadius * 0.10D);
         float pulse = 0.85F + 0.15F * Mth.sin((gameTime + partial) * 1.9F);
         float a = life * pulse;
 
         VertexConsumer quads = buffers.getBuffer(RenderType.debugQuads());
         // 三层：越里面的越白越实
-        cylinderWall(quads, matrix, cx, gy, cz, width * 2.4D, height,
+        cylinderWall(quads, matrix, cx, bottomY, cz, width * 2.4D, height,
                 CYAN_R, CYAN_G, CYAN_B, 0.18F * a, 12);
-        cylinderWall(quads, matrix, cx, gy, cz, width, height,
+        cylinderWall(quads, matrix, cx, bottomY, cz, width, height,
                 CYAN_R, CYAN_G, CYAN_B, 0.55F * a, 12);
-        cylinderWall(quads, matrix, cx, gy, cz, width * 0.35D, height,
+        cylinderWall(quads, matrix, cx, bottomY, cz, width * 0.35D, height,
                 1.0F, 1.0F, 1.0F, 0.95F * a, 12);
 
-        // 深空发射点：星核 + 光晕；落地端一个亮点
+        // 卫星端：星核 + 光晕；地表/井口一个亮点
         drawCircle(pose, lines, cx, originY, cz, 2.6D, 1.0F, 1.0F, 1.0F, a);
         drawCircle(pose, lines, cx, originY, cz, 7.0D, CYAN_R, CYAN_G, CYAN_B, 0.35F * a);
         drawCircle(pose, lines, cx, gy + 0.10D, cz, width * 1.8D, 1.0F, 1.0F, 1.0F, a);

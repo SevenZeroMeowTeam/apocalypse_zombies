@@ -127,7 +127,8 @@ public final class OrbitalScreenFX {
      * 不依赖 render 事件的矩阵；FOV punch 带来的几度误差对 12px 的标记无所谓。</p>
      */
     public static void renderTargetingHud(GuiGraphics graphics, Minecraft minecraft, float partialTick) {
-        if (!OrbitalStrikeClientState.isActive() || minecraft.options.hideGui || minecraft.player == null) {
+        // 用 isHudActive 而不是 isActive：宇宙激光的光柱要烧到虚空，HUD 不能陪跑几十秒
+        if (!OrbitalStrikeClientState.isHudActive() || minecraft.options.hideGui || minecraft.player == null) {
             return;
         }
         float strength = distanceFalloff(minecraft);
@@ -364,8 +365,8 @@ public final class OrbitalScreenFX {
         if (!Config.ORBITAL_STRIKE_ENABLED.get() || minecraft.options.hideGui || minecraft.player == null) {
             return;
         }
-        // 打击进行中：顶部 HUD 已经在显示模式名了，不要重复
-        if (OrbitalStrikeClientState.isActive()) {
+        // 打击进行中：顶部 HUD 已经在显示模式名了，不要重复（用短窗口，光柱烧井时不挡视野）
+        if (OrbitalStrikeClientState.isHudActive()) {
             return;
         }
         ItemStack main = minecraft.player.getMainHandItem();

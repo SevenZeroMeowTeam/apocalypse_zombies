@@ -48,15 +48,48 @@ public final class OrbitalStrikeClientState {
     }
 
     /**
-     * 余晖长度：风暴是分批落地的（5 道 × {@link OrbitalStrikeMode#STORM_STAGGER_TICKS}），
-     * 状态必须活到最后一两道落地 + 它们的冲击环播完，否则后几道的环会被硬切。
+     * HUD 的存活窗口（比 {@link #isActive()} 短得多）。
+     *
+     * <p>宇宙激光的光柱要一直烧到虚空（几十秒），但火控角框、状态行、模式提示不该跟着挂那么久 ——
+     * 那些是「发射流程」的 UI，打完就该收。</p>
+     */
+    public static boolean isHudActive() {
+        if (target == null) {
+            return false;
+        }
+        long elapsed = now() - startGameTime;
+        return elapsed >= 0L && elapsed <= (long) lockTicks + fallTicks + AFTERGLOW_TICKS;
+    }
+
+    /**
+     * 余晖长度：
+     * <ul>
+     *   <li>风暴是分批落地的（5 道 × {@link OrbitalStrikeMode#STORM_STAGGER_TICKS}），状态必须活到
+     *       最后一两道落地 + 它们的冲击环播完；</li>
+     *   <li>宇宙激光要**一直烧到虚空**：按整列挖掘的估算时长来活，否则光柱会在井还没挖到底时消失。</li>
+     * </ul>
      */
     public static int afterglowTicks() {
         if (mode == OrbitalStrikeMode.STORM) {
             return AFTERGLOW_TICKS + OrbitalStrikeMode.STORM_STAGGER_TICKS
                     * (OrbitalStrikeMode.STORM_POINTS - 1);
         }
+        if (mode == OrbitalStrikeMode.LASER) {
+            return estimateDigTicks();
+        }
         return AFTERGLOW_TICKS;
+    }
+
+    /**
+     * 估算整列挖掘要多少 tick —— 与服务端 {@code ColumnJob} 的每 tick 预算（4000 格）对齐。
+     * 客户端只用来决定「光柱还该不该亮着」，不需要精确。
+     */
+    public static int estimateDigTicks() {
+        var level = net.minecraft.client.Minecraft.getInstance().level;
+        int span = level == null ? 384 : level.getMaxBuildHeight() - level.getMinBuildHeight();
+        long cells = (2L * radius + 1L) * (2L * radius + 1L) * span;
+        long ticks = cells / 4000L + 60L;
+        return (int) Math.max(60L, Math.min(1400L, ticks));
     }
 
     public static BlockPos target() {
