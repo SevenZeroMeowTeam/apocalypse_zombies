@@ -19,26 +19,30 @@ public class OrbitalStrikePacket {
     private final BlockPos target;
     private final int radius;
     private final int lockTicks;
+    private final int fallTicks;
 
-    public OrbitalStrikePacket(BlockPos target, int radius, int lockTicks) {
+    public OrbitalStrikePacket(BlockPos target, int radius, int lockTicks, int fallTicks) {
         this.target = target;
         this.radius = radius;
         this.lockTicks = lockTicks;
+        this.fallTicks = fallTicks;
     }
 
     public static void encode(OrbitalStrikePacket packet, FriendlyByteBuf buf) {
         buf.writeBlockPos(packet.target);
         buf.writeVarInt(packet.radius);
         buf.writeVarInt(packet.lockTicks);
+        buf.writeVarInt(packet.fallTicks);
     }
 
     public static OrbitalStrikePacket decode(FriendlyByteBuf buf) {
-        return new OrbitalStrikePacket(buf.readBlockPos(), buf.readVarInt(), buf.readVarInt());
+        return new OrbitalStrikePacket(buf.readBlockPos(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt());
     }
 
     public static void handle(OrbitalStrikePacket packet, Supplier<NetworkEvent.Context> context) {
         NetworkEvent.Context ctx = context.get();
-        ctx.enqueueWork(() -> OrbitalStrikeClientState.start(packet.target, packet.radius, packet.lockTicks));
+        ctx.enqueueWork(() -> OrbitalStrikeClientState.start(
+                packet.target, packet.radius, packet.lockTicks, packet.fallTicks));
         ctx.setPacketHandled(true);
     }
 }

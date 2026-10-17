@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `1.3.1` |
+| **当前版本** | `1.4.0` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -278,6 +278,34 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 1.4.0 — 2026-10-17
+
+**参考 the-shooting-star 的设计再升级：整列挖穿模式 + 下落时长可调 + 范围上限 96。**
+
+反编译研究（对 `the-shooting-star-demo-1.4.3` 用 vineflower 反编译出 232 个源文件）提炼出
+它的三个设计要点，这轮把最有价值的一个落地：
+
+1. **整列挖穿**（`star/a.java`：从建筑上限挖到虚空）→ 我们加 `destroy_mode = "column"`
+2. **速度倍率**（`spell/a.java`：进度 tick × 倍率，支持 0.3×~3×）→ 我们加 `fall_ticks` 配置
+   （6~60 tick），比它简单，效果一致
+3. **多线程挖世界**（`ExecutorService` 线程池）→ **不采纳**：我们的 destroyBlock 会触发
+   BreakEvent / 光照 / 邻居更新，跨线程不安全；保持单线程分 tick
+
+- **`destroy_mode`**：`"cube"`（默认，立方体）/ `"column"`（整列挖穿）。
+  - column 模式从 `getMaxBuildHeight()-1` 一路挖到 `getMinBuildHeight()`，方形列游标式推进
+    （不预计算列表 —— 半径 32 约 160 万格，列表要几十 MB）。
+  - 每 tick 全局预算 4000 格（原 2500），column 半径 32 约 20 秒挖完，玩家能看着整片地往下陷。
+- **`fall_ticks` 配置化**（6~60，默认 24）：下落时长不再硬编码；服务端通过
+  `OrbitalStrikePacket` 把真实值同步给客户端（客户端原来写死 24）。
+- **`radius` 上限 64 → 96**：配合 column 模式可以挖更大的坑（但塌得更久）。
+- 其他：`OrbitalStrikeClientState.FALL_TICKS` 常量改成 `fallTicks()` 实例访问器；
+  `DestroyTask` 拆成 `DestroyJob` 接口 + `CubeJob` / `ColumnJob` 两个实现。
+
+**验证**：`gradlew compileJava` 全绿；`mods.toml` 版本 1.4.0；装机 1.4.0；配置已同步写入
+`config/apocalypse_zombies-common.toml` 的 `destroy_mode = "cube"` + `fall_ticks = 24`。
+**未验证**：column 模式的实际观感（整列塌陷）和 20 秒挖掘时长仍需进游戏实测；
+参考 mod 的「创造模式提前拉走」我们没实现（创造玩家天然免疫伤害，但方块照挖）。
 
 ### 1.3.1 — 2026-10-17
 

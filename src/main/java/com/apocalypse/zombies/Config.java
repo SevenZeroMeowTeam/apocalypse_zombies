@@ -465,6 +465,10 @@ public final class Config {
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_DAMAGE_MOBS;
     /** 是否摧毁选区内方块（不掉落物）。关闭后只打生物 + 视觉。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_DESTROY_BLOCKS;
+    /** 破坏模式：{@code cube}（立方体，默认）/ {@code column}（整列挖穿，参考 the-shooting-star）。 */
+    public static final ForgeConfigSpec.ConfigValue<String> ORBITAL_STRIKE_DESTROY_MODE;
+    /** 下落阶段时长（tick）。默认 24 = 1.2 s，范围 6~60。 */
+    public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_FALL_TICKS;
     /** 玩家两次右键之间的冷却（秒）。 */
     public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_COOLDOWN;
     /** 锁定阶段时长（tick）。默认 30 = 1.5 s。 */
@@ -1062,10 +1066,10 @@ public final class Config {
                 .push("orbital_strike");
         ORBITAL_STRIKE_ENABLED = b.comment("Master switch. False = the remote is inert, no outline is drawn.")
                 .define("enabled", true);
-        ORBITAL_STRIKE_RADIUS = b.comment("Half edge of the targeted cube, in blocks. 1..64. The default 24",
+        ORBITAL_STRIKE_RADIUS = b.comment("Half edge of the targeted cube, in blocks. 1..96. The default 24",
                         "is a 49x49x49 strike; anything above ~32 is crushed in batches over several",
                         "ticks so the game stays playable while the ground is being erased.")
-                .defineInRange("radius", 24, 1, 64);
+                .defineInRange("radius", 24, 1, 96);
         ORBITAL_STRIKE_DAMAGE = b.comment("Damage at the centre. Falls linearly to 30% at the edge of the",
                         "cube. Half-hearts: 20 = 10 hearts, 100 = 50 hearts (enough to one-shot an",
                         "iron golem).")
@@ -1081,6 +1085,15 @@ public final class Config {
                         "(chests, furnaces, spawners, signs) are NEVER destroyed regardless; bedrock,",
                         "barriers, command blocks and hardness > max_hardness are also skipped.")
                 .define("destroy_blocks", true);
+        ORBITAL_STRIKE_DESTROY_MODE = b.comment("How the ground is removed: 'cube' (a box around the target)",
+                        "or 'column' (the whole column from build limit down to the void, watching the",
+                        "terrain fall away layer by layer — the signature look of the reference mod).",
+                        "Column mode is much heavier: radius 32 is ~1.6M positions, so it drops at the",
+                        "same per-tick budget and takes ~20s to finish. Anything not 'column' = cube.")
+                .define("destroy_mode", "cube");
+        ORBITAL_STRIKE_FALL_TICKS = b.comment("Falling-beam length in ticks (20 = 1 s). 24 = 1.2 s by default;",
+                        "shorter feels like a snap, longer lets you watch the beam crawl down from Y=320.")
+                .defineInRange("fall_ticks", 24, 6, 60);
         ORBITAL_STRIKE_COOLDOWN = b.comment("Cooldown between strikes, in seconds. 0 = no cooldown at all",
                         "(spam the remote as fast as you can click it).")
                 .defineInRange("cooldown", 0, 0, 600);

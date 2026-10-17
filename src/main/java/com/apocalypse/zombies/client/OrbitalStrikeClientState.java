@@ -8,25 +8,26 @@ import net.minecraft.core.BlockPos;
  */
 public final class OrbitalStrikeClientState {
 
-    /** 下落阶段固定 tick 数（与 {@link com.apocalypse.zombies.event.OrbitalStrikeManager} 的
-     * {@code FALL_TICKS} 保持一致，1.3.1 起改为 24 = 1.2 s，让光柱下落看得清）。 */
-    public static final int FALL_TICKS = 24;
+    /** 下落阶段的默认 tick 数（服务端通过 {@link com.apocalypse.zombies.network.OrbitalStrikePacket} 传真实值）。 */
+    public static final int DEFAULT_FALL_TICKS = 24;
     /** 落地后的余晖（渲染用，服务端不管）。 */
     public static final int AFTERGLOW_TICKS = 40;
 
     private static BlockPos target;
     private static int radius;
     private static int lockTicks;
+    private static int fallTicks = DEFAULT_FALL_TICKS;
     private static long startGameTime;
 
     private OrbitalStrikeClientState() {
     }
 
     /** 收到新的打击：覆盖旧的（同一时刻只支持一次打击的观感，够用且不会叠图）。 */
-    public static void start(BlockPos pos, int radius, int lockTicks) {
+    public static void start(BlockPos pos, int radius, int lockTicks, int fallTicks) {
         target = pos.immutable();
         OrbitalStrikeClientState.radius = radius;
         OrbitalStrikeClientState.lockTicks = lockTicks;
+        OrbitalStrikeClientState.fallTicks = Math.max(1, fallTicks);
         OrbitalStrikeClientState.startGameTime = now();
     }
 
@@ -40,7 +41,7 @@ public final class OrbitalStrikeClientState {
             return false;
         }
         long elapsed = now() - startGameTime;
-        return elapsed >= 0L && elapsed <= (long) lockTicks + FALL_TICKS + AFTERGLOW_TICKS;
+        return elapsed >= 0L && elapsed <= (long) lockTicks + fallTicks + AFTERGLOW_TICKS;
     }
 
     public static BlockPos target() {
@@ -82,9 +83,14 @@ public final class OrbitalStrikeClientState {
         if (!isActive()) {
             return -1L;
         }
-        long impact = (long) lockTicks + FALL_TICKS;
+        long impact = (long) lockTicks + fallTicks;
         long elapsed = elapsed();
         return elapsed < impact ? -1L : elapsed - impact;
+    }
+
+    /** 当前这次打击的下落时长（tick）。 */
+    public static int fallTicks() {
+        return fallTicks;
     }
 
     /** 本机玩家到打击目标的距离（格）。玩家不在世界时返回一个很大的值。 */

@@ -162,10 +162,11 @@ public final class OrbitalStrikeHighlighter {
         } else {
             // —— 下落 / 余晖阶段
             long fallElapsed = elapsed - lockTicks;
-            float fall = Mth.clamp((float) fallElapsed / OrbitalStrikeClientState.FALL_TICKS, 0.0F, 1.0F);
+            int fallTicks = OrbitalStrikeClientState.fallTicks();
+            float fall = Mth.clamp((float) fallElapsed / fallTicks, 0.0F, 1.0F);
             // 余晖衰减（落地后 40 tick 内从 1 缩到 0）
             float glow = fall >= 1.0F
-                    ? Mth.clamp(1.0F - (float) (fallElapsed - OrbitalStrikeClientState.FALL_TICKS)
+                    ? Mth.clamp(1.0F - (float) (fallElapsed - fallTicks)
                     / OrbitalStrikeClientState.AFTERGLOW_TICKS, 0.0F, 1.0F)
                     : 1.0F;
             // 光柱的「头」：从头顶点往下走到地面

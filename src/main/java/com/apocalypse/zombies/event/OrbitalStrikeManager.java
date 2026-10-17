@@ -49,8 +49,6 @@ public final class OrbitalStrikeManager {
 
     /** 从哪个高度开始往下打。Y=320 远高于世界构建上限（Y=256），所以视觉上像「从天上来的」。 */
     private static final double IMPACT_FALL_Y = 320.0D;
-    /** 下落阶段固定走 24 tick（约 1.2 s）—— 玩家能看见光柱从太空慢慢压下来（1.3.1 起）。 */
-    private static final int FALL_TICKS = 24;
     /** 下落阶段每 tick 在光柱上的粒子密度。 */
     private static final int FALL_PARTICLES_PER_TICK = 12;
     /** 锁定阶段每 tick 在目标点周围 5x5x5 范围画的锁定粒子数。 */
@@ -65,8 +63,8 @@ public final class OrbitalStrikeManager {
      * 一个 tick 里全挖掉会把主线程卡死几秒，所以拆成每 tick 最多 {@link #BLOCKS_PER_TICK} 个，
      * 顺带获得「地面从中间向外一圈圈塌下去」的观感。
      */
-    private static final List<DestroyTask> DESTROY_QUEUE = new ArrayList<>();
-    private static final int BLOCKS_PER_TICK = 2500;
+    private static final List<DestroyJob> DESTROY_QUEUE = new ArrayList<>();
+    private static final int BLOCKS_PER_TICK = 4000;
 
     /** 调试用 —— 暂时不开。{@code Config.ORBITAL_STRIKE_DEBUG.get()} 才打开。 */
     private static final boolean DEBUG = false;
@@ -88,11 +86,12 @@ public final class OrbitalStrikeManager {
         ACTIVE.put(player.getUUID(),
                 new ActiveStrike(target.immutable(), player.getUUID(), player.level().dimension()));
         // 视觉：把目标点告诉客户端（只对本人发，多人时各看各的；别人放技能时不会在你屏幕上画）
-        int radius = Mth.clamp(Config.ORBITAL_STRIKE_RADIUS.get(), 1, 16);
+        int radius = Mth.clamp(Config.ORBITAL_STRIKE_RADIUS.get(), 1, 96);
         int lockTicks = Math.max(20, Config.ORBITAL_STRIKE_LOCK_TICKS.get());
+        int fallTicks = Math.max(6, Config.ORBITAL_STRIKE_FALL_TICKS.get());
         com.apocalypse.zombies.network.NetworkHandler.CHANNEL.send(
                 net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player),
-                new com.apocalypse.zombies.network.OrbitalStrikePacket(target, radius, lockTicks));
+                new com.apocalypse.zombies.network.OrbitalStrikePacket(target, radius, lockTicks, fallTicks));
     }
 
     @SubscribeEvent
@@ -105,11 +104,11 @@ public final class OrbitalStrikeManager {
         // 无冷却狂点时任务会排队而不是一次全砸下来。
         if (!DESTROY_QUEUE.isEmpty()) {
             int budget = BLOCKS_PER_TICK;
-            Iterator<DestroyTask> dit = DESTROY_QUEUE.iterator();
+            Iterator<DestroyJob> dit = DESTROY_QUEUE.iterator();
             while (dit.hasNext() && budget > 0) {
-                DestroyTask task = dit.next();
-                budget -= task.step(budget);
-                if (task.done()) {
+                DestroyJob job = dit.next();
+                budget -= job.step(budget);
+                if (job.done()) {
                     dit.remove();
                 }
             }
@@ -131,6 +130,7 @@ public final class OrbitalStrikeManager {
                 continue;
             }
             int lockTicks = Math.max(20, Config.ORBITAL_STRIKE_LOCK_TICKS.get());
+            int fallTicks = Math.max(6, Config.ORBITAL_STRIKE_FALL_TICKS.get());
             ActiveStrike next = strike.advance();
             // 迭代中改值必须走 entry.setValue —— put 到已有 key 虽然不会触发 CME，
             // 但结构修改与迭代器混用是容易出错的写法，这里保持干净。
@@ -138,8 +138,8 @@ public final class OrbitalStrikeManager {
             strike = next;
             if (strike.age() < lockTicks) {
                 tickLocking(level, strike);
-            } else if (strike.age() < lockTicks + FALL_TICKS) {
-                tickFalling(level, strike, strike.age() - lockTicks);
+            } else if (strike.age() < lockTicks + fallTicks) {
+                tickFalling(level, strike, strike.age() - lockTicks, fallTicks);
             } else {
                 tickImpact(level, strike);
                 it.remove();
@@ -198,10 +198,10 @@ public final class OrbitalStrikeManager {
         }
     }
 
-    private static void tickFalling(ServerLevel level, ActiveStrike strike, int local) {
-        // local ∈ [0, FALL_TICKS)；+1 让最后一帧正好压到地面（t = 6/6 = 1.0），
+    private static void tickFalling(ServerLevel level, ActiveStrike strike, int local, int fallTicks) {
+        // local ∈ [0, fallTicks)；+1 让最后一帧正好压到地面（t = fallTicks/fallTicks = 1.0），
         // 否则光柱头永远停在地面上方约一格，落地瞬间会「跳一格」。
-        double t = (double) (local + 1) / FALL_TICKS;
+        double t = (double) (local + 1) / fallTicks;
         double y = Mth.lerp(t, IMPACT_FALL_Y, strike.target.getY() + 1.0D);
         Vec3 ground = Vec3.atCenterOf(strike.target);
         // 每 tick 在光柱本体上画 FALL_PARTICLES_PER_TICK 个粒子，沿 y 轴铺开
@@ -289,12 +289,21 @@ public final class OrbitalStrikeManager {
     }
 
     /**
-     * 排队一次大范围破坏。真正挖方块在 {@link #onServerTick} 里分 tick 推进 ——
+     * 排队一次大范围破坏（模式由 {@code [orbital_strike] destroy_mode} 决定）。
+     * 真正挖方块在 {@link #onServerTick} 里分 tick 推进 ——
      * radius=24 时选区约 11.7 万格，一个 tick 全挖会让主线程卡住好几秒。
      */
     private static void enqueueDestroy(ServerLevel level, BlockPos center, int radius) {
-        AABB box = new AABB(center).inflate(radius);
-        DESTROY_QUEUE.add(new DestroyTask(level, collectBox(box)));
+        String mode = Config.ORBITAL_STRIKE_DESTROY_MODE.get();
+        if (mode != null && "column".equalsIgnoreCase(mode.trim())) {
+            // 整列挖穿（参考 the-shooting-star 的招牌观感）：从建筑上限一路挖到虚空。
+            // 这一模式不预计算列表 —— 半径 32 就有 160 万个位置，游标式推进省内存。
+            DESTROY_QUEUE.add(new ColumnJob(level, center.getX(), center.getZ(), radius,
+                    level.getMinBuildHeight(), level.getMaxBuildHeight() - 1));
+        } else {
+            AABB box = new AABB(center).inflate(radius);
+            DESTROY_QUEUE.add(new CubeJob(level, collectBox(box)));
+        }
     }
 
     /**
@@ -335,19 +344,26 @@ public final class OrbitalStrikeManager {
         level.destroyBlock(pos, false);
     }
 
-    /** 分批破坏任务：每 tick 处理最多 {@link #BLOCKS_PER_TICK} 个方块，直到列表走完。 */
-    private static final class DestroyTask {
+    /** 分批破坏任务的统一接口：每 tick 处理至多 budget 个位置，返回实际处理数。 */
+    private interface DestroyJob {
+        int step(int budget);
+
+        boolean done();
+    }
+
+    /** 立方体模式：预计算好的方块列表，从上往下走。 */
+    private static final class CubeJob implements DestroyJob {
         private final ServerLevel level;
         private final List<BlockPos> blocks;
         private int cursor;
 
-        DestroyTask(ServerLevel level, List<BlockPos> blocks) {
+        CubeJob(ServerLevel level, List<BlockPos> blocks) {
             this.level = level;
             this.blocks = blocks;
         }
 
-        /** 处理至多 {@code budget} 个方块，返回实际处理数。 */
-        int step(int budget) {
+        @Override
+        public int step(int budget) {
             int end = Math.min(cursor + budget, blocks.size());
             int count = end - cursor;
             for (int i = cursor; i < end; i++) {
@@ -357,8 +373,62 @@ public final class OrbitalStrikeManager {
             return count;
         }
 
-        boolean done() {
+        @Override
+        public boolean done() {
             return cursor >= blocks.size();
+        }
+    }
+
+    /**
+     * 整列模式：以 (cx, cz) 为圆心、radius 为半径的方形列，从 {@code maxY} 一路挖到 {@code minY}。
+     * 不预计算列表（半径 32 约 160 万格，列表会吃掉几十 MB），用游标按层推进。
+     */
+    private static final class ColumnJob implements DestroyJob {
+        private final ServerLevel level;
+        private final int cx;
+        private final int cz;
+        private final int radius;
+        private final int minY;
+        private final BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        private int y;
+        private int xi;
+        private int zi;
+
+        ColumnJob(ServerLevel level, int cx, int cz, int radius, int minY, int maxY) {
+            this.level = level;
+            this.cx = cx;
+            this.cz = cz;
+            this.radius = radius;
+            this.minY = minY;
+            this.y = maxY;
+            this.xi = -radius;
+            this.zi = -radius;
+        }
+
+        @Override
+        public int step(int budget) {
+            int processed = 0;
+            while (processed < budget && !done()) {
+                cursor.set(cx + xi, y, cz + zi);
+                destroyOne(level, cursor);
+                processed++;
+                // 方形列游标：z 走完换 x，x 走完下一层
+                zi++;
+                if (zi > radius) {
+                    zi = -radius;
+                    xi++;
+                }
+                if (xi > radius) {
+                    xi = -radius;
+                    y--;
+                }
+            }
+            return processed;
+        }
+
+        @Override
+        public boolean done() {
+            return y < minY;
         }
     }
 
