@@ -459,29 +459,46 @@ public final class OrbitalStrikeHighlighter {
                                         MultiBufferSource.BufferSource buffers, Matrix4f matrix,
                                         double cx, double cz, double headY, float fall,
                                         int strikeRadius, long gameTime, float partial) {
-        // 落地帧交给冲击特效，弹体不再往下画
-        if (fall >= 0.999F) {
-            return;
+        long impactAge = OrbitalStrikeClientState.impactAge();
+        int digTicks = OrbitalStrikeClientState.estimateDigTicks();
+        double shellY = headY;
+        float life = 1.0F;
+        if (impactAge >= 0) {
+            // 落地后弹体**不消失**：跟着井深一路下钻 —— 与服务端的整列挖掘同速
+            // （每 tick 4000 格，一层是 (2r+1)² 格），下到世界底层（虚空）才熄。
+            double cellsPerLayer = (2.0D * strikeRadius + 1.0D) * (2.0D * strikeRadius + 1.0D);
+            double depth = impactAge * 4000.0D / Math.max(1.0D, cellsPerLayer);
+            ClientLevel level = Minecraft.getInstance().level;
+            double floorY = level == null ? headY - 384.0D : level.getMinBuildHeight();
+            shellY = Math.max(floorY, headY - depth);
+            // 前 80% 满亮度，最后 20% 收 —— 和宇宙激光同一套节奏
+            float fadeStart = digTicks * 0.8F;
+            life = Mth.clamp(1.0F - (impactAge - fadeStart) / Math.max(1.0F, digTicks - fadeStart),
+                    0.0F, 1.0F);
+            if (life <= 0.01F) {
+                return;
+            }
         }
         double shellR = Math.max(1.1D, strikeRadius * 0.20D);
         VertexConsumer quads = buffers.getBuffer(RenderType.debugQuads());
-        // 弹体外壳：底边跟着 headY 走
-        cylinderWall(quads, matrix, cx, headY, cz, shellR, 5.5D, 1.0F, 0.96F, 0.88F, 0.95F, 12);
-        cylinderWall(quads, matrix, cx, headY, cz, shellR * 1.45D, 3.6D,
-                CYAN_R, CYAN_G, CYAN_B, 0.30F, 12);
+        // 弹体外壳：底边跟着弹体走（落地后就是井底）
+        cylinderWall(quads, matrix, cx, shellY, cz, shellR, 5.5D, 1.0F, 0.96F, 0.88F, 0.95F * life, 12);
+        cylinderWall(quads, matrix, cx, shellY, cz, shellR * 1.45D, 3.6D,
+                CYAN_R, CYAN_G, CYAN_B, 0.30F * life, 12);
         // 尾迹：一串越来越小的环往上拖（读作「大气被烧出来的尾」）
         for (int i = 1; i <= 7; i++) {
-            double y = headY + 6.0D + i * 4.0D;
+            double y = shellY + 6.0D + i * 4.0D;
             double r = Math.max(0.12D, shellR * (1.15D - i * 0.13D));
-            drawCircle(pose, lines, cx, y, cz, r, CYAN_R, CYAN_G, CYAN_B, 0.38F * (1.0F - i / 8.0F));
+            drawCircle(pose, lines, cx, y, cz, r, CYAN_R, CYAN_G, CYAN_B,
+                    0.38F * (1.0F - i / 8.0F) * life);
         }
         // 头部三圈：给弹体一点体积感
         for (int i = 0; i < 3; i++) {
-            drawTiltedRing(pose, lines, cx, headY + 2.5D, cz, shellR * 1.2D,
+            drawTiltedRing(pose, lines, cx, shellY + 2.5D, cz, shellR * 1.2D,
                     i * Math.PI / 3.0D + (gameTime + partial) * 0.08D,
-                    1.0F, 1.0F, 1.0F, 0.55F);
+                    1.0F, 1.0F, 1.0F, 0.55F * life);
         }
-        drawCircle(pose, lines, cx, headY, cz, shellR * 0.9D, 1.0F, 1.0F, 1.0F, 0.85F);
+        drawCircle(pose, lines, cx, shellY, cz, shellR * 0.9D, 1.0F, 1.0F, 1.0F, 0.85F * life);
     }
 
     /**

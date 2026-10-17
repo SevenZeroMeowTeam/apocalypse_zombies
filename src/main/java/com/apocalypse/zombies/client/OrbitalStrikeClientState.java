@@ -74,7 +74,9 @@ public final class OrbitalStrikeClientState {
             return AFTERGLOW_TICKS + OrbitalStrikeMode.STORM_STAGGER_TICKS
                     * (OrbitalStrikeMode.STORM_POINTS - 1);
         }
-        if (mode == OrbitalStrikeMode.LASER) {
+        if ((mode == OrbitalStrikeMode.LASER || mode == OrbitalStrikeMode.CANNON)
+                && com.apocalypse.zombies.Config.ORBITAL_STRIKE_DESTROY_BLOCKS.get()) {
+            // 激光烧穿、炮弹下钻 —— 两者都要活到整列挖掘结束（虚空）
             return estimateDigTicks();
         }
         return AFTERGLOW_TICKS;
