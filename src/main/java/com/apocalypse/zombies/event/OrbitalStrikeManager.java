@@ -107,7 +107,9 @@ public final class OrbitalStrikeManager {
             }
             int lockTicks = Math.max(20, Config.ORBITAL_STRIKE_LOCK_TICKS.get());
             ActiveStrike next = strike.advance();
-            ACTIVE.put(entry.getKey(), next);
+            // 迭代中改值必须走 entry.setValue —— put 到已有 key 虽然不会触发 CME，
+            // 但结构修改与迭代器混用是容易出错的写法，这里保持干净。
+            entry.setValue(next);
             strike = next;
             if (strike.age() < lockTicks) {
                 tickLocking(level, strike);
@@ -120,10 +122,8 @@ public final class OrbitalStrikeManager {
         }
     }
 
-    /** 跨维度（拿到玩家所在维度的 ServerLevel）。玩家离线 → 整条清掉，不让原打击挂在虚空里。 */
+    /** 跨维度（拿到玩家所在维度的 ServerLevel）。玩家离线不影响 —— 已启动的打击照常走完。 */
     private static ServerLevel resolveLevel(ActiveStrike strike) {
-        // 简单实现：直接取任意在线玩家的 ServerLevel 当源；这里改用遍历 ServerLifecycleEvents 已注册的
-        // currentServer 不行（MinecraftServer 是单例，但跨线程拿不靠谱），改为按 dimension key 找。
         net.minecraft.server.MinecraftServer server = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
         if (server == null) {
             return null;
@@ -132,7 +132,6 @@ public final class OrbitalStrikeManager {
         if (level == null) {
             return null;
         }
-        // 主人离线：跳过整条不回收（让它自己自然走完特效），观感上更连贯
         return level;
     }
 
@@ -153,6 +152,14 @@ public final class OrbitalStrikeManager {
             level.playSound(null, target, SoundEvents.BEACON_AMBIENT, SoundSource.PLAYERS,
                     0.6F, 1.8F);
         }
+        // 「太空里有人按了按钮」：锁定阶段在高空稀疏撒星点 —— 玩家抬头能看到上面有动静
+        if ((strike.age() & 3) == 0) {
+            double sx = (level.random.nextDouble() - 0.5D) * 10.0D;
+            double sz = (level.random.nextDouble() - 0.5D) * 10.0D;
+            level.sendParticles(ParticleTypes.END_ROD,
+                    ground.x + sx, IMPACT_FALL_Y + level.random.nextDouble() * 24.0D, ground.z + sz,
+                    1, 0.0D, -0.1D, 0.0D, 0.0D);
+        }
         // 进度越大，目标圈收缩到目标点（视觉引导「锁定中」）
         if (DEBUG) {
             ApocalypseZombies.LOGGER.info("[orbital] lock tick {} target={}", strike.age(), target);
@@ -160,8 +167,9 @@ public final class OrbitalStrikeManager {
     }
 
     private static void tickFalling(ServerLevel level, ActiveStrike strike, int local) {
-        // local ∈ [0, FALL_TICKS)
-        double t = (double) local / FALL_TICKS;
+        // local ∈ [0, FALL_TICKS)；+1 让最后一帧正好压到地面（t = 6/6 = 1.0），
+        // 否则光柱头永远停在地面上方约一格，落地瞬间会「跳一格」。
+        double t = (double) (local + 1) / FALL_TICKS;
         double y = Mth.lerp(t, IMPACT_FALL_Y, strike.target.getY() + 1.0D);
         Vec3 ground = Vec3.atCenterOf(strike.target);
         // 每 tick 在光柱本体上画 FALL_PARTICLES_PER_TICK 个粒子，沿 y 轴铺开
@@ -173,6 +181,13 @@ public final class OrbitalStrikeManager {
                     1, 0.0D, -0.4D, 0.0D, 0.0D);
             level.sendParticles(ParticleTypes.END_ROD, ground.x + ox, fy, ground.z + oz,
                     1, 0.0D, 0.0D, 0.0D, 0.0D);
+        }
+        // 尾部加一点「拖慢的尘埃」—— 光柱从宇宙落下来，最上面留一点星尘不散
+        for (int i = 0; i < 3; i++) {
+            double sx = (level.random.nextDouble() - 0.5D) * 4.0D;
+            double sz = (level.random.nextDouble() - 0.5D) * 4.0D;
+            level.sendParticles(ParticleTypes.END_ROD, ground.x + sx, IMPACT_FALL_Y + 4.0D + level.random.nextDouble() * 20.0D,
+                    ground.z + sz, 1, 0.0D, -0.2D, 0.0D, 0.0D);
         }
         // 下落音（从远到近越来越响）
         float volume = 0.3F + (float) t * 1.4F;
@@ -196,6 +211,16 @@ public final class OrbitalStrikeManager {
         // 爆炸视觉 + 大量粒子
         level.playSound(null, target, SoundEvents.GENERIC_EXPLODE, SoundSource.PLAYERS, 1.6F, 0.7F);
         level.playSound(null, target, SoundEvents.BEACON_DEACTIVATE, SoundSource.PLAYERS, 1.2F, 0.5F);
+        // 远雷：光柱砸到地面那一下，别处也能听见（音量按距离衰减，玩家 120 格内可闻）
+        level.playSound(null, target, SoundEvents.LIGHTNING_BOLT_THUNDER, SoundSource.WEATHER, 2.4F, 0.55F);
+        // 起源：Y=320 处的太空爆点，六角星尘向外散开 —— 强调「这一击来自宇宙之外」
+        for (int i = 0; i < 32; i++) {
+            double angle = i * Math.PI * 2.0D / 32.0D;
+            double spread = 1.5D + level.random.nextDouble() * 2.5D;
+            level.sendParticles(ParticleTypes.END_ROD,
+                    ground.x, IMPACT_FALL_Y, ground.z,
+                    1, Math.cos(angle) * spread, 0.3D + level.random.nextDouble() * 0.6D, Math.sin(angle) * spread, 0.25D);
+        }
         // 大爆 FLASH + 多色粉尘
         for (int i = 0; i < IMPACT_PARTICLES; i++) {
             double ox = (level.random.nextDouble() - 0.5D) * radius * 1.6D;
@@ -209,9 +234,6 @@ public final class OrbitalStrikeManager {
                 level.sendParticles(ParticleTypes.FLASH, ground.x, ground.y + 0.5D, ground.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
             }
         }
-        // 顶上一道余晖柱（落地后仍然挂 1.5 s），让玩家看清楚「这里刚被轨道打了一下」
-        // 用 CosmeticParticle + 一个临时方块示意？不做方块，用 EXTRA_FALL_TICKS 走一个回声
-        // 简化：不做余晖柱（落地粒子本身已经够炫）
     }
 
     /**
@@ -282,6 +304,11 @@ public final class OrbitalStrikeManager {
                     entity.setHealth(0.0F);
                     entity.die(source);
                 }
+                // 秒杀反馈：一团爆炸 + 一撮灵魂粒子（让「秒了」这件事看得见）
+                level.sendParticles(ParticleTypes.EXPLOSION_EMITTER,
+                        entity.getX(), entity.getY() + 0.5D, entity.getZ(), 1, 0.0D, 0.0D, 0.0D, 0.0D);
+                level.sendParticles(ParticleTypes.SOUL,
+                        entity.getX(), entity.getY() + 0.5D, entity.getZ(), 8, 0.3D, 0.4D, 0.3D, 0.02D);
                 continue;
             }
             // 常规伤害：中心 100%，边缘 30% —— 越靠近中心伤害越高
