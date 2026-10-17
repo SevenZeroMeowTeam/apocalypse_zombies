@@ -1066,12 +1066,13 @@ public final class Config {
                         "is a 16x16x16 explosion that will level most minor structures in one go.")
                 .defineInRange("radius", 8, 1, 16);
         ORBITAL_STRIKE_DAMAGE = b.comment("Damage at the centre. Falls linearly to 30% at the edge of the",
-                        "cube. Half-hearts: 20 = 10 hearts, 60 = 30 hearts.")
-                .defineInRange("damage", 60.0D, 0.0D, 200.0D);
+                        "cube. Half-hearts: 20 = 10 hearts, 100 = 50 hearts (enough to one-shot an",
+                        "iron golem).")
+                .defineInRange("damage", 100.0D, 0.0D, 200.0D);
         ORBITAL_STRIKE_KILL_CHANCE = b.comment("Per-hit execute chance, in percent (0~100). A successful",
                         "roll kills the target outright, ignoring health, armour and damage caps.",
                         "This is the 'instant kill' that makes the strike feel like a weapon from orbit.")
-                .defineInRange("kill_chance", 35, 0, 100);
+                .defineInRange("kill_chance", 40, 0, 100);
         ORBITAL_STRIKE_DAMAGE_MOBS = b.comment("Apply the AOE damage to living entities (including the",
                         "caller and their allies if the crosshair is on top of them).")
                 .define("damage_mobs", true);

@@ -35,10 +35,12 @@ public final class OrbitalStrikeHighlighter {
     private static final float[] READY = new float[]{0.40F, 0.91F, 0.98F};
     /** 冷却中 / 已锁定的颜色。 */
     private static final float[] LOCKED = new float[]{0.95F, 0.28F, 0.28F};
-    /** 光柱：中心半径（格）。 */
-    private static final double BEAM_RADIUS = 0.42D;
+    /** 光柱：中心半径（格）。1.2.7 起从 0.42 加粗到 0.7 —— 天基炮的束应该更「粗实」。 */
+    private static final double BEAM_RADIUS = 0.7D;
     /** 光柱顶点高度（Y=320 与配置一致，但客户端不读服务端配置，用常量同步感）。 */
     private static final double BEAM_TOP_Y = 320.0D;
+    /** 卫星/轨道平台悬浮在光柱顶上方的高度。 */
+    private static final double PLATFORM_HEIGHT = 6.0D;
 
     private OrbitalStrikeHighlighter() {
     }
@@ -114,10 +116,16 @@ public final class OrbitalStrikeHighlighter {
         double cx = target.getX() + 0.5D;
         double cz = target.getZ() + 0.5D;
         double gy = target.getY() + 1.0D;
+        long tick = gameTime;
+        float partial = event.getPartialTick();
+
+        // —— 「太空里的东西」：轨道平台从锁定第一帧就悬在光柱顶上。
+        // 它不是实体/方块，纯渲染 —— 玩家在哪、瞄哪，平台就飘在哪的正上方。
+        renderPlatform(pose, buffer, cx, BEAM_TOP_Y + PLATFORM_HEIGHT, cz, tick, partial);
 
         if (elapsed < lockTicks) {
             // —— 锁定阶段：地面红环闪烁 + 地面上方一小段引线
-            float pulse = 0.55F + 0.45F * Mth.sin((gameTime + event.getPartialTick()) * 0.6F);
+            float pulse = 0.55F + 0.45F * Mth.sin((gameTime + partial) * 0.6F);
             drawCircle(pose, buffer, cx, gy + 0.02D, cz, Math.max(1.5D, OrbitalStrikeClientState.radius()),
                     0.95F, 0.28F, 0.28F, 0.55F * pulse);
             // 引线：从目标上方 6 格的一点指向目标
@@ -139,25 +147,86 @@ public final class OrbitalStrikeHighlighter {
             float wb = Mth.lerp(fall, 1.0F, 1.0F);
             float alpha = 0.9F * glow;
 
-            // 8 条竖线围成圆柱（BEAM_RADIUS 半径），从 Y=320 到地面
-            for (int i = 0; i < 8; i++) {
-                double angle = i * Math.PI * 2.0D / 8.0D;
+            // 12 条竖线围成圆柱，从 Y=320 到地面（1.2.7：8 边 → 12 边，更圆更粗）
+            for (int i = 0; i < 12; i++) {
+                double angle = i * Math.PI * 2.0D / 12.0D;
                 double bx = cx + Math.cos(angle) * BEAM_RADIUS;
                 double bz = cz + Math.sin(angle) * BEAM_RADIUS;
                 line(pose, buffer, bx, BEAM_TOP_Y, bz, bx, headY, bz, wr, wg, wb, alpha, 0, -1, 0);
             }
             // 中心一条更亮的芯线（芯色偏青）
             line(pose, buffer, cx, BEAM_TOP_Y, cz, cx, headY, cz, 0.65F, 0.95F, 1.0F, alpha, 0, -1, 0);
+
+            // 能量环：光柱上每隔 20 格一个会随高度脉动的环（旋转的错觉靠相位差做）
+            if (fall < 1.0F) {
+                float pulsePhase = (gameTime + partial) * 0.35F;
+                for (int ring = 0; ring < 3; ring++) {
+                    double ringY = headY + 20.0D + ring * 20.0D;
+                    if (ringY > BEAM_TOP_Y) {
+                        continue;
+                    }
+                    double ringR = BEAM_RADIUS + 1.2D + 0.5D * (double) Mth.sin(pulsePhase + ring * 1.3F);
+                    drawCircle(pose, buffer, cx, ringY, cz, ringR,
+                            0.75F, 0.98F, 1.0F, alpha * 0.35F);
+                }
+            }
+
             // 头部的横向亮圈（像枪口焰/冲击波）
-            drawCircle(pose, buffer, cx, headY, cz, BEAM_RADIUS + 0.6D, 1.0F, 1.0F, 1.0F, alpha * 0.8F);
+            drawCircle(pose, buffer, cx, headY, cz, BEAM_RADIUS + 0.8D, 1.0F, 1.0F, 1.0F, alpha * 0.8F);
             // 地面冲击波：落地后扩散
             if (fall >= 1.0F) {
-                double shockRadius = BEAM_RADIUS + 1.0D + (1.0D - glow) * OrbitalStrikeClientState.radius() * 1.6D;
+                double shockRadius = BEAM_RADIUS + 1.2D + (1.0D - glow) * OrbitalStrikeClientState.radius() * 1.8D;
                 drawCircle(pose, buffer, cx, gy + 0.04D, cz, shockRadius, 0.6F, 0.95F, 1.0F, glow * 0.55F);
             }
         }
         pose.popPose();
         buffers.endBatch(RenderType.lines());
+    }
+
+    /**
+     * 「轨道平台」：悬浮在光柱顶上方 6 格的一个发光体 —— 三层套方框（核心 / 外环 / 内环）
+     * 加两圈缓慢旋转的环带。不依赖实体或方块，纯线框，所以不会出现在世界存档里。
+     */
+    private static void renderPlatform(PoseStack pose, VertexConsumer buffer,
+                                       double cx, double cy, double cz, long gameTime, float partial) {
+        float t = gameTime + partial;
+        // 核心：3×3×3 方框，白光
+        double core = 1.5D;
+        drawCube(pose, buffer, cx - core, cy - core, cz - core, cx + core, cy + core, cz + core,
+                0.70F, 0.97F, 1.0F, 0.85F);
+        // 中环：半径 3.2，上下交替的两圈（错相，看起来像在转）
+        for (int ring = 0; ring < 2; ring++) {
+            double phase = t * 0.08D + ring * Math.PI;
+            double radius = 3.2D;
+            // 圆环的「倾角」用 y 随角度起伏实现：y = cy + sin(angle*2 + phase) * 0.8
+            int segments = 24;
+            for (int i = 0; i < segments; i++) {
+                double a1 = i * Math.PI * 2.0D / segments;
+                double a2 = (i + 1) * Math.PI * 2.0D / segments;
+                double y1 = cy + Math.sin(a1 * 2.0D + phase) * 0.8D;
+                double y2 = cy + Math.sin(a2 * 2.0D + phase) * 0.8D;
+                line(pose, buffer,
+                        cx + Math.cos(a1) * radius, y1, cz + Math.sin(a1) * radius,
+                        cx + Math.cos(a2) * radius, y2, cz + Math.sin(a2) * radius,
+                        0.55F, 0.90F, 1.0F, 0.55F, 0, 1, 0);
+            }
+        }
+        // 外环：半径 5.2，缓慢反向旋转 + 更淡
+        {
+            double phase = -t * 0.05D;
+            double radius = 5.2D;
+            int segments = 24;
+            for (int i = 0; i < segments; i++) {
+                double a1 = i * Math.PI * 2.0D / segments;
+                double a2 = (i + 1) * Math.PI * 2.0D / segments;
+                double y1 = cy + Math.sin(a1 * 3.0D + phase) * 0.5D;
+                double y2 = cy + Math.sin(a2 * 3.0D + phase) * 0.5D;
+                line(pose, buffer,
+                        cx + Math.cos(a1) * radius, y1, cz + Math.sin(a1) * radius,
+                        cx + Math.cos(a2) * radius, y2, cz + Math.sin(a2) * radius,
+                        0.45F, 0.80F, 1.0F, 0.35F, 0, 1, 0);
+            }
+        }
     }
 
     // ---------------------------------------------------------------- 基础图元

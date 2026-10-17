@@ -152,6 +152,11 @@ public final class OrbitalStrikeManager {
             level.playSound(null, target, SoundEvents.BEACON_AMBIENT, SoundSource.PLAYERS,
                     0.6F, 1.8F);
         }
+        // 第一帧：轨道平台「上线」的提示音（与客户端平台渲染同时出现）
+        if (strike.age() == 1) {
+            level.playSound(null, target, SoundEvents.BEACON_POWER_SELECT, SoundSource.PLAYERS,
+                    1.2F, 1.4F);
+        }
         // 「太空里有人按了按钮」：锁定阶段在高空稀疏撒星点 —— 玩家抬头能看到上面有动静
         if ((strike.age() & 3) == 0) {
             double sx = (level.random.nextDouble() - 0.5D) * 10.0D;
@@ -232,6 +237,20 @@ public final class OrbitalStrikeManager {
                     1, 0.0D, 0.0D, 0.0D, 0.0D);
             if ((i & 1) == 0) {
                 level.sendParticles(ParticleTypes.FLASH, ground.x, ground.y + 0.5D, ground.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            }
+        }
+        // 蘑菇云：从地面向上翻腾的浓烟 + 火舌（落点越近越密，往外围越来越稀）
+        for (int i = 0; i < 56; i++) {
+            double ox = (level.random.nextDouble() - 0.5D) * radius * 1.2D;
+            double oz = (level.random.nextDouble() - 0.5D) * radius * 1.2D;
+            double oy = level.random.nextDouble() * radius * 0.9D;
+            level.sendParticles(ParticleTypes.LARGE_SMOKE,
+                    ground.x + ox, ground.y + oy, ground.z + oz,
+                    1, 0.0D, 0.06D + level.random.nextDouble() * 0.10D, 0.0D, 0.03D);
+            if ((i & 1) == 0) {
+                level.sendParticles(ParticleTypes.FLAME,
+                        ground.x + ox * 0.6D, ground.y + oy * 0.4D, ground.z + oz * 0.6D,
+                        1, 0.0D, 0.12D, 0.0D, 0.03D);
             }
         }
     }
