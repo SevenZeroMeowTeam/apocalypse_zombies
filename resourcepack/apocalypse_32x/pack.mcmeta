@@ -1,0 +1,10 @@
+{
+  "pack": {
+    "pack_format": 4,
+    "supported_formats": {
+      "min_inclusive": 4,
+      "max_inclusive": 99
+    },
+    "description": "§5Apocalypse Zombies §8· §7Scorched 32x\n§8Cracked stone, ash, rust and dead grass"
+  }
+}
