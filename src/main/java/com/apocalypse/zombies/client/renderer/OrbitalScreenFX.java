@@ -192,6 +192,12 @@ public final class OrbitalScreenFX {
                     width / 2 - minecraft.font.width(warn) / 2, inset + len + 42,
                     (alpha << 24) | 0xB6FF9A, true);
         }
+        if (v2 && "black_rain".equals(protocol.id())) {
+            String warn = "警告：毒雨只伤生者 · 亡灵免疫";
+            graphics.drawString(minecraft.font, warn,
+                    width / 2 - minecraft.font.width(warn) / 2, inset + len + 42,
+                    (alpha << 24) | 0xC9A0FF, true);
+        }
         // v2 电影：K 跳过提示（跳过后不再显示）
         if (v2 && OrbitalCinematic.isEngaged() && !OrbitalCinematic.isSkipped()) {
             String skip = "[K] SKIP // 跳过过场";
@@ -382,6 +388,54 @@ public final class OrbitalScreenFX {
         int half1 = (int) (alpha * 0.7F);
         safeFill(graphics, w / 4, h / 4, w * 3 / 4, h * 3 / 4, (half1 << 24) | CORE_WHITE);
         safeFill(graphics, w * 3 / 8, h * 3 / 8, w * 5 / 8, h * 5 / 8, (alpha << 24) | 0xFFFFFF);
+    }
+
+    /**
+     * 黑雨的持续雨幕：撞击后几十秒的斜落紫黑雨丝 + 脏雾压角。
+     *
+     * <p>不换服务端天气 —— 那是一张全局开关，会把「局部打击」变成「全世界下雨」；
+     * 这里只在本机画一层，走两步走出毒雨区就自然淡出。</p>
+     */
+    public static void renderBlackRain(GuiGraphics graphics, Minecraft minecraft) {
+        if (!OrbitalStrikeClientState.isBlackRainRaining()) {
+            return;
+        }
+        if (minecraft.options.hideGui || minecraft.player == null || minecraft.level == null) {
+            return;
+        }
+        float falloff = distanceFalloff(minecraft);
+        if (falloff <= 0.0F) {
+            return;
+        }
+        long age = OrbitalStrikeClientState.impactAge();
+        int duration = OrbitalStrikeClientState.blackRainTicks();
+        float fadeIn = Mth.clamp(age / 16.0F, 0.0F, 1.0F);
+        float fadeOut = Mth.clamp((duration - age) / 120.0F, 0.0F, 1.0F);
+        float alpha = falloff * Math.min(fadeIn, fadeOut);
+        if (alpha <= 0.0F) {
+            return;
+        }
+        int w = graphics.guiWidth();
+        int h = graphics.guiHeight();
+        long time = minecraft.level.getGameTime();
+        int base = (int) (alpha * 255.0F);
+        // 脏雾：上下压角，中间留给视野
+        graphics.fill(0, 0, w, (int) (h * 0.22F), ((int) (base * 0.20F) << 24) | 0x0B0410);
+        graphics.fill(0, (int) (h * 0.78F), w, h, ((int) (base * 0.20F) << 24) | 0x0B0410);
+        // 斜雨丝：固定相位的 40 条，整体随时间向左下走，不随机跳
+        int streaks = 40;
+        for (int i = 0; i < streaks; i++) {
+            int x0 = (int) ((i * 211L + time * 4L) % (w + 160L)) - 80;
+            int y0 = (int) ((i * 337L + time * 13L) % (h + 200L)) - 100;
+            int length = 12 + (i % 5) * 5;
+            int streakAlpha = (int) (base * (0.18F + (i % 4) * 0.05F));
+            int color = (streakAlpha << 24) | ((i % 3 == 0) ? 0x8A4FC8 : 0x5E3A74);
+            for (int k = 0; k < length; k += 2) {
+                int x = x0 - k / 2;
+                int y = y0 + k;
+                graphics.fill(x, y, x + 1, y + 2, color);
+            }
+        }
     }
 
     /**

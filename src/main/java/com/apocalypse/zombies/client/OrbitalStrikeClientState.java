@@ -79,6 +79,10 @@ public final class OrbitalStrikeClientState {
             return AFTERGLOW_TICKS + OrbitalStrikeMode.STORM_STAGGER_TICKS
                     * (OrbitalStrikeMode.STORM_POINTS - 1);
         }
+        if (mode == OrbitalStrikeMode.PLANET) {
+            // 黑雨：撞击只是一瞬，毒雨要在场上活几十秒 —— 状态必须陪到雨停
+            return Math.max(AFTERGLOW_TICKS, blackRainTicks() + 120);
+        }
         if ((mode == OrbitalStrikeMode.LASER || mode == OrbitalStrikeMode.CANNON)
                 && com.apocalypse.zombies.Config.ORBITAL_STRIKE_DESTROY_BLOCKS.get()) {
             // 激光烧穿、炮弹下钻 —— 两者都要活到整列挖掘结束（虚空）
@@ -156,6 +160,20 @@ public final class OrbitalStrikeClientState {
     /** 当前这次打击的下落时长（tick）。 */
     public static int fallTicks() {
         return fallTicks;
+    }
+
+    /** 黑雨持续时间（tick）——服务端配置的客户端镜像。 */
+    public static int blackRainTicks() {
+        return com.apocalypse.zombies.Config.ORBITAL_STRIKE_BLACK_RAIN_TICKS.get();
+    }
+
+    /** 毒雨是否还在下（撞击帧之后、持续时间之内）。 */
+    public static boolean isBlackRainRaining() {
+        if (mode != OrbitalStrikeMode.PLANET) {
+            return false;
+        }
+        long age = impactAge();
+        return age >= 0L && age < blackRainTicks();
     }
 
     /** 本机玩家到打击目标的距离（格）。玩家不在世界时返回一个很大的值。 */

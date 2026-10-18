@@ -77,6 +77,10 @@ public final class OrbitalStrikeHighlighter {
     private static final float CYAN_R = 0.40F;
     private static final float CYAN_G = 0.91F;
     private static final float CYAN_B = 0.98F;
+    /** 黑雨的毒紫：只用在 PLANET（黑雨）这一种协议的落点/陨石上。 */
+    private static final float TOXIC_R = 0.62F;
+    private static final float TOXIC_G = 0.42F;
+    private static final float TOXIC_B = 1.00F;
     /** 冲击环的圆周分段：40 段在 44 格外看不出棱角。 */
     private static final int RING_SEGMENTS = 40;
     /** 地面裂纹条数 / 每条折点数。 */
@@ -394,6 +398,45 @@ public final class OrbitalStrikeHighlighter {
                 1.0F, 0.95F, 0.78F, alpha * 0.75F, 0, 1, 0);
     }
 
+    /** 黎明 DAWN 的前摇：一条白金光柱 + 地面白金环，天空出现晨线。 */
+    private static void renderDawnPreview(PoseStack pose, VertexConsumer lines,
+                                          double cx, double cz, double gy, int radius,
+                                          float progress, double time) {
+        float pulse = 0.72F + 0.28F * (float) Math.sin(time * 0.45D);
+        float a = (0.18F + 0.55F * progress) * pulse;
+        line(pose, lines, cx, gy, cz, cx, OrbitalStrikeMode.LASER.originY(), cz,
+                1.0F, 0.96F, 0.78F, a * 0.70F, 0, 1, 0);
+        drawCircle(pose, lines, cx, gy + 0.06D, cz, Math.max(2.0D, radius * 0.95D),
+                1.0F, 0.94F, 0.72F, a * 0.75F);
+        drawCircle(pose, lines, cx, gy + 0.10D, cz, Math.max(1.2D, radius * 0.45D),
+                1.0F, 1.0F, 0.95F, a * 0.55F);
+        // 天空晨线：一条很淡的水平亮线，暗示「太阳被引下来」
+        for (int i = -3; i <= 3; i++) {
+            double x = cx + i * Math.max(2.0D, radius * 0.35D);
+            line(pose, lines, x, gy + 30.0D, cz, x, gy + 31.0D, cz,
+                    1.0F, 0.95F, 0.78F, a * 0.28F, 0, 1, 0);
+        }
+    }
+
+    /** 黎明命中：白金天光柱 + 玻璃环；只净化亡灵，不做爆炸式破坏。 */
+    private static void renderDawnImpact(PoseStack pose, VertexConsumer lines,
+                                         double cx, double cz, double gy, int radius,
+                                         float age) {
+        float fade = Mth.clamp(1.0F - age / 220.0F, 0.0F, 1.0F);
+        if (fade <= 0.01F) {
+            return;
+        }
+        line(pose, lines, cx, gy, cz, cx, gy + 60.0D, cz,
+                1.0F, 1.0F, 0.92F, fade * 0.75F, 0, 1, 0);
+        for (int i = 0; i < 3; i++) {
+            double r = radius * (0.35D + i * 0.3D);
+            drawCircle(pose, lines, cx, gy + 0.08D + i * 0.03D, cz, r,
+                    1.0F, 0.95F, 0.78F, fade * (0.55F - i * 0.12F));
+        }
+        drawCircle(pose, lines, cx, gy + 30.0D, cz, radius * 0.6D,
+                1.0F, 1.0F, 0.95F, fade * 0.35F);
+    }
+
     /** 隔离 QUARANTINE 的前摇：一圈白/冷青的力场墙，从地面升到 24 格，顶部有环。 */
     private static void renderQuarantinePreview(PoseStack pose, VertexConsumer lines,
                                                 double cx, double cz, double gy, int radius,
@@ -546,6 +589,12 @@ public final class OrbitalStrikeHighlighter {
                 }
             }
             case LASER -> {
+                StrikeProtocol dawn = StrikeProtocols.protocolFor(mode);
+                if ("dawn".equals(dawn.id())) {
+                    renderDawnPreview(pose, lines, cx, cz, gy, strikeRadius, progress,
+                            gameTime + partial);
+                    break;
+                }
                 // 卫星充能：目标区最大的一圈 + 卫星下方一圈圈收紧的光环
                 double targetR = strikeRadius * (1.30D - 0.12D * progress);
                 drawCircle(pose, lines, cx, gy + 0.05D, cz, targetR,
@@ -567,16 +616,18 @@ public final class OrbitalStrikeHighlighter {
                 }
             }
             case PLANET -> {
-                // 陨石落点：一圈大准星 + 行星方向一颗正在脱离的亮点
+                // 黑雨落点：毒紫大准星 + 内圈「污染半径」 + 行星方向一颗正在脱离的亮点
                 double targetR = strikeRadius * (1.25D - 0.15D * progress);
                 drawCircle(pose, lines, cx, gy + 0.05D, cz, targetR,
-                        CYAN_R, CYAN_G, CYAN_B, 0.25F + 0.50F * progress);
+                        TOXIC_R, TOXIC_G, TOXIC_B, 0.25F + 0.50F * progress);
+                drawCircle(pose, lines, cx, gy + 0.05D, cz, targetR * 1.55D,
+                        TOXIC_R, TOXIC_G, TOXIC_B, (0.12F + 0.30F * progress) * pulse);
                 for (int i = 0; i < 4; i++) {
                     double a = i * Math.PI / 2.0D;
                     line(pose, lines,
                             cx + Math.cos(a) * targetR * 0.80D, gy + 0.05D, cz + Math.sin(a) * targetR * 0.80D,
                             cx + Math.cos(a) * targetR * 1.25D, gy + 0.05D, cz + Math.sin(a) * targetR * 1.25D,
-                            CYAN_R, CYAN_G, CYAN_B, 0.50F + 0.40F * progress, 0, 1, 0);
+                            TOXIC_R, TOXIC_G, TOXIC_B, 0.50F + 0.40F * progress, 0, 1, 0);
                 }
                 double[] offset = OrbitalStrikeMode.meteorOffset(OrbitalStrikeClientState.target());
                 double px = cx + offset[0] * 0.55D;
@@ -750,7 +801,13 @@ public final class OrbitalStrikeHighlighter {
                 }
                 case STORM -> renderStormImpact(quads, lines, matrix, cx, gy, cz, beamR,
                         strikeRadius, age, target, pose, gameTime, partial);
-                case LASER -> renderLaserImpact(quads, matrix, cx, gy, cz, strikeRadius, age);
+                case LASER -> {
+                    if ("dawn".equals(StrikeProtocols.protocolFor(mode).id())) {
+                        renderDawnImpact(pose, lines, cx, cz, gy, strikeRadius, age);
+                    } else {
+                        renderLaserImpact(quads, matrix, cx, gy, cz, strikeRadius, age);
+                    }
+                }
                 default -> {
                     renderImpactRings(quads, matrix, cx, gy, cz, beamR, strikeRadius, age, glow);
                     renderCracks(quads, matrix, level, target, strikeRadius, age);
@@ -1401,7 +1458,7 @@ public final class OrbitalStrikeHighlighter {
         VertexConsumer quads = buffers.getBuffer(RenderType.debugQuads());
         // 弹体 + 头部三圈
         cylinderWall(quads, matrix, hx, hy, hz, meteorR, meteorR * 2.2D,
-                1.0F, 0.90F, 0.72F, 0.95F, 10);
+                TOXIC_R, TOXIC_G, TOXIC_B, 0.95F, 10);
         for (int i = 0; i < 3; i++) {
             drawTiltedRing(pose, lines, hx, hy + meteorR, hz, meteorR * 1.4D,
                     i * Math.PI / 3.0D + (gameTime + partial) * 0.20D,
@@ -1414,13 +1471,13 @@ public final class OrbitalStrikeHighlighter {
             double ty = hy - dy * d;
             double tz = hz - dz * d;
             double rr = Math.max(0.15D, meteorR * (1.25D - i * 0.09D));
-            drawCircle(pose, lines, tx, ty, tz, rr, CYAN_R, CYAN_G, CYAN_B,
+            drawCircle(pose, lines, tx, ty, tz, rr, TOXIC_R, TOXIC_G, TOXIC_B,
                     0.55F * (1.0F - i / 14.0F));
         }
         // 火线 + 头部亮点
         line(pose, lines, hx, hy, hz,
                 hx - dx * 46.0D, hy - dy * 46.0D, hz - dz * 46.0D,
-                1.0F, 0.62F, 0.42F, 0.55F, 0, -1, 0);
+                TOXIC_R, TOXIC_G, TOXIC_B, 0.55F, 0, -1, 0);
         drawCircle(pose, lines, hx, hy, hz, meteorR * 0.9D, 1.0F, 1.0F, 1.0F, 0.92F);
     }
 

@@ -485,6 +485,8 @@ public final class Config {
     public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_SWARM_BROOD;
     /** 蜂群 SWARM：是否允许巢荚孵出僵尸（关掉后巢荚只是地形/氛围）。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_SWARM_SPAWN;
+    /** 黑雨 BLACK RAIN：毒雨持续 tick 数（20 = 1s）。 */
+    public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_BLACK_RAIN_TICKS;
     /** 是否摧毁选区内方块（不掉落物）。关闭后只打生物 + 视觉。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_DESTROY_BLOCKS;
     /** 破坏模式：{@code layers}（逐层下削，默认）/ {@code cube}（整块立方体）/ {@code column}（整列挖穿）。 */
@@ -1153,6 +1155,10 @@ public final class Config {
         ORBITAL_STRIKE_SWARM_SPAWN = b.comment("SWARM protocol: allow the pods to hatch zombies. False =",
                         "the pods/sculk stay as a terrain signature but no horde is spawned.")
                 .define("swarm_spawn", true);
+        ORBITAL_STRIKE_BLACK_RAIN_TICKS = b.comment("BLACK RAIN protocol: how long the toxic rain lasts, in",
+                        "ticks. 600 = 30s. The rain poisons/withers living things inside the zone and",
+                        "extinguishes burning entities; set damage_mobs=false to make it visual only.")
+                .defineInRange("black_rain_ticks", 600, 100, 2400);
         ORBITAL_STRIKE_DESTROY_BLOCKS = b.comment("Destroy the blocks inside the cube. Block-entity tiles",
                         "(chests, furnaces, spawners, signs) are NEVER destroyed regardless; barriers,",
                         "command blocks and hardness > max_hardness are also skipped.",

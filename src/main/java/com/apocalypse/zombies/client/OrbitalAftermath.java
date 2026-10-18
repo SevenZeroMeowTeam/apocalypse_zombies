@@ -78,12 +78,15 @@ public final class OrbitalAftermath {
             double x = cx + Math.cos(angle) * dist;
             double z = cz + Math.sin(angle) * dist;
             double y = cy + 0.4D + level.random.nextDouble() * (radius * 0.55D + 3.0D);
-            level.addParticle(ModParticles.ORBITAL_EMBER.get(), true,
-                    x, y, z,
-                    (level.random.nextDouble() - 0.5D) * 0.02D,
-                    0.012D + level.random.nextDouble() * 0.03D,
-                    (level.random.nextDouble() - 0.5D) * 0.02D);
-            // 各协议的余波语言：焚城余火、蜂群孢子、隔离冷白。
+            // 黑雨没有青色余烬：它留下的是脏紫滴落和灰。
+            if (mode != OrbitalStrikeMode.PLANET) {
+                level.addParticle(ModParticles.ORBITAL_EMBER.get(), true,
+                        x, y, z,
+                        (level.random.nextDouble() - 0.5D) * 0.02D,
+                        0.012D + level.random.nextDouble() * 0.03D,
+                        (level.random.nextDouble() - 0.5D) * 0.02D);
+            }
+            // 各协议的余波语言：焚城余火、蜂群孢子、隔离冷白、黑雨毒滴。
             switch (mode) {
                 case CANNON -> {
                     level.addParticle(ParticleTypes.FLAME, true, x, y, z,
@@ -105,6 +108,20 @@ public final class OrbitalAftermath {
                         (level.random.nextDouble() - 0.5D) * 0.01D,
                         0.006D + level.random.nextDouble() * 0.012D,
                         (level.random.nextDouble() - 0.5D) * 0.01D);
+                case PLANET -> {
+                    level.addParticle(ParticleTypes.FALLING_OBSIDIAN_TEAR, true, x, y, z,
+                            0.0D, -0.02D, 0.0D);
+                    if ((since & 1) == 0) {
+                        level.addParticle(ParticleTypes.ASH, true, x, y + 2.0D, z,
+                                (level.random.nextDouble() - 0.5D) * 0.01D,
+                                -0.015D, (level.random.nextDouble() - 0.5D) * 0.01D);
+                    }
+                    if ((since % 6) == 0) {
+                        level.addParticle(ParticleTypes.SQUID_INK, true, x, y + 1.2D, z,
+                                (level.random.nextDouble() - 0.5D) * 0.01D,
+                                0.01D, (level.random.nextDouble() - 0.5D) * 0.01D);
+                    }
+                }
                 default -> {
                 }
             }

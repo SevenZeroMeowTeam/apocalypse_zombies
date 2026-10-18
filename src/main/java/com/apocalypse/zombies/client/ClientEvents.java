@@ -181,6 +181,17 @@ public final class ClientEvents {
         // 月相雾色在前（事件语义：雾色基线）。轨道打击不再染色雾 —— 屏幕层的青白泛光
         // 已经够表达「能量拍在脸上」，而整片地形改色会和月亮事件抢同一个混合通道。
         MoonEvent moon = ClientMoonState.getMoonEvent();
+        // 黑雨：把整片雾染成脏紫黑，越靠近撞击中心越浓（远看只是一层灰）。
+        boolean blackRain = OrbitalStrikeClientState.isBlackRainRaining();
+        if (blackRain) {
+            long age = OrbitalStrikeClientState.impactAge();
+            float life = OrbitalStrikeClientState.blackRainTicks();
+            float fade = Mth.clamp((life - age) / Math.max(1.0F, life * 0.35F), 0.0F, 1.0F);
+            float strength = Mth.clamp(0.62F * fade + 0.14F, 0.0F, 0.8F);
+            event.setRed(Mth.lerp(strength, event.getRed(), 0.045F));
+            event.setGreen(Mth.lerp(strength, event.getGreen(), 0.030F));
+            event.setBlue(Mth.lerp(strength, event.getBlue(), 0.075F));
+        }
         if (!moon.isActive()) {
             return;
         }
@@ -573,6 +584,7 @@ public final class ClientEvents {
         OrbitalScreenFX.renderCinematicBars(event.getGuiGraphics(), minecraft);
         OrbitalScreenFX.renderImpactGlow(event.getGuiGraphics(), minecraft);
         OrbitalScreenFX.renderImpactFlash(event.getGuiGraphics(), minecraft);
+        OrbitalScreenFX.renderBlackRain(event.getGuiGraphics(), minecraft);
         OrbitalScreenFX.renderHud(event.getGuiGraphics(), minecraft, event.getPartialTick());
         OrbitalScreenFX.renderTargetingHud(event.getGuiGraphics(), minecraft, event.getPartialTick());
         OrbitalScreenFX.renderModeHint(event.getGuiGraphics(), minecraft);

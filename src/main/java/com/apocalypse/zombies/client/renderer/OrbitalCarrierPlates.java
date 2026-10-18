@@ -61,6 +61,8 @@ public final class OrbitalCarrierPlates {
     /** 电影板放在镜头前方多远（再按 sceneScale 缩放，低视距也不裁）。 */
     private static final double PLATE_DISTANCE = 24.0D;
 
+    private static final float[] TOXIC = {0.66F, 0.44F, 1.0F};
+
     private static final float[] ORANGE = {1.00F, 0.58F, 0.20F};
     private static final float[] BLUE = {0.55F, 0.82F, 1.00F};
     private static final float[] CYAN = {0.70F, 0.95F, 1.00F};
@@ -597,7 +599,11 @@ public final class OrbitalCarrierPlates {
                     c, r, u, hw, hh, u0, v0, u1, v1);
             double size = (0.020D + as * 0.16D) * (1.0D - i * 0.06D) * hh;
             glowQuad(glow, matrix, tp, r, u, Math.max(0.002D, size),
-                    1.0F, 0.44F, 0.14F, alpha * 0.26F * (1.0F - i / 12.0F), fwd);
+                    0.78F, 0.32F, 1.0F, alpha * 0.26F * (1.0F - i / 12.0F), fwd);
+            if ((i & 1) == 0) {
+                glowQuad(glow, matrix, tp, r, u, Math.max(0.001D, size * 0.55D),
+                        0.50F, 0.95F, 0.55F, alpha * 0.16F * (1.0F - i / 12.0F), fwd);
+            }
         }
         // 碎屑：绕本体向外飘
         for (int i = 0; i < 12; i++) {
@@ -605,7 +611,7 @@ public final class OrbitalCarrierPlates {
             double rad = (0.26D + 0.10D * (i % 4) + 0.18D * (float) move) * as / 0.34D * hh;
             double[] p = add(asteroid, add(mul(r, Math.cos(ang) * rad), mul(u, Math.sin(ang) * rad)));
             glowQuad(glow, matrix, p, r, u, 0.009D * hh,
-                    1.0F, 0.48F, 0.18F,
+                    0.66F, 0.42F, 1.0F,
                     alpha * 0.22F * (0.4F + 0.6F * (0.5F + 0.5F * (float) Math.sin(time * 3.0D + i))),
                     fwd);
         }
@@ -624,8 +630,8 @@ public final class OrbitalCarrierPlates {
                     av + dirV * as * 1.55D, c, r, u, hw, hh, u0, v0, u1, v1);
             double[] flareB = platePoint(au + dirU * as * 1.55D - 0.020D,
                     av + dirV * as * 1.55D, c, r, u, hw, hh, u0, v0, u1, v1);
-            line(lines, matrix, nose, flareA, 1.0F, 0.62F, 0.26F, alpha * 0.30F, fwd);
-            line(lines, matrix, nose, flareB, 1.0F, 0.62F, 0.26F, alpha * 0.30F, fwd);
+            line(lines, matrix, nose, flareA, 0.74F, 0.48F, 1.0F, alpha * 0.30F, fwd);
+            line(lines, matrix, nose, flareB, 0.74F, 0.48F, 1.0F, alpha * 0.30F, fwd);
 
             // 岩体本体（在尾焰之后画，遮住身后的光）；缓慢自转，像真的在翻滚
             double spin = time * 0.12D + move * 1.6D;
@@ -638,14 +644,14 @@ public final class OrbitalCarrierPlates {
             // 本体边缘的热辉（在岩体之后，贴边发光）
             VertexConsumer rim = buffers.getBuffer(RT_GLOW);
             glowQuad(rim, matrix, asteroid, r, u, as * hh * 1.20D,
-                    1.0F, 0.42F, 0.12F, alpha * 0.16F, fwd);
+                    0.55F, 1.0F, 0.55F, alpha * 0.16F, fwd);
             buffers.endBatch(RT_GLOW);
         } else {
             // 撞击地球：在地球上的入射点炸开
             double[] hit = platePoint(0.60D, 0.63D, c, r, u, hw, hh, u0, v0, u1, v1);
             VertexConsumer hitGlow = buffers.getBuffer(RT_GLOW);
             impactBurst(lines, hitGlow, matrix, hit, r, u, hh, (float) impactAge,
-                    ORANGE, alpha, fwd);
+                    TOXIC, alpha, fwd);
             buffers.endBatch(RT_GLOW);
         }
     }

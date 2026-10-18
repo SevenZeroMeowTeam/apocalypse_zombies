@@ -51,7 +51,7 @@ public record StrikeProtocol(
     /** 是否已经接入 v2 相位/电影（P1：断层、蜂群、隔离、焚城；黎明/黑雨后续）。 */
     public boolean migrated() {
         return switch (id) {
-            case "fault", "swarm", "quarantine", "cinder" -> true;
+            case "fault", "swarm", "quarantine", "cinder", "dawn", "black_rain" -> true;
             default -> false;
         };
     }

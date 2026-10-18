@@ -18,6 +18,8 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MobType;
 import net.minecraft.world.entity.monster.Zombie;
@@ -72,6 +74,33 @@ public final class OrbitalStrikeManager {
      * 玩家离线则雷声作废（sound 不会再发给已退出的人）。
      */
     private static final List<DelayedThunder> THUNDER_QUEUE = new ArrayList<>();
+
+    /**
+     * 黑雨的持续毒雨区：打击本身一 tick 就结束，但雨要下几十秒，
+     * 且不依赖 {@link #ACTIVE}（施放者死了/退出了雨也照下）。
+     */
+    private static final List<ToxicRain> TOXIC_RAINS = new ArrayList<>();
+
+    private static final class ToxicRain {
+        final ServerLevel level;
+        final double x;
+        final double y;
+        final double z;
+        final int radius;
+        final UUID owner;
+        int remaining;
+        int age;
+
+        ToxicRain(ServerLevel level, Vec3 center, int radius, int duration, UUID owner) {
+            this.level = level;
+            this.x = center.x;
+            this.y = center.y;
+            this.z = center.z;
+            this.radius = Math.max(6, radius);
+            this.remaining = Math.max(20, duration);
+            this.owner = owner;
+        }
+    }
 
     /** 延迟雷声：位置用玩家在落地帧的位置（不再追踪），到点就在原地炸雷。 */
     private static final class DelayedThunder {
@@ -129,10 +158,11 @@ public final class OrbitalStrikeManager {
         // v2 断层：前摇按协议 XML 的 mark+ascent+device 走，让电影相位和服务端完全对齐。
         if (protocol.migrated()) {
             lockTicks = Math.max(60, protocol.preFireTicks());
-            // 蜂群：七枚巢荚要在下落段里逐一脱离，所以 fall 拉长到 56t；其余协议用配置的短下落。
+            // 蜂群要容下七枚巢荚的脱离，固定 56t；其余协议沿用各自弹种的下落倍率
+            // （黎明 6t 光速、黑雨 43t 小行星飞行、焚城 24t、隔离 26t、断层 30t）。
             fallTicks = "swarm".equals(protocol.id())
                     ? 56
-                    : Math.max(6, Config.ORBITAL_STRIKE_FALL_TICKS.get());
+                    : mode.fallTicks(Math.max(6, Config.ORBITAL_STRIKE_FALL_TICKS.get()));
         }
         ACTIVE.put(player.getUUID(), new ActiveStrike(target.immutable(), player.getUUID(),
                 player.level().dimension(), mode, radius, lockTicks, fallTicks, yaw));
@@ -177,6 +207,8 @@ public final class OrbitalStrikeManager {
                 }
             }
         }
+        // 毒雨独立推进：它比打击本身活得久，且 ACTIVE 清空后还要继续。
+        tickToxicRains();
         if (ACTIVE.isEmpty()) {
             return;
         }
@@ -218,6 +250,18 @@ public final class OrbitalStrikeManager {
                 it.remove();
             }
         }
+    }
+
+    /**
+     * 关服/退世界：清空所有挂起状态。否则下一次进世界时，静态表里的旧打击/毒雨
+     * 会按旧坐标落在新世界的同一点上（ACTIVE 也是同理，顺手一起清）。
+     */
+    @SubscribeEvent
+    public static void onServerStopping(net.minecraftforge.event.server.ServerStoppingEvent event) {
+        ACTIVE.clear();
+        TOXIC_RAINS.clear();
+        THUNDER_QUEUE.clear();
+        DESTROY_QUEUE.clear();
     }
 
     /** 跨维度（拿到玩家所在维度的 ServerLevel）。玩家离线不影响 —— 已启动的打击照常走完。 */
@@ -559,6 +603,12 @@ public final class OrbitalStrikeManager {
      */
     private static void impactPlanet(ServerLevel level, ActiveStrike strike, Vec3 ground,
                                      int radius, boolean destroy, boolean damage) {
+        // v2：行星陨落 = 黑雨协议（脏弹陨石 + 持续毒雨），旧火雨保留给未迁移的弹种。
+        StrikeProtocol protocol = StrikeProtocols.protocolFor(strike.mode);
+        if ("black_rain".equals(protocol.id())) {
+            impactBlackRain(level, strike, ground, radius, destroy, damage);
+            return;
+        }
         BlockPos target = strike.target;
         if (destroy) {
             enqueueDestroy(level, target, radius, strike.mode.pierces());
@@ -620,11 +670,162 @@ public final class OrbitalStrikeManager {
     }
 
     /**
+     * 黑雨 BLACK RAIN：脏弹陨石。浅而宽的黑玻璃坑 + 持续毒雨区。
+     *
+     * <p>和黎明正好是镜像：黎明只烧亡灵、给活人留一片玻璃；黑雨只毒生者，
+     * 亡灵（僵尸/骷髅）在雨里毫发无伤 —— 这是给「尸潮世界」专门设计的武器，
+     * 也是六种协议里唯一一个会持续改变战场几十秒的。</p>
+     */
+    private static void impactBlackRain(ServerLevel level, ActiveStrike strike, Vec3 ground,
+                                        int radius, boolean destroy, boolean damage) {
+        BlockPos target = strike.target;
+        if (destroy) {
+            DESTROY_QUEUE.add(new BlackRainJob(level, target, radius, Math.max(3, radius / 5)));
+            placeBlackRim(level, target, radius);
+        }
+        if (damage) {
+            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.PLANET);
+            // 毒雨区比坑大一圈：躲到坑外不代表安全
+            TOXIC_RAINS.add(new ToxicRain(level, ground, (int) Math.round(radius * 1.6D),
+                    Config.ORBITAL_STRIKE_BLACK_RAIN_TICKS.get(), strike.owner));
+        }
+        spawnSurfaceDebris(level, target, radius);
+        // 声音：闷响 + 次声 + 碎裂。雨声由 ToxicRain 每隔几秒续一层。
+        level.playSound(null, target, SoundEvents.GENERIC_EXPLODE, SoundSource.PLAYERS, 5.0F, 0.35F);
+        level.playSound(null, target, SoundEvents.WARDEN_SONIC_BOOM, SoundSource.PLAYERS, 5.0F, 0.30F);
+        level.playSound(null, target, SoundEvents.ENDER_DRAGON_GROWL, SoundSource.PLAYERS, 4.0F, 0.28F);
+        level.playSound(null, target, SoundEvents.ANVIL_LAND, SoundSource.PLAYERS, 4.0F, 0.30F);
+        level.playSound(null, target, SoundEvents.WEATHER_RAIN, SoundSource.WEATHER, 2.0F, 0.55F);
+        int impactParticles = Math.min(380, 80 + radius * 8);
+        for (int i = 0; i < impactParticles; i++) {
+            double ox = (level.random.nextDouble() - 0.5D) * radius * 1.9D;
+            double oy = (level.random.nextDouble() - 0.5D) * radius * 1.0D;
+            double oz = (level.random.nextDouble() - 0.5D) * radius * 1.9D;
+            broadcast(level, ParticleTypes.EXPLOSION, ground.x + ox, ground.y + oy, ground.z + oz,
+                    1, 0.0D, 0.0D, 0.0D, 0.0D);
+            broadcast(level, ParticleTypes.SQUID_INK,
+                    ground.x + ox, ground.y + 0.4D + oy * 0.4D, ground.z + oz,
+                    1, 0.0D, 0.0D, 0.0D, 0.0D);
+            if ((i & 1) == 0) {
+                broadcast(level, ParticleTypes.ASH,
+                        ground.x + ox, ground.y + 0.7D + oy * 0.4D, ground.z + oz,
+                        1, 0.0D, 0.05D, 0.0D, 0.02D);
+            }
+        }
+        int rings = Math.min(9, 3 + radius / 9);
+        for (int r = 0; r < rings; r++) {
+            double ringR = 1.0D + r * (radius / (double) rings) * 1.5D;
+            broadcast(level, ParticleTypes.SONIC_BOOM, ground.x + ringR, ground.y + 0.5D, ground.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            broadcast(level, ParticleTypes.SONIC_BOOM, ground.x - ringR, ground.y + 0.5D, ground.z, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            broadcast(level, ParticleTypes.SONIC_BOOM, ground.x, ground.y + 0.5D, ground.z + ringR, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+            broadcast(level, ParticleTypes.SONIC_BOOM, ground.x, ground.y + 0.5D, ground.z - ringR, 1, 0.0D, 0.0D, 0.0D, 0.0D);
+        }
+        // 黑烟柱：横向扩散小于火雨，但更高、更久
+        int cloud = Math.min(340, 70 + radius * 8);
+        for (int i = 0; i < cloud; i++) {
+            double ox = (level.random.nextDouble() - 0.5D) * radius * 1.4D;
+            double oz = (level.random.nextDouble() - 0.5D) * radius * 1.4D;
+            double oy = level.random.nextDouble() * radius * 1.4D;
+            broadcast(level, i % 4 == 0 ? ParticleTypes.SQUID_INK : ParticleTypes.LARGE_SMOKE,
+                    ground.x + ox, ground.y + oy, ground.z + oz,
+                    1, 0.0D, 0.08D + level.random.nextDouble() * 0.12D, 0.0D, 0.03D);
+        }
+    }
+
+    /** 坑沿的菌岩/黑曜石斑：给坑边一圈「被污染」的地表签名。 */
+    private static void placeBlackRim(ServerLevel level, BlockPos target, int radius) {
+        int segments = Math.max(24, Math.min(96, radius * 4));
+        double ringR = radius + 2.0D;
+        for (int i = 0; i < segments; i++) {
+            if (i % 4 != 0) {
+                continue;
+            }
+            double angle = i * Math.PI * 2.0D / segments;
+            int x = target.getX() + (int) Math.round(Math.cos(angle) * ringR);
+            int z = target.getZ() + (int) Math.round(Math.sin(angle) * ringR);
+            BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                    new BlockPos(x, 0, z));
+            if (level.getBlockState(surface).isAir() && !level.getBlockState(surface.below()).isAir()) {
+                level.setBlockAndUpdate(surface, (i % 12 == 0 ? Blocks.OBSIDIAN : Blocks.SCULK)
+                        .defaultBlockState());
+            }
+        }
+    }
+
+    /**
+     * 毒雨：每 10 tick 结算一次范围效果（毒 + 凋零 + 灭火），每 2 tick 补一层落雨粒子。
+     * 施放者免疫；亡灵免疫 —— 这是黑雨的身份，而不是漏判。
+     */
+    private static void tickToxicRains() {
+        if (TOXIC_RAINS.isEmpty()) {
+            return;
+        }
+        if (!Config.ORBITAL_STRIKE_ENABLED.get()) {
+            TOXIC_RAINS.clear();
+            return;
+        }
+        Iterator<ToxicRain> it = TOXIC_RAINS.iterator();
+        while (it.hasNext()) {
+            ToxicRain rain = it.next();
+            if (--rain.remaining <= 0) {
+                it.remove();
+                continue;
+            }
+            rain.age++;
+            if ((rain.age & 1) == 0) {
+                int drops = 4 + rain.radius / 6;
+                for (int i = 0; i < drops; i++) {
+                    double angle = rain.level.random.nextDouble() * Math.PI * 2.0D;
+                    double dist = Math.sqrt(rain.level.random.nextDouble()) * rain.radius;
+                    double px = rain.x + Math.cos(angle) * dist;
+                    double pz = rain.z + Math.sin(angle) * dist;
+                    int top = rain.level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                            Mth.floor(px), Mth.floor(pz));
+                    double py = top + 4.0D + rain.level.random.nextDouble() * 10.0D;
+                    broadcast(rain.level,
+                            rain.level.random.nextBoolean()
+                                    ? ParticleTypes.FALLING_OBSIDIAN_TEAR : ParticleTypes.ASH,
+                            px, py, pz, 1, 0.0D, -0.35D, 0.0D, 0.0D);
+                }
+            }
+            if (rain.age % 10 == 0) {
+                AABB box = new AABB(rain.x - rain.radius, rain.y - 10.0D, rain.z - rain.radius,
+                        rain.x + rain.radius, rain.y + 20.0D, rain.z + rain.radius);
+                for (LivingEntity entity : rain.level.getEntitiesOfClass(LivingEntity.class, box)) {
+                    if (entity instanceof Player player
+                            && (player.isCreative() || player.isSpectator())) {
+                        continue;
+                    }
+                    if (entity.getUUID().equals(rain.owner)) {
+                        continue;
+                    }
+                    entity.setRemainingFireTicks(0);
+                    if (entity.getMobType() == MobType.UNDEAD) {
+                        continue;
+                    }
+                    entity.addEffect(new MobEffectInstance(MobEffects.POISON, 80, 0, true, true));
+                    entity.addEffect(new MobEffectInstance(MobEffects.WITHER, 60, 0, true, true));
+                }
+            }
+            if (rain.age % 100 == 5) {
+                rain.level.playSound(null,
+                        new BlockPos(Mth.floor(rain.x), Mth.floor(rain.y), Mth.floor(rain.z)),
+                        SoundEvents.WEATHER_RAIN, SoundSource.WEATHER, 1.1F, 0.75F);
+            }
+        }
+    }
+
+    /**
      * 宇宙激光：从深空（Y=700）直射下来的一束光。没有飞行时间，充能完成即命中；
      * 破坏性全场最强 —— 半径 1.35×、伤害 3×、秒杀 +30%，并且一路打穿到虚空。
      */
     private static void impactLaser(ServerLevel level, ActiveStrike strike, Vec3 ground,
                                     int radius, boolean destroy, boolean damage) {
+        StrikeProtocol protocol = StrikeProtocols.protocolFor(strike.mode);
+        if ("dawn".equals(protocol.id())) {
+            impactDawn(level, strike, ground, radius, destroy, damage);
+            return;
+        }
         BlockPos target = strike.target;
         if (destroy) {
             enqueueDestroy(level, target, radius, strike.mode.pierces());
@@ -706,6 +907,62 @@ public final class OrbitalStrikeManager {
      * 轨道炮（默认模式）：大范围 + 蘑菇云 + 音爆环。
      * 这是 1.2.7 以来那一套，模式化之后只把「半径 / 伤害」换成按模式缩放过的值。
      */
+    /**
+     * 黎明 DAWN：太阳反射镜的净白光柱。只杀亡灵，玩家/普通生物安全；
+     * 地面留下一个浅玻璃碗 + 中心光柱，不挖穿。
+     */
+    private static void impactDawn(ServerLevel level, ActiveStrike strike, Vec3 ground,
+                                   int radius, boolean destroy, boolean damage) {
+        BlockPos target = strike.target;
+        if (damage) {
+            purgeUndead(level, ground, radius, strike.owner);
+        }
+        if (destroy) {
+            DESTROY_QUEUE.add(new DawnJob(level, target, radius, 6));
+            placeDawnRim(level, target, radius);
+        }
+        spawnSurfaceDebris(level, target, Math.max(4, radius / 2));
+        // 白金光柱：从地面到深空的一整列 END_ROD / 白色闪光
+        for (int i = 0; i < 90; i++) {
+            double fy = ground.y + level.random.nextDouble() * OrbitalStrikeMode.LASER.originY();
+            broadcast(level, ParticleTypes.END_ROD, ground.x, fy, ground.z,
+                    1, 0.0D, -0.18D, 0.0D, 0.0D);
+        }
+        for (int i = 0; i < 80; i++) {
+            double ang = level.random.nextDouble() * Math.PI * 2.0D;
+            double dist = Math.sqrt(level.random.nextDouble()) * radius;
+            broadcast(level, ParticleTypes.FLASH,
+                    ground.x + Math.cos(ang) * dist, ground.y + 0.5D, ground.z + Math.sin(ang) * dist,
+                    1, 0.0D, 0.0D, 0.0D, 0.0D);
+            broadcast(level, ParticleTypes.END_ROD,
+                    ground.x + Math.cos(ang) * dist, ground.y + 1.0D + level.random.nextDouble() * 4.0D,
+                    ground.z + Math.sin(ang) * dist, 1, 0.0D, 0.18D, 0.0D, 0.02D);
+        }
+        level.playSound(null, target, SoundEvents.BELL_BLOCK, SoundSource.PLAYERS, 5.0F, 0.8F);
+        level.playSound(null, target, SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.PLAYERS, 5.0F, 1.4F);
+        level.playSound(null, target, SoundEvents.BEACON_ACTIVATE, SoundSource.PLAYERS, 4.0F, 1.8F);
+        level.playSound(null, target, SoundEvents.GLASS_BREAK, SoundSource.PLAYERS, 4.0F, 1.2F);
+        level.playSound(null, target, SoundEvents.WARDEN_SONIC_BOOM, SoundSource.PLAYERS, 3.0F, 1.6F);
+    }
+
+    /** 玻璃碗边缘：一圈白玻璃刻度（在坑外，不会被 DawnJob 挖掉）。 */
+    private static void placeDawnRim(ServerLevel level, BlockPos target, int radius) {
+        int segments = Math.max(24, Math.min(96, radius * 4));
+        for (int i = 0; i < segments; i++) {
+            if (i % 3 != 0) {
+                continue;
+            }
+            double angle = i * Math.PI * 2.0D / segments;
+            int x = target.getX() + (int) Math.round(Math.cos(angle) * radius);
+            int z = target.getZ() + (int) Math.round(Math.sin(angle) * radius);
+            BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                    new BlockPos(x, 0, z));
+            if (level.getBlockState(surface).isAir() && !level.getBlockState(surface.below()).isAir()) {
+                level.setBlockAndUpdate(surface, Blocks.WHITE_STAINED_GLASS.defaultBlockState());
+            }
+        }
+    }
+
     private static void impactCannon(ServerLevel level, ActiveStrike strike, Vec3 ground,
                                      int radius, boolean destroy, boolean damage) {
         StrikeProtocol protocol = StrikeProtocols.protocolFor(strike.mode);
@@ -1443,6 +1700,211 @@ public final class OrbitalStrikeManager {
         @Override
         public boolean done() {
             return y < minY;
+        }
+    }
+
+    /**
+     * 黑雨 BLACK RAIN 的浅黑碗：宽而浅，坑底按噪声铺成菌岩 / 黑曜石 / 黑色混凝土，
+     * 全部结束后在坑心种一枚幽匿催发体 —— 污染会从那里继续往外长。
+     */
+    private static final class BlackRainJob implements DestroyJob {
+        private final ServerLevel level;
+        private final int cx;
+        private final int cz;
+        private final int radius;
+        private final int depth;
+        private int x;
+        private int z;
+        private int y;
+        private int surface;
+        private int drop;
+        private boolean inColumn;
+        private boolean sealPlaced;
+
+        BlackRainJob(ServerLevel level, BlockPos center, int radius, int depth) {
+            this.level = level;
+            this.cx = center.getX();
+            this.cz = center.getZ();
+            this.radius = Math.max(4, Math.min(48, radius));
+            this.depth = Math.max(2, Math.min(10, depth));
+            this.x = -this.radius;
+            this.z = -this.radius;
+        }
+
+        @Override
+        public int step(int budget) {
+            int processed = 0;
+            while (processed < budget && !done()) {
+                if (!inColumn) {
+                    if (x * x + z * z > radius * radius) {
+                        advance();
+                        continue;
+                    }
+                    int px = cx + x;
+                    int pz = cz + z;
+                    surface = Math.max(level.getMinBuildHeight() + 1,
+                            level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, px, pz));
+                    double d2 = (x * (double) x + z * (double) z) / (radius * (double) radius);
+                    drop = Math.max(1, (int) Math.round(depth * (1.0D - d2 * d2)));
+                    y = surface - 1;
+                    inColumn = true;
+                }
+                if (y >= surface - drop) {
+                    BlockPos pos = new BlockPos(cx + x, y, cz + z);
+                    BlockState destroyed = destroyOne(level, pos);
+                    if (destroyed != null) {
+                        spawnDebris(level, pos, destroyed);
+                    }
+                    y--;
+                    processed++;
+                    continue;
+                }
+                BlockPos floor = new BlockPos(cx + x, surface - drop - 1, cz + z);
+                if (!level.getBlockState(floor).isAir()) {
+                    float roll = level.random.nextFloat();
+                    Block block = roll < 0.16F ? Blocks.OBSIDIAN
+                            : roll < 0.34F ? Blocks.BLACK_CONCRETE : Blocks.SCULK;
+                    level.setBlockAndUpdate(floor, block.defaultBlockState());
+                }
+                inColumn = false;
+                advance();
+            }
+            return processed;
+        }
+
+        private void advance() {
+            z++;
+            if (z > radius) {
+                z = -radius;
+                x++;
+            }
+        }
+
+        @Override
+        public boolean done() {
+            if (x <= radius) {
+                return false;
+            }
+            if (!sealPlaced) {
+                sealPlaced = true;
+                placeBlackSeal(level, cx, cz, depth);
+            }
+            return true;
+        }
+    }
+
+    /** 坑心种一枚幽匿催发体：黑雨的长期地形签名。 */
+    private static void placeBlackSeal(ServerLevel level, int cx, int cz, int depth) {
+        int surface = Math.max(level.getMinBuildHeight() + 1,
+                level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, cx, cz));
+        BlockPos center = new BlockPos(cx, surface - depth, cz);
+        if (level.getBlockState(center).isAir()) {
+            level.setBlockAndUpdate(center, Blocks.SCULK_CATALYST.defaultBlockState());
+        }
+    }
+
+    /**
+     * 黎明 DAWN 的浅玻璃碗：每个柱子按到中心的距离决定下挖深度（中心 6 格、边缘 1 格），
+     * 挖完把坑底换成白玻璃；全部结束后在中心立 4 格白玻璃 + 海晶灯的光柱。
+     */
+    private static final class DawnJob implements DestroyJob {
+        private final ServerLevel level;
+        private final int cx;
+        private final int cz;
+        private final int radius;
+        private final int depth;
+        private int x;
+        private int z;
+        private int y;
+        private int surface;
+        private int drop;
+        private boolean inColumn;
+        private boolean pillarPlaced;
+
+        DawnJob(ServerLevel level, BlockPos center, int radius, int depth) {
+            this.level = level;
+            this.cx = center.getX();
+            this.cz = center.getZ();
+            this.radius = Math.max(4, Math.min(48, radius));
+            this.depth = Math.max(2, Math.min(12, depth));
+            this.x = -this.radius;
+            this.z = -this.radius;
+        }
+
+        @Override
+        public int step(int budget) {
+            int processed = 0;
+            while (processed < budget && !done()) {
+                if (!inColumn) {
+                    if (x * x + z * z > radius * radius) {
+                        advance();
+                        continue;
+                    }
+                    int px = cx + x;
+                    int pz = cz + z;
+                    surface = Math.max(level.getMinBuildHeight() + 1,
+                            level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, px, pz));
+                    double d2 = (x * (double) x + z * (double) z) / (radius * (double) radius);
+                    drop = Math.max(1, (int) Math.round(depth * (1.0D - d2)));
+                    y = surface - 1;
+                    inColumn = true;
+                }
+                if (y >= surface - drop) {
+                    BlockPos pos = new BlockPos(cx + x, y, cz + z);
+                    BlockState destroyed = destroyOne(level, pos);
+                    if (destroyed != null) {
+                        spawnDebris(level, pos, destroyed);
+                    }
+                    y--;
+                    processed++;
+                    continue;
+                }
+                // 坑底换成白玻璃（只换坑底那一块，不再向下扩张）
+                BlockPos floor = new BlockPos(cx + x, surface - drop - 1, cz + z);
+                if (!level.getBlockState(floor).isAir()) {
+                    level.setBlockAndUpdate(floor, Blocks.WHITE_STAINED_GLASS.defaultBlockState());
+                }
+                inColumn = false;
+                advance();
+            }
+            return processed;
+        }
+
+        private void advance() {
+            z++;
+            if (z > radius) {
+                z = -radius;
+                x++;
+            }
+        }
+
+        @Override
+        public boolean done() {
+            if (x <= radius) {
+                return false;
+            }
+            if (!pillarPlaced) {
+                pillarPlaced = true;
+                placeDawnPillar(level, cx, cz, radius, depth);
+            }
+            return true;
+        }
+    }
+
+    /** 黎明光柱：坑底中心 4 格白玻璃 + 顶部海晶灯。 */
+    private static void placeDawnPillar(ServerLevel level, int cx, int cz, int radius, int depth) {
+        int surface = Math.max(level.getMinBuildHeight() + 1,
+                level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, cx, cz));
+        int bottom = surface - depth;
+        for (int i = 0; i < 4; i++) {
+            BlockPos pos = new BlockPos(cx, bottom + i, cz);
+            if (level.getBlockState(pos).isAir()) {
+                level.setBlockAndUpdate(pos, Blocks.WHITE_STAINED_GLASS.defaultBlockState());
+            }
+        }
+        BlockPos top = new BlockPos(cx, bottom + 4, cz);
+        if (level.getBlockState(top).isAir()) {
+            level.setBlockAndUpdate(top, Blocks.SEA_LANTERN.defaultBlockState());
         }
     }
 
