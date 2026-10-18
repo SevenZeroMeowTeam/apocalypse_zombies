@@ -13,7 +13,8 @@ import net.minecraft.resources.ResourceLocation;
 /**
  * 末日风的暂停界面（替换原版 {@code PauseScreen}）。
  *
- * <p>按用户要求「只保留背景图，不要原版文字」：背景铺《末日菜单》图 + 更重的暗化，
+ * <p>按用户要求「只保留背景图，不要原版文字」：背景换成专门的末日废土插画
+ * （{@code gui/pause_background.png}，与标题图分开：这张图上没有任何烤死的按钮/标题），
  * <b>不画 "Game Menu" 标题</b>，只保留一列末日石质按钮（{@link DoomButton}）：
  * 回到游戏 / 进度 / 统计 / 选项 / 对局域网开放（条件出现）/ 保存并退出。</p>
  *
@@ -23,7 +24,7 @@ import net.minecraft.resources.ResourceLocation;
 public final class ApocalypsePauseScreen extends Screen {
 
     private static final ResourceLocation BACKGROUND = new ResourceLocation(
-            ApocalypseZombies.MOD_ID, "textures/gui/apocalypse_title.png");
+            ApocalypseZombies.MOD_ID, "textures/gui/pause_background.png");
     private static final int TEX_W = 1408;
     private static final int TEX_H = 768;
 
@@ -68,14 +69,15 @@ public final class ApocalypsePauseScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        // cover 铺满 + 比其它菜单更重的暗化（暂停时底下的世界要透不出来，按钮才清楚）
+        // cover 铺满 + 全屏压暗：暂停时底下的世界要透不出来，按钮也要在插画上读得清。
+        // 暗化比早期版本轻两档（0x80），新插画本身的末日天空和废墟能完整看见。
         float scale = Math.max(this.width / (float) TEX_W, this.height / (float) TEX_H);
         int w = Math.round(TEX_W * scale);
         int h = Math.round(TEX_H * scale);
         graphics.blit(BACKGROUND, (this.width - w) / 2, (this.height - h) / 2, w, h,
                 0.0F, 0.0F, TEX_W, TEX_H, TEX_W, TEX_H);
-        graphics.fill(0, 0, this.width, this.height, 0xCC000000);
-        graphics.fill(0, 0, this.width, this.height, 0x331A0A28);
+        graphics.fill(0, 0, this.width, this.height, 0x80000000);
+        graphics.fill(0, 0, this.width, this.height, 0x2A1A0A28);
         // 注意：不画标题 —— 按需求「只要背景图与按钮」
         super.render(graphics, mouseX, mouseY, partialTick);
     }

@@ -141,6 +141,20 @@ public final class OrbitalSpaceStage {
         }
     }
 
+    /**
+     * 发射装置自身的充能进度（0→1）：从**镜头抵达轨道（锁定结束前 40 tick）**算到**开火（锁定结束）**。
+     *
+     * <p>不能用 {@link OrbitalStrikeClientState#lockProgress()}：太空舞台是在锁定末段才淡入的，
+     * 那时 lockProgress 已经 0.7~0.8，炮管/天线/舱门会「一出现就快做完了」。这里单独按舞台窗口归一化，
+     * 镜头一到就是 0，发射那一刻正好 1。</p>
+     */
+    private static float stationCharge() {
+        double elapsed = OrbitalStrikeClientState.elapsed();
+        double start = OrbitalStrikeClientState.lockTicks() - OrbitalCinematic.pullLeadTicks();
+        double end = OrbitalStrikeClientState.lockTicks();
+        return Mth.clamp((float) ((elapsed - start) / Math.max(1.0D, end - start)), 0.0F, 1.0F);
+    }
+
     // ------------------------------------------------------------------ 背景
 
     /**
@@ -642,14 +656,17 @@ public final class OrbitalSpaceStage {
                                      float alpha, double time, double phase) {
         double[] stationBase = offset(eye, fwd, right, up, 52.0D, 30.0D, 22.0D);
         double[] dir = norm(sub(earth, stationBase));
+        float charge = stationCharge();
         // 开火后坐：炮台沿炮管反方向退 1.6 格，8 tick 内回位。
         double recoil = phase >= 0.999F
                 ? Math.max(0.0D, 1.0D - OrbitalStrikeClientState.impactAge() / 8.0D) * 1.6D * sceneScale
                 : 0.0D;
         double[] station = add(stationBase, mul(dir, -recoil));
-        renderDreadnought(pose, quads, lines, station, right, up, fwd, 1.15D * sceneScale, alpha, time);
+        renderDreadnought(pose, quads, lines, station, right, up, fwd, 1.15D * sceneScale, alpha, time, charge);
 
-        double[] muzzle = add(station, mul(dir, 9.0D));
+        // 炮管在充能时缓缓伸出、开火后坐回：炮口位置跟着变，充能不是「只亮一下」。
+        double barrelLen = 7.6D + 2.4D * charge;
+        double[] muzzle = add(station, mul(dir, barrelLen));
         // 炮管：三条平行线（近似厚度）
         for (double k : new double[]{-0.55D, 0.0D, 0.55D}) {
             double[] offRight = mul(right, k);
@@ -658,6 +675,19 @@ public final class OrbitalSpaceStage {
             line(pose, lines, a[0], a[1], a[2], b[0], b[1], b[2],
                     0.68F, 0.88F, 1.0F, alpha * 0.62F, 0, 0, 1);
         }
+        // 滑动套环：随充能从炮尾推到炮口，像一发正在上膛的弹药。
+        double slide = 1.4D + (barrelLen - 3.0D) * charge;
+        double[] collar = add(station, mul(dir, slide));
+        solidBox(quads, matrix, collar, right, up, fwd,
+                0.98D * sceneScale, 0.98D * sceneScale, 0.52D * sceneScale,
+                0.55F, 0.60F, 0.66F, alpha);
+        // 炮管能量脉冲：四圈光沿炮管向炮口跑（充能读数）。
+        for (int i = 0; i < 4; i++) {
+            double f = (time * 0.014D + i * 0.25D) % 1.0D;
+            double[] p = add(station, mul(dir, 1.6D + (barrelLen - 1.6D) * f));
+            planeRing(pose, lines, p, right, up, (1.15D - 0.35D * f) * sceneScale,
+                    1.0F, 0.70F, 0.28F, alpha * (0.10F + 0.34F * charge) * (1.0F - (float) f * 0.55F));
+        }
         // 炮口制退器：实心环座（线框炮管上的一个实体段落）
         double[] brake = sub(muzzle, mul(dir, 1.6D * sceneScale));
         solidBox(quads, matrix, brake, right, up, fwd,
@@ -665,7 +695,9 @@ public final class OrbitalSpaceStage {
                 0.44F, 0.50F, 0.56F, alpha);
         planeRing(pose, lines, muzzle, right, up, 2.9D, 1.0F, 0.62F, 0.22F, alpha * 0.55F);
         planeRing(pose, lines, brake, right, up, 2.2D, 1.0F, 0.82F, 0.45F, alpha * 0.30F);
-        float charge = Mth.clamp((float) OrbitalStrikeClientState.lockProgress(), 0.0F, 1.0F);
+        // 炮口蓄能核：从暗到白热，开火前一帧最亮。
+        solidDisc(quads, matrix, muzzle, right, up, (0.55D + 1.55D * charge) * sceneScale,
+                1.0F, 0.80F, 0.46F, alpha * 0.55F * charge);
         if (phase < 0.999D) {
             planeRing(pose, lines, muzzle, right, up, 3.8D - 1.4D * charge,
                     1.0F, 0.55F, 0.18F, alpha * (0.18F + 0.38F * charge));
@@ -727,26 +759,57 @@ public final class OrbitalSpaceStage {
                                     double phase) {
         double[] stationBase = offset(eye, fwd, right, up, 44.0D, 27.0D, 18.0D);
         double[] dir = norm(sub(earth, stationBase));
+        float charge = stationCharge();
         double recoil = phase >= 0.999F
                 ? Math.max(0.0D, 1.0D - OrbitalStrikeClientState.impactAge() / 10.0D) * 1.4D * sceneScale
                 : 0.0D;
         double[] station = add(stationBase, mul(dir, -recoil));
-        renderMassDriver(pose, quads, lines, station, right, up, fwd, 1.0D * sceneScale, alpha, time, dir);
+        renderMassDriver(pose, quads, lines, station, right, up, fwd, 1.0D * sceneScale, alpha, time, dir, charge);
 
         double[] contact = sub(earth, mul(dir, earthR * 0.94D));
         double[] muzzle = add(station, mul(dir, 7.0D * sceneScale));
         double[] nose = lerp3(muzzle, contact, smooth01(phase));
         double[] tail = sub(nose, mul(dir, 8.0D * sceneScale));
 
-        // —— 导轨：两条平行能量轨从发射器伸出
+        // —— 导轨：两条平行能量轨从发射器伸出；充能时亮度脉动，并有一道电流沿轨跑向矛尖。
+        double railLen = 16.0D * sceneScale;
         for (double k : new double[]{-0.7D, 0.7D}) {
             double[] off = mul(right, k * sceneScale);
             line(pose, lines,
                     station[0] + off[0], station[1] + off[1], station[2] + off[2],
-                    station[0] + off[0] + dir[0] * 16.0D * sceneScale,
-                    station[1] + off[1] + dir[1] * 16.0D * sceneScale,
-                    station[2] + off[2] + dir[2] * 16.0D * sceneScale,
-                    0.55F, 0.84F, 1.0F, alpha * 0.55F, 0, 0, 1);
+                    station[0] + off[0] + dir[0] * railLen,
+                    station[1] + off[1] + dir[1] * railLen,
+                    station[2] + off[2] + dir[2] * railLen,
+                    0.55F, 0.84F, 1.0F, alpha * (0.42F + 0.38F * charge), 0, 0, 1);
+            double pulse = (time * 0.020D) % 1.0D;
+            double[] p0 = add(station, mul(dir, railLen * pulse));
+            double[] p1 = add(station, mul(dir, Math.min(railLen, railLen * pulse + 2.6D * sceneScale)));
+            line(pose, lines,
+                    p0[0] + off[0], p0[1] + off[1], p0[2] + off[2],
+                    p1[0] + off[0], p1[1] + off[1], p1[2] + off[2],
+                    1.0F, 1.0F, 1.0F, alpha * 0.75F * charge, 0, 0, 1);
+        }
+        // 导轨之间的电弧：充能过半后开始噼啪（两端固定在两条轨上）。
+        if (charge > 0.25F) {
+            for (int a = 0; a < 3; a++) {
+                double f = 0.35D + 0.18D * a + 0.10D * Math.sin(time * 0.31D + a);
+                double[] p = add(station, mul(dir, railLen * f));
+                crackleArc(pose, lines,
+                        add(p, mul(right, -0.7D * sceneScale)),
+                        add(p, mul(right, 0.7D * sceneScale)),
+                        right, up, time * 0.9D + a * 2.3D,
+                        0.70F, 0.92F, 1.0F, alpha * (charge - 0.25F) * 0.55F);
+            }
+            // 矛尖在发射前先从炮口「长」出来：充能的最后阶段能看到它在攒形。
+            double[] spikeScale = add(muzzle, mul(dir, (0.4D + 4.2D * charge) * sceneScale));
+            line(pose, lines, muzzle[0], muzzle[1], muzzle[2],
+                    spikeScale[0], spikeScale[1], spikeScale[2],
+                    0.85F, 0.96F, 1.0F, alpha * 0.55F * charge, 0, 0, 1);
+            for (int i = 0; i < 3; i++) {
+                double[] rp = lerp3(muzzle, spikeScale, (i + 1) / 4.0D);
+                planeRing(pose, lines, rp, right, up, (1.5D - i * 0.3D) * sceneScale,
+                        0.62F, 0.88F, 1.0F, alpha * 0.30F * charge);
+            }
         }
 
         // —— 矛体：金属弹芯 + 蓝白能量包络 + 尾翼
@@ -798,7 +861,8 @@ public final class OrbitalSpaceStage {
      */
     private static void renderMassDriver(PoseStack pose, VertexConsumer quads, VertexConsumer lines,
                                          double[] center, double[] right, double[] up, double[] fwd,
-                                         double scale, float alpha, double time, double[] launchDir) {
+                                         double scale, float alpha, double time, double[] launchDir,
+                                         double charge) {
         double s = scale;
         // 中央脊梁（沿发射方向排开的三段）
         for (int i = 0; i < 3; i++) {
@@ -807,11 +871,13 @@ public final class OrbitalSpaceStage {
                     (1.25D - i * 0.12D) * s, (0.95D - i * 0.10D) * s, 1.5D * s,
                     0.42F, 0.44F, 0.47F, alpha);
         }
-        // 环形加速段：三圈亮环
-        for (int i = 0; i < 3; i++) {
-            double[] p = add(center, mul(launchDir, (i - 0.2D) * 2.6D * s));
-            planeRing(pose, lines, p, right, up, (1.5D - i * 0.1D) * s,
-                    0.55F, 0.86F, 1.0F, alpha * 0.70F);
+        // 环形加速段：五圈，按充能进度依次点亮，像一组正在加压的电磁线圈。
+        for (int i = 0; i < 5; i++) {
+            double[] p = add(center, mul(launchDir, (i * 1.55D - 1.4D) * s));
+            float lit = Mth.clamp((float) ((charge - i * 0.14D) / 0.20D), 0.0F, 1.0F);
+            float pulse = 0.75F + 0.25F * (0.5F + 0.5F * (float) Math.sin(time * 1.7D + i * 0.9D));
+            planeRing(pose, lines, p, right, up, (1.55D - i * 0.06D) * s * (1.0F + 0.10F * lit),
+                    0.55F, 0.86F, 1.0F, alpha * (0.22F + 0.68F * lit) * pulse);
         }
         // 两侧太阳翼（各两片）+ 桁架
         for (int side = -1; side <= 1; side += 2) {
@@ -824,6 +890,16 @@ public final class OrbitalSpaceStage {
                         1.30D * s, 0.07D * s, 2.0D * s, 0.58F, 0.45F, 0.18F, alpha);
                 solidBox(quads, matrixOf(pose), panel, right, up, fwd,
                         1.16D * s, 0.10D * s, 1.86D * s, 0.045F, 0.085F, 0.22F, alpha);
+                // 电池片上的高光扫过（随充能变快）：太阳翼不再是死的蓝色平板。
+                double sweep = (((time * 0.020D + k * 0.37D + side * 0.11D) % 1.0D) - 0.5D) * 3.3D;
+                line(pose, lines,
+                        panel[0] - right[0] * 1.05D * s + fwd[0] * sweep * s,
+                        panel[1] - right[1] * 1.05D * s + fwd[1] * sweep * s,
+                        panel[2] - right[2] * 1.05D * s + fwd[2] * sweep * s,
+                        panel[0] + right[0] * 1.05D * s + fwd[0] * sweep * s,
+                        panel[1] + right[1] * 1.05D * s + fwd[1] * sweep * s,
+                        panel[2] + right[2] * 1.05D * s + fwd[2] * sweep * s,
+                        0.72F, 0.92F, 1.0F, alpha * (0.10F + 0.25F * (float) charge), 0, 0, 1);
             }
         }
         // 蓝色能量管线 + 红色警示灯
@@ -850,11 +926,14 @@ public final class OrbitalSpaceStage {
                                           double[] right, double[] up, double[] earth, double earthR,
                                           float alpha, double time, double phase) {
         double[] core = offset(eye, fwd, right, up, 66.0D, 6.0D, 8.0D);
-        double ringR = 6.4D * sceneScale;
+        float charge = stationCharge();
+        // 环舱随充能加速自转、并轻微收拢：整座环站在「起旋」。
+        double ringR = (6.4D - 0.45D * charge) * sceneScale;
+        double ringSpin = time * (0.035D + 0.55D * charge);
         // —— 环状空间站：24 段深色舱段围成一圈，间隔亮蓝/红灯
         float blink = 0.4F + 0.6F * (0.5F + 0.5F * (float) Math.sin(time * 0.5D));
         for (int i = 0; i < 24; i++) {
-            double ang = i * Math.PI * 2.0D / 24.0D;
+            double ang = i * Math.PI * 2.0D / 24.0D + ringSpin;
             double[] p = add(core, add(mul(right, Math.cos(ang) * ringR), mul(up, Math.sin(ang) * ringR)));
             solidBox(quads, matrix, p, right, up, fwd,
                     0.75D * sceneScale, 0.52D * sceneScale, 0.62D * sceneScale,
@@ -874,10 +953,26 @@ public final class OrbitalSpaceStage {
                         1.0F, 0.26F, 0.20F, alpha * blink);
             }
         }
+        // —— 充能尘埃：一圈细点向核心螺旋坠落，越接近发射越密（引力井在「喂」）。
+        for (int i = 0; i < 28; i++) {
+            double t = (time * (0.006D + 0.010D * charge) + i / 28.0D) % 1.0D;
+            double rr = ringR * (1.05D - 0.85D * t);
+            double a = i * 2.399D + time * (0.10D + 0.35D * charge);
+            double[] p = add(core, add(mul(right, Math.cos(a) * rr), mul(up, Math.sin(a) * rr)));
+            dot3(pose, lines, p, 0.10D * sceneScale,
+                    0.70F, 0.92F, 1.0F, alpha * (0.20F + 0.55F * (float) t) * (0.35F + 0.65F * charge));
+        }
         // —— 中央漩涡：黑核 + 高速旋转的蓝白吸积丝
-        double coreR = (2.5D - 0.5D * (float) phase) * sceneScale;
+        double coreR = (2.55D - 0.55D * (float) phase) * sceneScale
+                * (1.0D + 0.05D * Math.sin(time * 1.4D));
         solidDisc(quads, matrix, core, right, up, coreR, 0.004F, 0.006F, 0.014F, alpha);
-        planeRing(pose, lines, core, right, up, coreR * 1.04D, 0.72F, 0.92F, 1.0F, alpha * 0.85F);
+        planeRing(pose, lines, core, right, up, coreR * 1.04D, 0.72F, 0.92F, 1.0F,
+                alpha * (0.55F + 0.40F * charge));
+        // 发射瞬间：一道引力冲击环从核心向外推开（phase 打满时的「起爆」）。
+        if (phase > 0.02D) {
+            planeRing(pose, lines, core, right, up, coreR + 12.0D * (float) phase * sceneScale,
+                    0.60F, 0.88F, 1.0F, alpha * 0.55F * (1.0F - (float) phase));
+        }
         for (int i = 0; i < 60; i++) {
             double a0 = i * 2.39996D + time * 0.22D;
             double rr = (1.2D + (i % 9) * 0.22D) * sceneScale;
@@ -914,11 +1009,12 @@ public final class OrbitalSpaceStage {
             solidBox(quads, matrix, p, right, up, fwd,
                     1.05D * sceneScale, 1.05D * sceneScale, 1.9D * sceneScale,
                     0.22F, 0.24F, 0.28F, alpha);
-            planeRing(pose, lines, p, right, up, 1.25D * sceneScale,
-                    0.55F, 0.86F, 1.0F, alpha * 0.55F);
+            float lit = Mth.clamp((float) ((charge - i * 0.18D) / 0.22D), 0.0F, 1.0F);
+            planeRing(pose, lines, p, right, up, (1.25D + 0.20D * lit) * sceneScale,
+                    0.55F, 0.86F, 1.0F, alpha * (0.35F + 0.55F * lit));
         }
-        planeRing(pose, lines, muzzle, right, up, 1.7D * sceneScale,
-                0.60F, 0.88F, 1.0F, alpha * 0.70F);
+        planeRing(pose, lines, muzzle, right, up, (1.7D - 0.35D * charge) * sceneScale,
+                0.60F, 0.88F, 1.0F, alpha * (0.50F + 0.45F * charge));
         // —— 发射：蓝白光束 + 沿线能量环
         if (phase > 0.02D) {
             float p = (float) phase;
@@ -950,24 +1046,39 @@ public final class OrbitalSpaceStage {
         long elapsed = OrbitalStrikeClientState.elapsed();
         int impactTick = OrbitalStrikeClientState.lockTicks() + OrbitalStrikeClientState.fallTicks();
         int stagger = OrbitalStrikeMode.STORM_STAGGER_TICKS;
+        float charge = stationCharge();
+        double[][] pods = new double[OrbitalStrikeMode.STORM_POINTS][];
+        // 编队展开：锁定前半段五枚舱位从紧凑队形散到各自的投放位（看得见「部署」）。
+        double spread = 0.72D + 0.28D * smooth(charge);
         for (int i = 0; i < OrbitalStrikeMode.STORM_POINTS; i++) {
-            double[] pod = offset(eye, fwd, right, up, 44.0D + i * 2.4D,
-                    20.0D + i * 2.6D, 17.0D + (i % 2) * 5.0D);
-            renderPod(pose, quads, lines, pod, right, up, fwd, alpha, time, i);
+            double bob = Math.sin(time * 0.18D + i * 1.7D) * 0.55D;
+            double[] pod = offset(eye, fwd, right, up,
+                    44.0D - (1.0D - spread) * 9.0D + i * 2.4D,
+                    (20.0D + i * 2.6D) * spread,
+                    17.0D + (i % 2) * 5.0D + bob);
+            double fireAt = impactTick + i * (double) stagger;
+            double age = elapsed - fireAt;
+            // 发射后舱体向上反冲一下（life 在 14 tick 内衰减）。
+            if (age >= 0.0D) {
+                double life = Math.max(0.0D, 1.0D - age / 14.0D);
+                pod = add(pod, mul(up, 0.85D * life * sceneScale));
+            }
+            pods[i] = pod;
+            // 舱门在该舱开火前 18 tick 打开（0=闭合，1=全开）。
+            double door = Mth.clamp((elapsed - (fireAt - 18.0D)) / 10.0D, 0.0D, 1.0D);
+            renderPod(pose, quads, lines, pod, right, up, fwd, alpha, time, i, door);
             double angle = i * (Math.PI * 2.0D / OrbitalStrikeMode.STORM_POINTS) + 0.35D;
             // earthR 已经是缩放后的世界单位，这里直接加，不能再走 offset（会二次缩放）。
             double[] contact = add(earth, add(mul(fwd, -0.6D),
                     add(mul(right, Math.cos(angle) * earthR * 0.62D),
                             mul(up, Math.sin(angle) * earthR * 0.62D))));
-            double fireAt = impactTick + i * (double) stagger;
             double chargeAt = fireAt - 9.0D;
             if (elapsed >= chargeAt && elapsed < fireAt) {
                 double p = Mth.clamp((elapsed - chargeAt) / 9.0D, 0.0D, 1.0D);
                 planeRing(pose, lines, pod, right, up, 3.4D - 1.6D * p,
                         1.0F, 1.0F, 1.0F, alpha * (0.20F + 0.45F * (float) p));
             }
-            if (elapsed >= fireAt) {
-                double age = elapsed - fireAt;
+            if (age >= 0.0D) {
                 float life = Mth.clamp(1.0F - (float) age / 14.0F, 0.0F, 1.0F);
                 if (life > 0.01F) {
                     jaggedBolt(pose, lines, pod, contact, right, up, yawJitter(i, time), alpha * life);
@@ -985,12 +1096,20 @@ public final class OrbitalSpaceStage {
                 }
             }
         }
+        // 五枚舱之间的等离子弧：锁定充能时在编队里来回跳（风暴在「蓄电」）。
+        if (charge > 0.15F) {
+            for (int i = 0; i < pods.length; i++) {
+                crackleArc(pose, lines, pods[i], pods[(i + 1) % pods.length], right, up,
+                        time * 0.8D + i * 1.9D, 0.72F, 0.94F, 1.0F,
+                        alpha * (charge - 0.15F) * 0.28F);
+            }
+        }
     }
 
     /** 一枚投放舱：实心金色舱体 + 两片深蓝太阳能板 + 朝向地球的发射口。 */
     private static void renderPod(PoseStack pose, VertexConsumer quads, VertexConsumer lines,
                                   double[] pod, double[] right, double[] up, double[] fwd,
-                                  float alpha, double time, int index) {
+                                  float alpha, double time, int index, double door) {
         double s = 0.75D * sceneScale;
         solidBox(quads, matrixOf(pose), pod, right, up, fwd,
                 1.1D * s, 0.9D * s, 1.1D * s, 0.60F, 0.52F, 0.36F, alpha);
@@ -1001,9 +1120,16 @@ public final class OrbitalSpaceStage {
             solidBox(quads, matrixOf(pose), arm, right, up, fwd,
                     1.2D * s, 0.09D * s, 0.75D * s, 0.08F, 0.14F, 0.30F, alpha);
         }
+        // 底部发射舱门：两片装甲板在开火前向两侧滑开（闭合时几乎盖住整个舱口）。
+        for (int side = -1; side <= 1; side += 2) {
+            double slide = (0.12D + 0.58D * door) * s;
+            double[] panel = add(pod, add(mul(right, side * slide), mul(up, -1.14D * s)));
+            solidBox(quads, matrixOf(pose), panel, right, up, fwd,
+                    0.58D * s, 0.10D * s, 0.78D * s, 0.48F, 0.44F, 0.36F, alpha);
+        }
         double[] mouth = add(pod, mul(up, -1.2D * s));
-        planeRing(pose, lines, mouth, right, up, 0.55D * s,
-                1.0F, 1.0F, 1.0F, alpha * 0.65F);
+        planeRing(pose, lines, mouth, right, up, (0.55D + 0.25D * door) * s,
+                1.0F, 1.0F, 1.0F, alpha * (0.40F + 0.45F * (float) door));
         float blink = 0.35F + 0.65F * (0.5F + 0.5F * (float) Math.sin(time * 0.18D + index * 1.3D));
         planeRing(pose, lines, add(pod, mul(up, 1.1D * s)), right, up, 0.30D * s,
                 1.0F, 1.0F, 1.0F, alpha * blink);
@@ -1052,6 +1178,32 @@ public final class OrbitalSpaceStage {
         renderRock(pose, quads, lines, matrix, pos, right, up, r, time * 0.30D, alpha);
         // 尾焰：一串向后的火环 + 一条火线，越靠近地球越亮
         double heat = 0.55D + 0.45D * t;
+        // 伴飞碎屑：主岩块后面拖着七块小石头，边翻边散开 —— 陨石是「碎着」进来的。
+        for (int i = 1; i <= 7; i++) {
+            double lagT = Math.max(0.0D, t - i * 0.016D);
+            double[] frag = lerp3(start, contact, lagT);
+            double wob = (1.0D - t) * (2.0D + i * 0.55D) * sceneScale;
+            frag = add(frag, add(mul(right, Math.sin(time * 0.9D + i * 2.1D) * wob),
+                    mul(up, Math.cos(time * 1.1D + i * 1.7D) * wob * 0.7D)));
+            double size = (1.35D - i * 0.13D) * sceneScale;
+            if (size <= 0.10D) {
+                continue;
+            }
+            camBox(pose, lines, frag, right, up, fwd, size, size * 0.82D, size,
+                    0.62F, 0.34F, 0.22F, alpha * (0.75F - i * 0.06F));
+        }
+        // 迎风激波锥：两块斜板从弹头向前张开，速度越快越明显。
+        double[] nose = add(pos, mul(dir, r * 1.25D));
+        double cone = (2.0D + 7.0D * heat) * sceneScale;
+        for (int side = -1; side <= 1; side += 2) {
+            double[] tip = add(nose, add(mul(dir, cone),
+                    add(mul(right, side * r * 0.95D), mul(up, side * r * 0.35D))));
+            line(pose, lines, nose[0], nose[1], nose[2], tip[0], tip[1], tip[2],
+                    1.0F, 0.72F, 0.42F, alpha * 0.30F * (float) heat, 0, 0, 1);
+        }
+        // 热辉：岩块外沿一圈随速度变亮的橙环。
+        planeRing(pose, lines, pos, right, up, r * (1.18D + 0.10D * Math.sin(time * 1.7D)),
+                1.0F, 0.58F, 0.26F, alpha * 0.32F * (float) heat);
         for (int i = 1; i <= 11; i++) {
             double[] tail = sub(pos, mul(dir, i * (r * 1.7D)));
             double rr = Math.max(0.4D, r * (1.35D - i * 0.09D));
@@ -1091,12 +1243,33 @@ public final class OrbitalSpaceStage {
                                             double[] eye, double[] fwd,
                                             double[] right, double[] up, double[] earth, double earthR,
                                             float alpha, double time, double phase) {
-        double[] station = offset(eye, fwd, right, up, 54.0D, 28.0D, 19.0D);
-        renderStation(pose, quads, lines, buffers, station, right, up, fwd, 1.0D * sceneScale, alpha, time);
+        double[] station = add(offset(eye, fwd, right, up, 54.0D, 28.0D, 19.0D),
+                mul(up, Math.sin(time * 0.045D) * 0.35D * sceneScale));
+        float charge = stationCharge();
         double[] dir = norm(sub(earth, station));
+        // 天线碟随充能从「侧对镜头」转向地球；太阳翼高光持续扫过。
+        renderStation(pose, quads, lines, buffers, station, right, up, fwd, 1.0D * sceneScale,
+                alpha, time, charge, dir);
         double[] muzzle = add(station, mul(dir, 8.0D));
         double[] contact = sub(earth, mul(dir, earthR * 0.92D));
-        planeRing(pose, lines, muzzle, right, up, 2.4D, CYAN_R, CYAN_G, CYAN_B, alpha * 0.45F);
+        planeRing(pose, lines, muzzle, right, up, (2.4D - 0.5D * charge) * sceneScale,
+                CYAN_R, CYAN_G, CYAN_B, alpha * (0.35F + 0.40F * charge));
+
+        // 发射口滑门：两片装甲板在充能时向两侧滑开（0=合拢，1=全开）。
+        for (int side = -1; side <= 1; side += 2) {
+            double shut = (0.22D + 0.95D * charge) * sceneScale;
+            double[] shutter = add(muzzle, mul(right, side * shut));
+            solidBox(quads, matrix, shutter, right, up, fwd,
+                    0.62D * sceneScale, 0.62D * sceneScale, 0.10D * sceneScale,
+                    0.46F, 0.50F, 0.56F, alpha);
+        }
+        // 充能环：三圈从舱体一路收向发射口。
+        for (int i = 0; i < 3; i++) {
+            double f = (time * 0.012D + i / 3.0D) % 1.0D;
+            double[] p = lerp3(add(station, mul(dir, 1.2D * sceneScale)), muzzle, f);
+            planeRing(pose, lines, p, right, up, (2.6D - 1.3D * f) * sceneScale,
+                    1.0F, 1.0F, 1.0F, alpha * 0.42F * charge * (1.0F - (float) f * 0.5F));
+        }
 
         if (phase > 0.01D) {
             float p = (float) phase;
@@ -1107,6 +1280,14 @@ public final class OrbitalSpaceStage {
                         muzzle[0] + off[0], muzzle[1] + off[1], muzzle[2] + off[2],
                         contact[0] + off[0], contact[1] + off[1], contact[2] + off[2],
                         1.0F, 1.0F, 1.0F, alpha * (k == 0.0D ? 0.95F : 0.35F) * p * flicker, 0, 0, 1);
+            }
+            // 束流脉冲：五圈白环沿光束向地球跑（证明这根柱子是「在发射」而不是贴图）。
+            for (int i = 0; i < 5; i++) {
+                double f = (time * 0.055D + i * 0.2D) % 1.0D;
+                double[] pulse = lerp3(muzzle, contact, f);
+                planeRing(pose, lines, pulse, right, up,
+                        (1.45D - 0.65D * f) * sceneScale, 1.0F, 1.0F, 1.0F,
+                        alpha * 0.45F * p * (1.0F - (float) f));
             }
             earthImpact(pose, lines, contact, right, up, alpha, OrbitalStrikeClientState.impactAge());
             planeRing(pose, lines, contact, right, up, 1.6D + 1.8D * p,
@@ -1130,7 +1311,8 @@ public final class OrbitalSpaceStage {
     private static void renderStation(PoseStack pose, VertexConsumer quads, VertexConsumer lines,
                                       MultiBufferSource.BufferSource buffers,
                                       double[] center, double[] right, double[] up, double[] fwd,
-                                      double scale, float alpha, double time) {
+                                      double scale, float alpha, double time,
+                                      double charge, double[] aim) {
         double s = scale;
         // —— 金色隔热膜舱体（贴图：参考图裁出的金箔）
         {
@@ -1193,26 +1375,54 @@ public final class OrbitalSpaceStage {
                             a[0] + right[0] * 1.22D * s, a[1] + right[1] * 1.22D * s, a[2] + right[2] * 1.22D * s,
                             0.36F, 0.55F, 0.80F, alpha * 0.45F, 0, 0, 1);
                 }
+                // 电池片高光扫过：一道亮线在翼面上来回移动（充能越快越亮）。
+                double sweep = (((time * 0.018D + k * 0.31D + side * 0.12D) % 1.0D) - 0.5D) * 3.4D;
+                double[] sw = add(panel, add(mul(fwd, sweep * s), mul(up, 0.16D * s)));
+                line(pose, lines,
+                        sw[0] - right[0] * 1.18D * s, sw[1] - right[1] * 1.18D * s, sw[2] - right[2] * 1.18D * s,
+                        sw[0] + right[0] * 1.18D * s, sw[1] + right[1] * 1.18D * s, sw[2] + right[2] * 1.18D * s,
+                        0.76F, 0.94F, 1.0F, alpha * (0.10F + 0.22F * (float) charge), 0, 0, 1);
             }
         }
-        // —— 大抛物面天线：朝镜头，几乎与舱体同高（贴图：参考图裁出的白色碟面）
+        // —— 大抛物面天线：充能时从「侧对镜头」转向地球（aim），像在锁定目标。
         double[] dish = add(center, add(mul(right, 2.55D * s), mul(fwd, 0.10D * s)));
+        double[] normal = cross(aim, right);
+        double[] dishUp = len(normal) < 1.0E-4D ? up : norm(normal);
+        double[] dishRightAxis = norm(cross(dishUp, aim));
+        double aimT = smooth((float) charge);
+        double[] dishU = norm(lerp3(right, dishRightAxis, aimT));
+        double[] dishV = norm(lerp3(up, dishUp, aimT));
         {
             VertexConsumer tex = buffers.getBuffer(RT_SAT_DISH);
-            texPlane(tex, matrixOf(pose), dish, right, up, 2.05D * s, alpha);
+            texPlane(tex, matrixOf(pose), dish, dishU, dishV, 2.05D * s, alpha);
             buffers.endBatch(RT_SAT_DISH);
         }
-        planeRing(pose, lines, dish, right, up, 2.00D * s,
-                0.94F, 0.96F, 1.0F, alpha * 0.55F);
-        // 馈源：盘心伸出的支杆 + 小圆柱
-        double[] feed = add(dish, mul(fwd, -1.15D * s));
+        planeRing(pose, lines, dish, dishU, dishV,
+                (2.00D - 0.06D * Math.sin(time * 1.6D)) * s,
+                0.94F, 0.96F, 1.0F, alpha * (0.45F + 0.25F * (float) charge));
+        // 馈源：盘心沿「碟面朝向」伸出；碟面转向地球时馈源跟着转过去。
+        double[] feedDir = norm(lerp3(mul(fwd, -1.0D), aim, aimT));
+        double[] feed = add(dish, mul(feedDir, (0.55D + 0.60D * aimT) * s));
         line(pose, lines, dish[0], dish[1], dish[2], feed[0], feed[1], feed[2],
-                0.72F, 0.74F, 0.76F, alpha * 0.75F, 0, 0, 1);
-        solidBox(quads, matrixOf(pose), feed, right, up, fwd,
+                0.72F, 0.74F, 0.76F, alpha * (0.45F + 0.30F * (float) aimT), 0, 0, 1);
+        solidBox(quads, matrixOf(pose), feed, dishU, dishV, feedDir,
                 0.30D * s, 0.30D * s, 0.34D * s, 0.55F, 0.56F, 0.58F, alpha);
+        // 馈源外的旋转扫描环：三根辐条随充能加速。
+        double feedSpin = time * (0.8D + 1.6D * charge);
+        planeRing(pose, lines, feed, dishU, dishV, (0.20D + 0.10D * (float) charge) * s,
+                1.0F, 0.92F, 0.72F, alpha * 0.55F * (float) charge);
+        for (int i = 0; i < 3; i++) {
+            double a = feedSpin + i * Math.PI * 2.0D / 3.0D;
+            line(pose, lines,
+                    feed[0], feed[1], feed[2],
+                    feed[0] + (dishU[0] * Math.cos(a) + dishV[0] * Math.sin(a)) * 0.42D * s,
+                    feed[1] + (dishU[1] * Math.cos(a) + dishV[1] * Math.sin(a)) * 0.42D * s,
+                    feed[2] + (dishU[2] * Math.cos(a) + dishV[2] * Math.sin(a)) * 0.42D * s,
+                    0.78F, 0.94F, 1.0F, alpha * 0.40F * (float) charge, 0, 0, 1);
+        }
         // 天线与舱体之间的两根支撑
-        double[] dishLeft = add(dish, mul(right, -1.6D * s));
-        double[] dishRight = add(dish, mul(right, 1.6D * s));
+        double[] dishLeft = add(dish, mul(dishU, -1.6D * s));
+        double[] dishRight = add(dish, mul(dishU, 1.6D * s));
         double[] hull = add(center, mul(right, 1.2D * s));
         line(pose, lines, dishLeft[0], dishLeft[1], dishLeft[2], hull[0], hull[1], hull[2],
                 0.55F, 0.52F, 0.40F, alpha * 0.55F, 0, 0, 1);
@@ -1232,7 +1442,7 @@ public final class OrbitalSpaceStage {
      */
     private static void renderDreadnought(PoseStack pose, VertexConsumer quads, VertexConsumer lines,
                                           double[] center, double[] right, double[] up, double[] fwd,
-                                          double scale, float alpha, double time) {
+                                          double scale, float alpha, double time, double charge) {
         double s = scale;
         // 主舰体
         solidBox(quads, matrixOf(pose), center, right, up, fwd,
@@ -1241,7 +1451,10 @@ public final class OrbitalSpaceStage {
         solidBox(quads, matrixOf(pose), add(center, mul(up, 1.35D * s)), right, up, fwd,
                 3.2D * s, 0.32D * s, 1.0D * s, 0.50F, 0.52F, 0.55F, alpha);
         for (int side = -1; side <= 1; side += 2) {
-            solidBox(quads, matrixOf(pose), add(center, add(mul(up, 1.75D * s), mul(right, side * 2.0D * s))),
+            // 散热板随充能向外张开（1.55 → 2.35 格），像炮台在把余热排出去。
+            double wing = (1.55D + 0.80D * charge) * s;
+            solidBox(quads, matrixOf(pose),
+                    add(center, add(mul(up, wing), mul(right, side * (1.85D + 0.35D * charge) * s))),
                     right, up, fwd, 1.0D * s, 0.08D * s, 1.6D * s, 0.66F, 0.68F, 0.70F, alpha);
             // 侧面武器舱
             solidBox(quads, matrixOf(pose), add(center, add(mul(right, side * 3.4D * s), mul(up, -0.25D * s))),
@@ -1256,14 +1469,31 @@ public final class OrbitalSpaceStage {
                     center[2] + right[2] * side * 4.15D * s - up[2] * 0.75D * s,
                     1.0F, 0.56F, 0.18F, alpha * 0.65F, 0, 0, 1);
         }
-        // 中央发光核心：橙色实心环 + 两圈环 + 脉动
+        // 顶部旋转雷达：三根辐条绕中心扫，充能时转得更快（炮台在持续跟踪地球）。
+        double[] radar = add(center, mul(up, 2.18D * s));
+        double spin = time * (0.55D + 1.55D * charge);
+        planeRing(pose, lines, radar, right, up, 0.62D * s,
+                0.55F, 0.86F, 1.0F, alpha * (0.28F + 0.32F * (float) charge));
+        for (int i = 0; i < 3; i++) {
+            double a = spin + i * Math.PI * 2.0D / 3.0D;
+            line(pose, lines,
+                    radar[0], radar[1], radar[2],
+                    radar[0] + (right[0] * Math.cos(a) + up[0] * Math.sin(a)) * 0.62D * s,
+                    radar[1] + (right[1] * Math.cos(a) + up[1] * Math.sin(a)) * 0.62D * s,
+                    radar[2] + (right[2] * Math.cos(a) + up[2] * Math.sin(a)) * 0.62D * s,
+                    0.62F, 0.90F, 1.0F, alpha * 0.55F, 0, 0, 1);
+        }
+        // 中央发光核心：橙色实心环 + 两圈环 + 脉动；充能越满，核心越亮、收得越紧。
         float pulse = 0.6F + 0.4F * (0.5F + 0.5F * (float) Math.sin(time * 0.9D));
         double[] core = add(center, mul(fwd, -1.55D * s));
-        solidDisc(quads, matrixOf(pose), core, right, up, 1.35D * s,
+        solidDisc(quads, matrixOf(pose), core, right, up, (1.20D + 0.30D * charge) * s,
                 1.0F, 0.50F, 0.12F, alpha * 0.95F);
-        planeRing(pose, lines, core, right, up, 1.35D * s, 1.0F, 0.78F, 0.40F, alpha * 0.80F);
-        planeRing(pose, lines, core, right, up, (1.8D + 0.15D * pulse) * s, 1.0F, 0.55F, 0.16F, alpha * 0.45F);
-        planeRing(pose, lines, core, right, up, (2.5D + 0.25D * pulse) * s, 1.0F, 0.42F, 0.10F, alpha * 0.22F);
+        planeRing(pose, lines, core, right, up, (1.15D + 0.25D * charge) * s,
+                1.0F, 0.78F, 0.40F, alpha * 0.80F);
+        planeRing(pose, lines, core, right, up, (1.8D + 0.15D * pulse - 0.55D * charge) * s,
+                1.0F, 0.55F, 0.16F, alpha * (0.45F + 0.30F * (float) charge));
+        planeRing(pose, lines, core, right, up, (2.5D + 0.25D * pulse - 0.90D * charge) * s,
+                1.0F, 0.42F, 0.10F, alpha * (0.22F + 0.25F * (float) charge));
         // 尾部推进焰（朝向镜头一侧的反方向）
         for (int side = -1; side <= 1; side += 2) {
             double[] thr = add(center, add(mul(fwd, 1.55D * s), mul(right, side * 1.5D * s)));
@@ -1547,6 +1777,25 @@ public final class OrbitalSpaceStage {
         line(pose, lines, p[0], p[1], p[2] - size, p[0], p[1], p[2] + size, r, g, b, a, 0, 0, 1);
     }
 
+    /** 两点之间的锯齿电弧（中段在 right/up 上抖动；每帧重抖，看起来在噼啪放电）。 */
+    private static void crackleArc(PoseStack pose, VertexConsumer lines, double[] from, double[] to,
+                                   double[] right, double[] up, double seed,
+                                   float r, float g, float b, float a) {
+        final int segments = 7;
+        double[] prev = from;
+        for (int i = 1; i <= segments; i++) {
+            double t = i / (double) segments;
+            double[] p = lerp3(from, to, t);
+            if (i < segments) {
+                double amp = 0.75D * Math.sin(Math.PI * t);
+                p = add(p, add(mul(right, Math.sin(seed + i * 2.3D) * amp),
+                        mul(up, Math.cos(seed * 1.7D + i * 1.9D) * amp)));
+            }
+            line(pose, lines, prev[0], prev[1], prev[2], p[0], p[1], p[2], r, g, b, a, 0, 0, 1);
+            prev = p;
+        }
+    }
+
     private static void quad(VertexConsumer buffer, Matrix4f matrix,
                              double x1, double y1, double z1,
                              double x2, double y2, double z2,
@@ -1733,6 +1982,13 @@ public final class OrbitalSpaceStage {
             return new double[]{0.0D, 0.0D, 1.0D};
         }
         return new double[]{a[0] / l, a[1] / l, a[2] / l};
+    }
+
+    private static double[] cross(double[] a, double[] b) {
+        return new double[]{
+                a[1] * b[2] - a[2] * b[1],
+                a[2] * b[0] - a[0] * b[2],
+                a[0] * b[1] - a[1] * b[0]};
     }
 
     private static double[] lerp3(double[] a, double[] b, double t) {

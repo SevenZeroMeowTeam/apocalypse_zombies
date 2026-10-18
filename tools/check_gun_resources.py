@@ -128,8 +128,11 @@ registry = read(JAVA / "registry/ModItems.java")
 # ShovelItem / ArmorItem）走的是原版那套模型（models/item/*.json + 普通 16×16 贴图），
 # 与 GeckoLib 的 geo/animation 毫无关系；不排掉就是 9 条假失败（前五个类各 1 条，
 # ArmorItem 四条 —— 四件甲。ShovelItem 是 1.1.110 同版补铜锹时加进来的）。
-VANILLA_ITEM_CLASSES = {"ForgeSpawnEggItem", "SwordItem", "PickaxeItem", "HoeItem", "AxeItem",
-                        "ShovelItem", "ArmorItem"}
+#
+# 另：普通 `new Item(...)`（爱心币）与自绘模型的道具（轨道打击遥控器）也不绑定 GeoModel；
+# 不排掉会稳定报「找不到模型绑定 XxxGeoModel.java」的假失败。
+VANILLA_ITEM_CLASSES = {"Item", "OrbitalStrikeRemoteItem", "ForgeSpawnEggItem", "SwordItem",
+                        "PickaxeItem", "HoeItem", "AxeItem", "ShovelItem", "ArmorItem"}
 guns = [
     entry
     for entry in re.findall(r'ITEMS\.register\("([a-z0-9_]+)",\s*\(\)\s*->\s*new\s+(\w+Item)\(', registry)

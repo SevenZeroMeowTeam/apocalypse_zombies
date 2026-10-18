@@ -1,6 +1,7 @@
 package com.apocalypse.zombies.client;
 
 import com.apocalypse.zombies.ApocalypseZombies;
+import com.apocalypse.zombies.client.gui.ApocalypseLoadingScreen;
 import com.apocalypse.zombies.client.gui.ApocalypseTitleScreen;
 import com.apocalypse.zombies.client.renderer.OrbitalCinematic;
 import com.apocalypse.zombies.client.renderer.OrbitalScreenFX;
@@ -25,8 +26,13 @@ import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.GenericDirtMessageScreen;
+import net.minecraft.client.gui.screens.LevelLoadingScreen;
 import net.minecraft.client.gui.screens.PauseScreen;
+import net.minecraft.client.gui.screens.ReceivingLevelScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
@@ -130,7 +136,30 @@ public final class ClientEvents {
             event.setNewScreen(new com.apocalypse.zombies.client.gui.ApocalypseTitleScreen());
         } else if (event.getNewScreen() instanceof PauseScreen) {
             event.setNewScreen(new com.apocalypse.zombies.client.gui.ApocalypsePauseScreen());
+        } else if (event.getNewScreen() instanceof GenericDirtMessageScreen dirt
+                && isWorldDataRead(dirt)) {
+            // 「读取世界数据中…」那段原版是泥土底 + 一行字；这里整屏换成末日插画，只留图。
+            event.setNewScreen(new ApocalypseLoadingScreen());
         }
+    }
+
+    /**
+     * 进入世界后原版还会接 {@code LevelLoadingScreen}（百分比 + 区块网格）和
+     * {@code ReceivingLevelScreen}（「加载地形中…」+ 世界画面）。这两个类各自持有加载状态，
+     * 不能整屏替换，于是用 Render.Post 在同一张插画上整屏再盖一层 —— 三段加载画面因此连成一张图。
+     */
+    @SubscribeEvent
+    public static void onScreenRenderPost(ScreenEvent.Render.Post event) {
+        Screen screen = event.getScreen();
+        if (screen instanceof LevelLoadingScreen || screen instanceof ReceivingLevelScreen) {
+            ApocalypseLoadingScreen.drawCover(event.getGuiGraphics());
+        }
+    }
+
+    /** 判断这个泥土消息屏是不是「读取世界数据中…」（同一类还用于保存世界等其它提示）。 */
+    private static boolean isWorldDataRead(Screen screen) {
+        return screen.getTitle().getContents() instanceof TranslatableContents contents
+                && "selectWorld.data_read".equals(contents.getKey());
     }
 
     // ------------------------------------------------------------------ fog

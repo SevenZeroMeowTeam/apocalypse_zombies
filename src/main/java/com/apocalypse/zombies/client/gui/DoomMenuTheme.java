@@ -8,6 +8,7 @@ import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.worldselection.SelectWorldScreen;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
@@ -56,13 +57,17 @@ public final class DoomMenuTheme {
         GuiGraphics graphics = event.getGuiGraphics();
         int w = screen.width;
         int h = screen.height;
+        // 选择世界：铺加载插画（与「读取世界数据 / 加载世界」同一张），
+        // 这样存档列表背后不会透出标题图上烤死的菜单按钮。
+        ResourceLocation background = screen instanceof SelectWorldScreen
+                ? ApocalypseLoadingScreen.BACKGROUND : BACKGROUND;
         // cover 铺满（与标题界面同一套算法）
         float scale = Math.max(w / (float) TEX_W, h / (float) TEX_H);
         int bw = Math.round(TEX_W * scale);
         int bh = Math.round(TEX_H * scale);
         int x = (w - bw) / 2;
         int y = (h - bh) / 2;
-        graphics.blit(BACKGROUND, x, y, bw, bh, 0.0F, 0.0F, TEX_W, TEX_H, TEX_W, TEX_H);
+        graphics.blit(background, x, y, bw, bh, 0.0F, 0.0F, TEX_W, TEX_H, TEX_W, TEX_H);
         // 压暗 + 冷紫调：菜单文字/列表压在图上也要读得清
         graphics.fill(0, 0, w, h, 0x99000000);
         graphics.fill(0, 0, w, h, 0x2A1A0A28);
@@ -99,6 +104,7 @@ public final class DoomMenuTheme {
         }
         if (screen instanceof ApocalypseTitleScreen
                 || screen instanceof ApocalypsePauseScreen
+                || screen instanceof ApocalypseLoadingScreen
                 || screen instanceof ApocalypseConfigScreen
                 || screen instanceof CatGirlTradeScreen) {
             return false;                                   // 本模组自绘界面（自己铺背景/按钮）
