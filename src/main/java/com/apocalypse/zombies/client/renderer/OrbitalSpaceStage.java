@@ -1,13 +1,17 @@
 package com.apocalypse.zombies.client.renderer;
 
+import com.apocalypse.zombies.ApocalypseZombies;
 import com.apocalypse.zombies.client.OrbitalStrikeClientState;
 import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.phys.Vec3;
@@ -21,9 +25,12 @@ import org.joml.Matrix4f;
  * 掠地陨石（行星陨落）。所有几何都按相机的 yaw/pitch 三轴摆放 —— 世界坐标在这里没有意义
  * （PoseStack 已经 translate(-camera)，而相机在 Y≥460）。</p>
  *
- * <p><b>渲染约束</b>：只用 {@link RenderType#debugQuads()}（面）和 {@link RenderType#lines()}
- * （线，{@code line()} 带法线，不能塞进 POSITION_COLOR 缓冲），不建自定义 RenderType、
- * 不做全屏 shader/FBO —— 与 Embeddium/Sodium 的历史崩溃保持距离。</p>
+ * <p><b>渲染约束</b>：3.0.0 起分两条管线 —— 程序化部分仍用 {@link RenderType#debugQuads()}
+ * （面）和 {@link RenderType#lines()}（线）；写实三件套（星云天球 / 地球 / 卫星）改用
+ * <b>原版实体渲染类型</b>（{@code entityCutoutNoCull} / {@code entityTranslucent}），
+ * 顶点按标准 NEW_ENTITY 格式完整写入（color + uv + overlay + lightmap + normal）。
+ * 这是所有模组实体每帧都在用的格式；1.5.0 踩的是 beaconBeam 的 4 元素格式，这里不碰。
+ * 不建自定义 RenderType、不做全屏 shader/FBO。</p>
  *
  * <p><b>权威边界</b>：这里全是客户端装饰。伤害、地形改动、挖穿到虚空都在服务端的落点结算，
  * 客户端只负责把「谁在开火、从哪打过来」演给玩家看。</p>
@@ -33,6 +40,26 @@ public final class OrbitalSpaceStage {
     private static final float CYAN_R = 0.40F;
     private static final float CYAN_G = 0.91F;
     private static final float CYAN_B = 0.98F;
+
+    // ---- 写实三件套贴图（3.0.0 P0：从参考图裁出来，随模组分发）----
+    /** 地球：参考图里的地球圆盘（圆形透明遮罩，512²）。 */
+    private static final ResourceLocation TEX_EARTH = new ResourceLocation(
+            ApocalypseZombies.MOD_ID, "textures/environment/earth.png");
+    /** 星云天空：参考图的宇宙全景（1024×512，贴在世界轴固定的天球上）。 */
+    private static final ResourceLocation TEX_NEBULA = new ResourceLocation(
+            ApocalypseZombies.MOD_ID, "textures/environment/nebula.png");
+    /** 卫星金色隔热膜 / 太阳能电池片 / 白色抛物面天线。 */
+    private static final ResourceLocation TEX_SAT_BODY = new ResourceLocation(
+            ApocalypseZombies.MOD_ID, "textures/environment/sat_body.png");
+    private static final ResourceLocation TEX_SAT_PANEL = new ResourceLocation(
+            ApocalypseZombies.MOD_ID, "textures/environment/sat_panel.png");
+    private static final ResourceLocation TEX_SAT_DISH = new ResourceLocation(
+            ApocalypseZombies.MOD_ID, "textures/environment/sat_dish.png");
+    private static final RenderType RT_EARTH = RenderType.entityCutoutNoCull(TEX_EARTH);
+    private static final RenderType RT_SKY = RenderType.entityTranslucentEmissive(TEX_NEBULA);
+    private static final RenderType RT_SAT_BODY = RenderType.entityCutoutNoCull(TEX_SAT_BODY);
+    private static final RenderType RT_SAT_PANEL = RenderType.entityCutoutNoCull(TEX_SAT_PANEL);
+    private static final RenderType RT_SAT_DISH = RenderType.entityTranslucent(TEX_SAT_DISH);
     /** 深空底：包围相机的盒子半距 / 面片半宽。 */
     private static final double BACKDROP_FAR = 170.0D;
     private static final double BACKDROP_EXTENT = 220.0D;
@@ -91,10 +118,10 @@ public final class OrbitalSpaceStage {
         }
 
         VertexConsumer quads = buffers.getBuffer(RenderType.debugQuads());
-        drawBackdrop(pose, lines, quads, matrix, eye, fwd, right, up, time, fade);
+        drawBackdrop(pose, lines, quads, buffers, matrix, eye, fwd, right, up, time, fade);
 
         double[] earth = offset(eye, fwd, right, up, EARTH_FORWARD, EARTH_SIDE, EARTH_HEIGHT);
-        renderEarth(pose, lines, quads, matrix, earth, fwd, right, up, EARTH_RADIUS * sceneScale, fade, time);
+        renderEarth(pose, lines, quads, buffers, matrix, earth, fwd, right, up, EARTH_RADIUS * sceneScale, fade, time);
 
         OrbitalStrikeMode mode = OrbitalStrikeClientState.mode();
         double phase = OrbitalCinematic.spaceFireProgress();
@@ -109,7 +136,7 @@ public final class OrbitalSpaceStage {
                     earth, EARTH_RADIUS * sceneScale, fade, time);
             case PLANET -> renderMeteor(pose, lines, quads, matrix, eye, fwd, right, up,
                     earth, EARTH_RADIUS * sceneScale, fade, time);
-            default -> renderSatelliteBeam(pose, lines, quads, matrix, eye, fwd, right, up,
+            default -> renderSatelliteBeam(pose, lines, quads, buffers, matrix, eye, fwd, right, up,
                     earth, EARTH_RADIUS * sceneScale, fade, time, phase);
         }
     }
@@ -124,15 +151,19 @@ public final class OrbitalSpaceStage {
      * 全部程序化生成（固定种子，每次播放同一片星空），不使用外部贴图。</p>
      */
     private static void drawBackdrop(PoseStack pose, VertexConsumer lines, VertexConsumer quads,
-                                     Matrix4f matrix, double[] eye,
-                                     double[] fwd, double[] right, double[] up,
+                                     MultiBufferSource.BufferSource buffers, Matrix4f matrix,
+                                     double[] eye, double[] fwd, double[] right, double[] up,
                                      double time, float alpha) {
         double radius = 150.0D * sceneScale;
         drawDome(quads, matrix, eye, fwd, right, up, radius, alpha);
-        drawMilkyWay(pose, lines, eye, fwd, right, up, radius * 0.97D, alpha, time);
-        drawNebulae(quads, matrix, eye, fwd, right, up, radius * 0.95D, alpha, time);
-        drawGalaxy(pose, lines, quads, matrix, eye, fwd, right, up, radius * 0.93D, alpha, time);
-        drawDistantGalaxies(pose, lines, eye, fwd, right, up, radius * 0.94D, alpha);
+        // —— 写实星云天空（3.0.0 P0）：参考图的宇宙全景贴在世界轴固定的天球上，
+        //    转视角时星空不走样；银河/星云/星系三层程序化绘制由它接管。
+        {
+            VertexConsumer sky = buffers.getBuffer(RT_SKY);
+            drawTexturedSky(sky, matrix, eye, radius * 0.985D, alpha);
+            buffers.endBatch(RT_SKY);
+        }
+        // 程序化星群叠在贴图上：星星比贴图锐利，底色交给贴图
         drawStars(pose, lines, eye, fwd, right, up, radius * 0.99D, alpha, time);
         drawShootingStars(pose, lines, eye, fwd, right, up, radius * 0.98D, alpha, time);
     }
@@ -560,138 +591,18 @@ public final class OrbitalSpaceStage {
      * 全部程序化（大陆位置由固定种子生成），不依赖任何外部贴图。
      */
     private static void renderEarth(PoseStack pose, VertexConsumer lines, VertexConsumer quads,
-                                    Matrix4f matrix, double[] c, double[] fwd,
+                                    MultiBufferSource.BufferSource buffers, Matrix4f matrix,
+                                    double[] c, double[] fwd,
                                     double[] right, double[] up,
                                     double radius, float alpha, double time) {
-        final int rings = 30;
-        final int segs = 48;
-        // 云、灯、晨昏线都比球面更靠近镜头一点：同一深度写两次会 z-fighting。
+        // —— 贴图地球（3.0.0 P0）：参考图里的地球圆盘直接上屏，圆形遮罩由贴图 alpha 提供。
+        //    体积感交给后面的大气辉光与晨昏弧，外层还有星空衬着。
         double[] surface = add(c, mul(fwd, -0.30D));
-        // 太阳方向极缓慢漂移：晨昏线在几秒里挪一点点，球面才有「在转」的错觉。
         double sun = SUN_ANGLE + Math.sin(time * 0.012D) * 0.025D;
-        double cloudSpin = time * 0.0018D;
-        // 大陆种子（归一化圆盘坐标）
-        RandomSource seed = RandomSource.create(0x45415254484CL);
-        double[] sx = new double[9];
-        double[] sy = new double[9];
-        double[] sr = new double[9];
-        for (int i = 0; i < 9; i++) {
-            sx[i] = (seed.nextDouble() * 2.0D - 1.0D) * 0.74D;
-            sy[i] = (seed.nextDouble() * 2.0D - 1.0D) * 0.74D;
-            sr[i] = 0.17D + seed.nextDouble() * 0.20D;
-        }
-
-        for (int ri = 0; ri < rings; ri++) {
-            double r0 = radius * ri / rings;
-            double r1 = radius * (ri + 1) / rings;
-            double midR = (ri + 0.5D) / rings;
-            for (int si = 0; si < segs; si++) {
-                double a1 = Math.PI * 2.0D * si / segs;
-                double a2 = Math.PI * 2.0D * (si + 1) / segs;
-                double midA = (a1 + a2) * 0.5D;
-                double nx = Math.cos(midA) * midR;
-                double ny = Math.sin(midA) * midR;
-                boolean land = false;
-                for (int k = 0; k < 9 && !land; k++) {
-                    double dx = nx - sx[k];
-                    double dy = ny - sy[k];
-                    land = dx * dx + dy * dy < sr[k] * sr[k];
-                }
-                boolean ice = Math.abs(ny) > 0.83D + 0.035D * Math.sin(midA * 4.0D);
-                double litRaw = 0.5D + 0.5D * Math.cos(midA - sun);
-                // 晨昏线不要一条硬边：0.15~0.35 之间过渡
-                double day = smooth01((litRaw - 0.18D) / 0.30D);
-
-                float dr;
-                float dg;
-                float db;
-                float nr;
-                float ng;
-                float nb;
-                if (ice) {
-                    dr = 0.86F;
-                    dg = 0.93F;
-                    db = 1.00F;
-                    nr = 0.05F;
-                    ng = 0.09F;
-                    nb = 0.15F;
-                } else if (land) {
-                    dr = 0.14F;
-                    dg = 0.38F;
-                    db = 0.19F;
-                    nr = 0.010F;
-                    ng = 0.042F;
-                    nb = 0.026F;
-                } else {
-                    dr = 0.035F;
-                    dg = 0.21F;
-                    db = 0.47F;
-                    nr = 0.003F;
-                    ng = 0.011F;
-                    nb = 0.032F;
-                }
-                float cr = (float) Mth.lerp(day, nr, dr);
-                float cg = (float) Mth.lerp(day, ng, dg);
-                float cb = (float) Mth.lerp(day, nb, db);
-                // 海面镜面高光：太阳一侧的窄亮斑（参考图里那块发白的海面反光）
-                if (!ice && !land) {
-                    double sd = Math.max(0.0D, Math.cos(midA - sun - 0.28D));
-                    float spec = (float) Math.pow(sd, 22.0D) * 0.55F * (float) day;
-                    cr = Math.min(1.0F, cr + spec);
-                    cg = Math.min(1.0F, cg + spec);
-                    cb = Math.min(1.0F, cb + spec);
-                }
-                planeQuad4(quads, matrix, c, right, up,
-                        r0 * Math.cos(a1), r0 * Math.sin(a1),
-                        r0 * Math.cos(a2), r0 * Math.sin(a2),
-                        r1 * Math.cos(a2), r1 * Math.sin(a2),
-                        r1 * Math.cos(a1), r1 * Math.sin(a1),
-                        cr, cg, cb, alpha * 0.94F);
-
-                // 夜面城市灯光：只在大陆的夜半球、且稀疏
-                if (land && day < 0.22D && ((ri * 31 + si * 17) % 23 == 0)) {
-                    double px = Math.cos(midA) * radius * midR;
-                    double py = Math.sin(midA) * radius * midR;
-                    // 城市灯光按各自相位闪烁（窗口里看着像活的）
-                    float twinkle = 0.45F + 0.55F * (0.5F + 0.5F * (float) Math.sin(
-                            time * 0.22D + (ri * 7 + si) * 1.7D));
-                    planeQuad(quads, matrix, surface, right, up,
-                            px - 0.22D, py - 0.22D, px + 0.22D, py + 0.22D,
-                            1.0F, 0.86F, 0.55F, alpha * (float) (0.62D * (1.0D - day)) * twinkle);
-                }
-            }
-        }
-
-        // 云带：几条贯穿圆盘的白色薄带（略带波动，避免像直尺画出来的）
-        RandomSource cloudSeed = RandomSource.create(0x434C4F554453L);
-        for (int band = 0; band < 10; band++) {
-            double y = (cloudSeed.nextDouble() * 2.0D - 1.0D) * 0.80D;
-            double thickness = 0.035D + cloudSeed.nextDouble() * 0.045D;
-            double wobble = cloudSeed.nextDouble() * Math.PI * 2.0D;
-            double half = Math.sqrt(Math.max(0.0D, 1.0D - y * y)) * 0.96D;
-            int steps = 22;
-            double cs = Math.cos(cloudSpin);
-            double sn = Math.sin(cloudSpin);
-            for (int s = 0; s < steps; s++) {
-                double x0 = -half + 2.0D * half * s / steps;
-                double x1 = -half + 2.0D * half * (s + 1) / steps;
-                double yy = y + Math.sin(x0 * 3.0D + wobble) * 0.018D
-                        + Math.sin(x0 * 7.0D + wobble * 1.7D) * 0.010D;
-                if (x0 * x0 + y * y >= 0.985D) {
-                    continue;
-                }
-                // 整层云绕球心缓慢旋转：四角各自转，读起来是「云在飘」。
-                double ax0 = x0 * radius;
-                double ay0 = yy * radius;
-                double ax1 = x1 * radius;
-                double ay1 = (yy + thickness) * radius;
-                planeQuad4(quads, matrix, surface, right, up,
-                        ax0 * cs - ay0 * sn, ax0 * sn + ay0 * cs,
-                        ax1 * cs - ay0 * sn, ax1 * sn + ay0 * cs,
-                        ax1 * cs - ay1 * sn, ax1 * sn + ay1 * cs,
-                        ax0 * cs - ay1 * sn, ax0 * sn + ay1 * cs,
-                        1.0F, 1.0F, 1.0F, alpha * (0.07F + 0.05F * (float) cloudSeed.nextDouble()));
-            }
+        {
+            VertexConsumer tex = buffers.getBuffer(RT_EARTH);
+            texPlane(tex, matrix, c, right, up, radius * 1.02D, alpha);
+            buffers.endBatch(RT_EARTH);
         }
 
         // 大气层：三圈外晕，越外越淡（写实照片里那层薄蓝边）
@@ -1176,11 +1087,12 @@ public final class OrbitalSpaceStage {
 
     /** 宇宙激光：轨道卫星把束流打进地球；接触点白闪 + 贯穿方向的双层扩散环。 */
     private static void renderSatelliteBeam(PoseStack pose, VertexConsumer lines, VertexConsumer quads,
-                                            Matrix4f matrix, double[] eye, double[] fwd,
+                                            MultiBufferSource.BufferSource buffers, Matrix4f matrix,
+                                            double[] eye, double[] fwd,
                                             double[] right, double[] up, double[] earth, double earthR,
                                             float alpha, double time, double phase) {
         double[] station = offset(eye, fwd, right, up, 54.0D, 28.0D, 19.0D);
-        renderStation(pose, quads, lines, station, right, up, fwd, 1.0D * sceneScale, alpha, time);
+        renderStation(pose, quads, lines, buffers, station, right, up, fwd, 1.0D * sceneScale, alpha, time);
         double[] dir = norm(sub(earth, station));
         double[] muzzle = add(station, mul(dir, 8.0D));
         double[] contact = sub(earth, mul(dir, earthR * 0.92D));
@@ -1216,12 +1128,17 @@ public final class OrbitalSpaceStage {
      * 舱体表面是起皱的金色隔热膜。这里用实心方体拼出这些体块，网格与灯走线。</p>
      */
     private static void renderStation(PoseStack pose, VertexConsumer quads, VertexConsumer lines,
+                                      MultiBufferSource.BufferSource buffers,
                                       double[] center, double[] right, double[] up, double[] fwd,
                                       double scale, float alpha, double time) {
         double s = scale;
-        // —— 金色隔热膜舱体
-        solidBox(quads, matrixOf(pose), center, right, up, fwd,
-                1.45D * s, 1.55D * s, 1.15D * s, 0.66F, 0.54F, 0.26F, alpha);
+        // —— 金色隔热膜舱体（贴图：参考图裁出的金箔）
+        {
+            VertexConsumer tex = buffers.getBuffer(RT_SAT_BODY);
+            texBox(tex, matrixOf(pose), center, right, up, fwd,
+                    1.45D * s, 1.55D * s, 1.15D * s, alpha);
+            buffers.endBatch(RT_SAT_BODY);
+        }
         // 朝镜头的白色仪器面板
         solidBox(quads, matrixOf(pose), add(center, mul(fwd, -1.20D * s)), right, up, fwd,
                 1.05D * s, 1.15D * s, 0.10D * s, 0.82F, 0.84F, 0.86F, alpha);
@@ -1251,9 +1168,13 @@ public final class OrbitalSpaceStage {
                 // 金色边框
                 solidBox(quads, matrixOf(pose), panel, right, up, fwd,
                         1.42D * s, 0.075D * s, 2.12D * s, 0.58F, 0.45F, 0.18F, alpha);
-                // 深蓝电池片
-                solidBox(quads, matrixOf(pose), panel, right, up, fwd,
-                        1.28D * s, 0.105D * s, 1.98D * s, 0.045F, 0.085F, 0.22F, alpha);
+                // 深蓝电池片（贴图：参考图裁出的电池格）
+                {
+                    VertexConsumer tex = buffers.getBuffer(RT_SAT_PANEL);
+                    texBox(tex, matrixOf(pose), panel, right, up, fwd,
+                            1.26D * s, 0.105D * s, 1.96D * s, alpha);
+                    buffers.endBatch(RT_SAT_PANEL);
+                }
                 // 电池片网格（贴着翼面）
                 double[] gridBase = add(panel, mul(up, 0.115D * s));
                 for (int g = -1; g <= 1; g++) {
@@ -1274,10 +1195,13 @@ public final class OrbitalSpaceStage {
                 }
             }
         }
-        // —— 大抛物面天线：朝镜头，几乎与舱体同高
+        // —— 大抛物面天线：朝镜头，几乎与舱体同高（贴图：参考图裁出的白色碟面）
         double[] dish = add(center, add(mul(right, 2.55D * s), mul(fwd, 0.10D * s)));
-        solidDisc(quads, matrixOf(pose), dish, right, up, 2.00D * s,
-                0.84F, 0.86F, 0.88F, alpha);
+        {
+            VertexConsumer tex = buffers.getBuffer(RT_SAT_DISH);
+            texPlane(tex, matrixOf(pose), dish, right, up, 2.05D * s, alpha);
+            buffers.endBatch(RT_SAT_DISH);
+        }
         planeRing(pose, lines, dish, right, up, 2.00D * s,
                 0.94F, 0.96F, 1.0F, alpha * 0.55F);
         // 馈源：盘心伸出的支杆 + 小圆柱
@@ -1650,6 +1574,131 @@ public final class OrbitalSpaceStage {
                 .color(r, g, b, a).normal(pose.last().normal(), nx, ny, nz).endVertex();
         buffer.vertex(pose.last().pose(), (float) x2, (float) y2, (float) z2)
                 .color(r, g, b, a).normal(pose.last().normal(), nx, ny, nz).endVertex();
+    }
+
+    // ------------------------------------------------------------------ 贴图化（3.0.0 P0）
+
+    /** NEW_ENTITY 全属性顶点：color + uv + overlay + lightmap + normal，缺一个都会在动态缓冲上崩。 */
+    private static void texVertex(VertexConsumer buffer, Matrix4f matrix,
+                                  double x, double y, double z, float u, float v,
+                                  float shade, float alpha,
+                                  float nx, float ny, float nz) {
+        buffer.vertex(matrix, (float) x, (float) y, (float) z)
+                .color(shade, shade, shade, alpha).uv(u, v)
+                .overlayCoords(OverlayTexture.NO_OVERLAY)
+                .uv2(LightTexture.FULL_BRIGHT)
+                .normal(nx, ny, nz)
+                .endVertex();
+    }
+
+    /** 相机平面内的贴图方片（UV 0..1，面向镜头）。 */
+    private static void texPlane(VertexConsumer buffer, Matrix4f matrix, double[] c,
+                                 double[] right, double[] up, double half, float alpha) {
+        float nx = (float) (up[1] * right[2] - up[2] * right[1]);
+        float ny = (float) (up[2] * right[0] - up[0] * right[2]);
+        float nz = (float) (up[0] * right[1] - up[1] * right[0]);
+        double[][] corners = {{-half, half}, {half, half}, {half, -half}, {-half, -half}};
+        float[][] uvs = {{0.0F, 1.0F}, {1.0F, 1.0F}, {1.0F, 0.0F}, {0.0F, 0.0F}};
+        for (int i = 0; i < 4; i++) {
+            double x = c[0] + right[0] * corners[i][0] + up[0] * corners[i][1];
+            double y = c[1] + right[1] * corners[i][0] + up[1] * corners[i][1];
+            double z = c[2] + right[2] * corners[i][0] + up[2] * corners[i][1];
+            texVertex(buffer, matrix, x, y, z, uvs[i][0], uvs[i][1], 1.0F, alpha, nx, ny, nz);
+        }
+    }
+
+    /** 纯贴图方盒：6 个面各贴满一张图（按面朝向乘明暗，保留体积感）。 */
+    private static void texBox(VertexConsumer buffer, Matrix4f matrix, double[] c,
+                               double[] right, double[] up, double[] fwd,
+                               double hx, double hy, double hz, float alpha) {
+        texBoxFace(buffer, matrix, c, right, up, fwd, hx, hy, hz, 1, 0, 0, 0.86F, alpha);
+        texBoxFace(buffer, matrix, c, right, up, fwd, hx, hy, hz, -1, 0, 0, 0.62F, alpha);
+        texBoxFace(buffer, matrix, c, right, up, fwd, hx, hy, hz, 0, 1, 0, 1.00F, alpha);
+        texBoxFace(buffer, matrix, c, right, up, fwd, hx, hy, hz, 0, -1, 0, 0.42F, alpha);
+        texBoxFace(buffer, matrix, c, right, up, fwd, hx, hy, hz, 0, 0, 1, 0.58F, alpha);
+        texBoxFace(buffer, matrix, c, right, up, fwd, hx, hy, hz, 0, 0, -1, 0.92F, alpha);
+    }
+
+    private static void texBoxFace(VertexConsumer buffer, Matrix4f matrix, double[] c,
+                                   double[] right, double[] up, double[] fwd,
+                                   double hx, double hy, double hz,
+                                   int ax, int ay, int az, float shade, float alpha) {
+        double[] n = ax != 0 ? right : (ay != 0 ? up : fwd);
+        double hn = ax != 0 ? hx : (ay != 0 ? hy : hz);
+        double[] t1;
+        double h1;
+        double[] t2;
+        double h2;
+        if (ax != 0) {
+            t1 = up;
+            h1 = hy;
+            t2 = fwd;
+            h2 = hz;
+        } else if (ay != 0) {
+            t1 = right;
+            h1 = hx;
+            t2 = fwd;
+            h2 = hz;
+        } else {
+            t1 = right;
+            h1 = hx;
+            t2 = up;
+            h2 = hy;
+        }
+        double[] fc = add(c, mul(n, hn));
+        double sign = ax + ay + az;
+        float nx = (float) (n[0] * sign);
+        float ny = (float) (n[1] * sign);
+        float nz = (float) (n[2] * sign);
+        double[][] cs = {{-h1, -h2}, {h1, -h2}, {h1, h2}, {-h1, h2}};
+        float[][] uvs = {{0.0F, 1.0F}, {1.0F, 1.0F}, {1.0F, 0.0F}, {0.0F, 0.0F}};
+        for (int i = 0; i < 4; i++) {
+            double x = fc[0] + t1[0] * cs[i][0] + t2[0] * cs[i][1];
+            double y = fc[1] + t1[1] * cs[i][0] + t2[1] * cs[i][1];
+            double z = fc[2] + t1[2] * cs[i][0] + t2[2] * cs[i][1];
+            texVertex(buffer, matrix, x, y, z, uvs[i][0], uvs[i][1], shade, alpha, nx, ny, nz);
+        }
+    }
+
+    /**
+     * 星云天球：<b>世界轴固定</b>的贴图球（球心跟着相机位置、朝向不跟相机）——
+     * 转视角时星空相对世界不动，不会出现「背景跟着镜头漂」的贴图感。
+     * 球面从内侧看，所以四边形按反向绕序写（背面剔除打开时也可见）。
+     */
+    private static void drawTexturedSky(VertexConsumer buffer, Matrix4f matrix, double[] eye,
+                                        double radius, float alpha) {
+        final int rings = 16;
+        final int segs = 32;
+        for (int ri = 0; ri < rings; ri++) {
+            double t0 = Math.PI * ri / rings;
+            double t1 = Math.PI * (ri + 1) / rings;
+            for (int si = 0; si < segs; si++) {
+                double p0 = Math.PI * 2.0D * si / segs;
+                double p1 = Math.PI * 2.0D * (si + 1) / segs;
+                double[][] pts = {
+                        skyPoint(eye, radius, t0, p0), skyPoint(eye, radius, t0, p1),
+                        skyPoint(eye, radius, t1, p1), skyPoint(eye, radius, t1, p0)};
+                float u0 = (float) (si / (double) segs);
+                float u1 = (float) ((si + 1) / (double) segs);
+                float v0 = (float) (ri / (double) rings);
+                float v1 = (float) ((ri + 1) / (double) rings);
+                float[][] uvs = {{u0, v0}, {u1, v0}, {u1, v1}, {u0, v1}};
+                // 反向绕序：0,3,2,1（从球内看是正面）
+                int[] order = {0, 3, 2, 1};
+                for (int k : order) {
+                    texVertex(buffer, matrix, pts[k][0], pts[k][1], pts[k][2],
+                            uvs[k][0], uvs[k][1], 1.0F, alpha, 0.0F, 0.0F, 1.0F);
+                }
+            }
+        }
+    }
+
+    private static double[] skyPoint(double[] eye, double radius, double theta, double phi) {
+        double st = Math.sin(theta);
+        return new double[]{
+                eye[0] + radius * st * Math.cos(phi),
+                eye[1] + radius * Math.cos(theta),
+                eye[2] + radius * st * Math.sin(phi)};
     }
 
     // ------------------------------------------------------------------ 向量
