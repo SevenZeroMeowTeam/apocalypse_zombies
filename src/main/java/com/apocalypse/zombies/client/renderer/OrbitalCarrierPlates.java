@@ -3,6 +3,7 @@ package com.apocalypse.zombies.client.renderer;
 import com.apocalypse.zombies.ApocalypseZombies;
 import com.apocalypse.zombies.client.OrbitalStrikeClientState;
 import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
+import com.apocalypse.zombies.orbital.engine.StrikeProtocols;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;
@@ -63,12 +64,14 @@ public final class OrbitalCarrierPlates {
     private static final float[] ORANGE = {1.00F, 0.58F, 0.20F};
     private static final float[] BLUE = {0.55F, 0.82F, 1.00F};
     private static final float[] CYAN = {0.70F, 0.95F, 1.00F};
+    /** 蜂群 SWARM 的孢子绿。 */
+    private static final float[] SWARM_GREEN = {0.55F, 1.00F, 0.55F};
     private static final float[] WHITE = {1.00F, 0.96F, 0.88F};
 
     /** 等离子风暴的五个落点（电影板上的归一化坐标）。第一个与画里的主爆炸重合。 */
     private static final double[][] STORM_IMPACTS = {
             {0.820D, 0.700D}, {0.725D, 0.660D}, {0.885D, 0.735D},
-            {0.765D, 0.715D}, {0.925D, 0.675D}};
+            {0.765D, 0.715D}, {0.925D, 0.675D}, {0.690D, 0.700D}, {0.845D, 0.635D}};
 
     private OrbitalCarrierPlates() {
     }
@@ -474,13 +477,15 @@ public final class OrbitalCarrierPlates {
                                          Spec spec, float charge, double elapsed, double impactTick,
                                          float alpha, double time, double[] fwd,
                                          double u0, double v0, double u1, double v1) {
-        chargeGlow(lines, glow, matrix, chargePoint, r, u, hh, charge, CYAN, alpha, time, fwd);
+        float[] bolt = "swarm".equals(StrikeProtocols.protocolFor(
+                OrbitalStrikeClientState.mode()).id()) ? SWARM_GREEN : CYAN;
+        chargeGlow(lines, glow, matrix, chargePoint, r, u, hh, charge, bolt, alpha, time, fwd);
         // 反应堆约束环 + 能量导管：光团从舰体反应堆一路流向炮口
         for (int i = 0; i < 2; i++) {
             ellipse(lines, matrix, chargePoint, r, u,
                     (0.10D + i * 0.05D) * hh, (0.075D + i * 0.035D) * hh,
                     time * (0.25D + 0.55D * charge) + i * 1.2D,
-                    CYAN[0], CYAN[1], CYAN[2], alpha * (0.14F + 0.30F * charge), fwd);
+                    bolt[0], bolt[1], bolt[2], alpha * (0.14F + 0.30F * charge), fwd);
         }
         double[] cannonBase = platePoint(0.460D, 0.340D, c, r, u, hw, hh, u0, v0, u1, v1);
         for (int i = 0; i < 3; i++) {
@@ -521,11 +526,11 @@ public final class OrbitalCarrierPlates {
             crackle(lines, matrix, muzzle, tip, r, u, time * 1.7D + i * 2.9D,
                     0.88F, 0.98F, 1.0F, alpha * (1.0F - (float) Math.min(1.0D, age / 14.0D)),
                     fwd);
-            beamLayers(beam, matrix, c, r, u, muzzle, tip, 0.028D * hh, CYAN,
+            beamLayers(beam, matrix, c, r, u, muzzle, tip, 0.028D * hh, bolt,
                     alpha * 0.55F, fwd);
             if (age >= 2.0D) {
                 impactBurst(lines, glow, matrix, point, r, u, hh, (float) (age - 2.0D),
-                        CYAN, alpha, fwd);
+                        bolt, alpha, fwd);
             }
         }
     }

@@ -17,7 +17,10 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.MobType;
+import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -124,9 +127,12 @@ public final class OrbitalStrikeManager {
         float yaw = player.getYRot();
         StrikeProtocol protocol = StrikeProtocols.protocolFor(mode);
         // v2 断层：前摇按协议 XML 的 mark+ascent+device 走，让电影相位和服务端完全对齐。
-        if (protocol.fault()) {
+        if (protocol.migrated()) {
             lockTicks = Math.max(60, protocol.preFireTicks());
-            fallTicks = Math.max(6, Config.ORBITAL_STRIKE_FALL_TICKS.get());
+            // 蜂群：七枚巢荚要在下落段里逐一脱离，所以 fall 拉长到 56t；其余协议用配置的短下落。
+            fallTicks = "swarm".equals(protocol.id())
+                    ? 56
+                    : Math.max(6, Config.ORBITAL_STRIKE_FALL_TICKS.get());
         }
         ACTIVE.put(player.getUUID(), new ActiveStrike(target.immutable(), player.getUUID(),
                 player.level().dimension(), mode, radius, lockTicks, fallTicks, yaw));
@@ -313,7 +319,8 @@ public final class OrbitalStrikeManager {
         double y = Mth.lerp(t, IMPACT_FALL_Y, strike.target.getY() + 1.0D);
         Vec3 ground = Vec3.atCenterOf(strike.target);
         // 引力奇点：下落段就把周围生物往落点拽 —— 这是它和别的模式最不一样的地方
-        if (strike.mode == OrbitalStrikeMode.GRAVITY) {
+        if (strike.mode == OrbitalStrikeMode.GRAVITY
+                && !"quarantine".equals(StrikeProtocols.protocolFor(strike.mode).id())) {
             pullToward(level, strike, t);
         }
         // 下落粒子也按模式分 —— 客户端是四套形态，世界里就不能还是同一根柱。
@@ -473,6 +480,80 @@ public final class OrbitalStrikeManager {
     }
 
     /**
+     * 焚城 CINDER：轨道钨棒贯穿 + 坑沿火风暴 + 灰烬雨。
+     * 地形仍是整列贯穿（ColumnJob），额外的「焚城」由坑沿熔岩/火焰粒子与余烬表达。
+     */
+    private static void impactCinder(ServerLevel level, ActiveStrike strike, Vec3 ground,
+                                     int radius, boolean destroy, boolean damage) {
+        BlockPos target = strike.target;
+        if (destroy) {
+            enqueueDestroy(level, target, radius, true);
+            placeCinderRim(level, target, radius);
+        }
+        if (damage) {
+            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.CANNON);
+        }
+        spawnSurfaceDebris(level, target, radius);
+        spawnCinderStorm(level, ground, radius);
+        level.playSound(null, target, SoundEvents.GENERIC_EXPLODE, SoundSource.PLAYERS, 5.0F, 0.55F);
+        level.playSound(null, target, SoundEvents.WARDEN_SONIC_BOOM, SoundSource.PLAYERS, 5.0F, 0.55F);
+        level.playSound(null, target, SoundEvents.ENDER_DRAGON_GROWL, SoundSource.PLAYERS, 4.0F, 0.45F);
+        level.playSound(null, target, SoundEvents.FIRE_AMBIENT, SoundSource.PLAYERS, 4.0F, 0.6F);
+        level.playSound(null, target, SoundEvents.LAVA_AMBIENT, SoundSource.PLAYERS, 3.0F, 0.5F);
+    }
+
+    /** 坑沿一圈熔岩斑：只铺地表，稀疏放置，避免烧穿/连锁。 */
+    private static void placeCinderRim(ServerLevel level, BlockPos target, int radius) {
+        int segments = Math.max(24, Math.min(96, radius * 4));
+        double ringR = radius + 3.0D;
+        for (int i = 0; i < segments; i++) {
+            if (i % 3 != 0) {
+                continue;
+            }
+            double angle = i * Math.PI * 2.0D / segments;
+            int x = target.getX() + (int) Math.round(Math.cos(angle) * ringR);
+            int z = target.getZ() + (int) Math.round(Math.sin(angle) * ringR);
+            BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                    new BlockPos(x, 0, z));
+            if (level.getBlockState(surface).isAir() && !level.getBlockState(surface.below()).isAir()) {
+                level.setBlockAndUpdate(surface, Blocks.MAGMA_BLOCK.defaultBlockState());
+            }
+        }
+    }
+
+    /** 火风暴：坑沿的火焰/熔岩/灰烬粒子，持续到余烬阶段由客户端接手。 */
+    private static void spawnCinderStorm(ServerLevel level, Vec3 ground, int radius) {
+        int flames = Math.min(260, 60 + radius * 7);
+        for (int i = 0; i < flames; i++) {
+            double ang = level.random.nextDouble() * Math.PI * 2.0D;
+            double dist = radius * (0.65D + level.random.nextDouble() * 0.75D);
+            double x = ground.x + Math.cos(ang) * dist;
+            double z = ground.z + Math.sin(ang) * dist;
+            broadcast(level, level.random.nextBoolean() ? ParticleTypes.FLAME : ParticleTypes.SOUL_FIRE_FLAME,
+                    x, ground.y + 0.5D + level.random.nextDouble() * 2.0D, z,
+                    1, 0.0D, 0.14D + level.random.nextDouble() * 0.16D, 0.0D, 0.03D);
+            if (i % 3 == 0) {
+                broadcast(level, ParticleTypes.LARGE_SMOKE, x, ground.y + 1.0D, z,
+                        1, 0.0D, 0.08D, 0.0D, 0.02D);
+            }
+            if (i % 9 == 0) {
+                broadcast(level, ParticleTypes.LAVA, x, ground.y + 0.4D, z,
+                        1, 0.0D, 0.20D, 0.0D, 0.05D);
+            }
+        }
+        int ash = Math.min(180, 40 + radius * 5);
+        for (int i = 0; i < ash; i++) {
+            double x = ground.x + (level.random.nextDouble() - 0.5D) * radius * 3.0D;
+            double z = ground.z + (level.random.nextDouble() - 0.5D) * radius * 3.0D;
+            double y = ground.y + 2.0D + level.random.nextDouble() * radius * 0.9D;
+            broadcast(level, ModParticles.ORBITAL_EMBER.get(), x, y, z, 0,
+                    (level.random.nextDouble() - 0.5D) * 0.10D,
+                    0.03D + level.random.nextDouble() * 0.08D,
+                    (level.random.nextDouble() - 0.5D) * 0.10D, 0.0D);
+        }
+    }
+
+    /**
      * 行星陨落：一颗陨石斜着砸下来 —— 又大又浅的坑 + 强径向击退 + 漫天火雨。
      * 和轨道炮的垂直贯穿不同，它是「撞击事件」：范围更大、坑更浅、击退更狠。
      */
@@ -627,6 +708,11 @@ public final class OrbitalStrikeManager {
      */
     private static void impactCannon(ServerLevel level, ActiveStrike strike, Vec3 ground,
                                      int radius, boolean destroy, boolean damage) {
+        StrikeProtocol protocol = StrikeProtocols.protocolFor(strike.mode);
+        if ("cinder".equals(protocol.id())) {
+            impactCinder(level, strike, ground, radius, destroy, damage);
+            return;
+        }
         BlockPos target = strike.target;
         if (destroy) {
             enqueueDestroy(level, target, radius, strike.mode.pierces());
@@ -870,11 +956,109 @@ public final class OrbitalStrikeManager {
     }
 
     /**
+     * 隔离 QUARANTINE：不炸坑，只圈地。边界铺一圈玻璃/海晶灯，中心竖信标；
+     * 圈内亡灵即死，玩家与普通生物不受伤害。它是防御/净化协议，不是破坏协议。
+     */
+    private static void impactQuarantine(ServerLevel level, ActiveStrike strike, Vec3 ground,
+                                         int radius, boolean destroy, boolean damage) {
+        BlockPos target = strike.target;
+        if (damage) {
+            purgeUndead(level, ground, radius, strike.owner);
+        }
+        if (destroy) {
+            placeQuarantineRing(level, target, radius);
+            placeQuarantineBeacon(level, target);
+        }
+        // 纯白/冷青的力场收束：不是爆炸，而是一圈「合拢」的光
+        for (int i = 0; i < 64; i++) {
+            double angle = i * Math.PI * 2.0D / 64.0D;
+            double x = ground.x + Math.cos(angle) * radius;
+            double z = ground.z + Math.sin(angle) * radius;
+            broadcast(level, ParticleTypes.END_ROD, x, ground.y + 0.6D, z,
+                    1, 0.0D, 0.25D, 0.0D, 0.02D);
+            if (i % 4 == 0) {
+                broadcast(level, ParticleTypes.ELECTRIC_SPARK, x, ground.y + 1.2D, z,
+                        1, 0.0D, 0.10D, 0.0D, 0.05D);
+            }
+        }
+        broadcast(level, ParticleTypes.FLASH, ground.x, ground.y + 2.0D, ground.z,
+                1, 0.0D, 0.0D, 0.0D, 0.0D);
+        level.playSound(null, target, SoundEvents.BEACON_ACTIVATE, SoundSource.PLAYERS, 4.0F, 1.5F);
+        level.playSound(null, target, SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.PLAYERS, 4.0F, 1.2F);
+        level.playSound(null, target, SoundEvents.GLASS_PLACE, SoundSource.PLAYERS, 4.0F, 0.8F);
+        level.playSound(null, target, SoundEvents.WARDEN_SONIC_BOOM, SoundSource.PLAYERS, 3.0F, 1.2F);
+    }
+
+    /** 圈内亡灵处决；玩家、村民、动物、宠物都不碰。 */
+    private static void purgeUndead(ServerLevel level, Vec3 center, int radius, UUID owner) {
+        AABB box = new AABB(center.x - radius - 2.0D, center.y - 64.0D, center.z - radius - 2.0D,
+                center.x + radius + 2.0D, center.y + 64.0D, center.z + radius + 2.0D);
+        List<LivingEntity> targets = level.getEntitiesOfClass(LivingEntity.class, box);
+        DamageSource source = level.damageSources().explosion(null, ownerPlayer(level, owner));
+        for (LivingEntity entity : targets) {
+            if (entity.isRemoved() || !entity.isAlive() || entity.isSpectator()
+                    || entity.getMobType() != MobType.UNDEAD) {
+                continue;
+            }
+            entity.hurt(source, Float.MAX_VALUE);
+            if (entity.isAlive()) {
+                entity.setHealth(0.0F);
+                entity.die(source);
+            }
+            level.sendParticles(ParticleTypes.END_ROD,
+                    entity.getX(), entity.getY() + 0.6D, entity.getZ(),
+                    8, 0.25D, 0.45D, 0.25D, 0.03D);
+            level.sendParticles(ParticleTypes.SOUL,
+                    entity.getX(), entity.getY() + 0.5D, entity.getZ(),
+                    6, 0.25D, 0.35D, 0.25D, 0.02D);
+        }
+    }
+
+    /** 边界玻璃环：每 8 格一盏海晶灯做刻度，其余白玻璃；只铺地表一层。 */
+    private static void placeQuarantineRing(ServerLevel level, BlockPos target, int radius) {
+        int segments = Math.max(24, Math.min(96, radius * 4));
+        for (int i = 0; i < segments; i++) {
+            double angle = i * Math.PI * 2.0D / segments;
+            int x = target.getX() + (int) Math.round(Math.cos(angle) * radius);
+            int z = target.getZ() + (int) Math.round(Math.sin(angle) * radius);
+            BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                    new BlockPos(x, 0, z));
+            if (!level.getBlockState(surface).isAir() || level.getBlockState(surface.below()).isAir()) {
+                continue;
+            }
+            level.setBlockAndUpdate(surface, (i % 8 == 0
+                    ? Blocks.SEA_LANTERN
+                    : Blocks.WHITE_STAINED_GLASS).defaultBlockState());
+        }
+    }
+
+    /** 中心信标：三格白玻璃 + 顶部海晶灯，昼夜可见。 */
+    private static void placeQuarantineBeacon(ServerLevel level, BlockPos target) {
+        BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, target);
+        for (int i = 0; i < 3; i++) {
+            BlockPos pos = surface.above(i);
+            if (!level.getBlockState(pos).isAir()) {
+                continue;
+            }
+            level.setBlockAndUpdate(pos, Blocks.WHITE_STAINED_GLASS.defaultBlockState());
+        }
+        BlockPos top = surface.above(3);
+        if (level.getBlockState(top).isAir()) {
+            level.setBlockAndUpdate(top, Blocks.SEA_LANTERN.defaultBlockState());
+        }
+    }
+
+    /**
      * 引力奇点：先塌缩再爆开。下落段已经把周围生物往落点拖（见 {@link #tickFalling}），
      * 落地瞬间给一个向上的反冲 —— 被「吸进去」的东西又被「吐出来」。
      */
     private static void impactGravity(ServerLevel level, ActiveStrike strike, Vec3 ground,
                                       int radius, boolean destroy, boolean damage) {
+        StrikeProtocol protocol = StrikeProtocols.protocolFor(strike.mode);
+        if ("quarantine".equals(protocol.id())) {
+            impactQuarantine(level, strike, ground, radius, destroy, damage);
+            return;
+        }
         BlockPos target = strike.target;
         if (destroy) {
             enqueueDestroy(level, target, radius, strike.mode.pierces());
@@ -918,6 +1102,62 @@ public final class OrbitalStrikeManager {
      * 等离子风暴的**单道**闪电落地。五道按 {@link OrbitalStrikeMode#STORM_STAGGER_TICKS}
      * 分批落下（见 {@link #onServerTick}），每一道都是一个独立的小坑 + 独立的伤害判定。
      */
+    /**
+     * 蜂群 SWARM：在落点留下一个可破坏的巢荚（sculk catalyst）+ 菌毯斑块。
+     * 不挖坑 —— 巢荚本身就是地形签名，后续最后一道落地时再统一孵化。
+     */
+    private static void placeBroodPod(ServerLevel level, BlockPos subPos, Vec3 sub) {
+        BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, subPos);
+        if (!level.getBlockState(surface.below()).isAir()
+                && level.getBlockState(surface).isAir()) {
+            level.setBlockAndUpdate(surface, Blocks.SCULK_CATALYST.defaultBlockState());
+        }
+        for (int i = 0; i < 5; i++) {
+            double ang = level.random.nextDouble() * Math.PI * 2.0D;
+            int dx = (int) Math.round(Math.cos(ang) * (1.0D + level.random.nextDouble() * 2.0D));
+            int dz = (int) Math.round(Math.sin(ang) * (1.0D + level.random.nextDouble() * 2.0D));
+            BlockPos patch = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                    surface.offset(dx, 0, dz));
+            if (level.getBlockState(patch).isAir() && !level.getBlockState(patch.below()).isAir()) {
+                level.setBlockAndUpdate(patch, Blocks.SCULK.defaultBlockState());
+            }
+        }
+        level.playSound(null, sub.x, sub.y + 0.5D, sub.z,
+                SoundEvents.SCULK_CATALYST_BLOOM, SoundSource.PLAYERS, 2.6F, 1.1F);
+        broadcast(level, ParticleTypes.SCULK_SOUL, sub.x, sub.y + 0.8D, sub.z,
+                18, 0.8D, 1.2D, 0.8D, 0.08D);
+    }
+
+    /** 最后一道落地：七个巢荚同时孵化，按配置每荚刷 0~8 只僵尸。 */
+    private static void spawnSwarmBrood(ServerLevel level, ActiveStrike strike, double[][] offsets) {
+        int perPod = Config.ORBITAL_STRIKE_SWARM_BROOD.get();
+        if (perPod <= 0) {
+            return;
+        }
+        Vec3 ground = Vec3.atCenterOf(strike.target);
+        for (double[] offset : offsets) {
+            BlockPos subPos = BlockPos.containing(ground.x + offset[0], ground.y, ground.z + offset[1]);
+            BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, subPos);
+            for (int i = 0; i < perPod; i++) {
+                Zombie zombie = EntityType.ZOMBIE.create(level);
+                if (zombie == null) {
+                    continue;
+                }
+                double x = surface.getX() + 0.5D + (level.random.nextDouble() - 0.5D) * 3.0D;
+                double z = surface.getZ() + 0.5D + (level.random.nextDouble() - 0.5D) * 3.0D;
+                zombie.moveTo(x, surface.getY() + 0.1D, z,
+                        level.random.nextFloat() * 360.0F, 0.0F);
+                zombie.setPersistenceRequired();
+                level.addFreshEntity(zombie);
+            }
+            broadcast(level, ParticleTypes.SCULK_SOUL,
+                    surface.getX() + 0.5D, surface.getY() + 1.0D, surface.getZ() + 0.5D,
+                    28, 1.0D, 1.4D, 1.0D, 0.10D);
+            level.playSound(null, surface, SoundEvents.SCULK_SHRIEKER_SHRIEK,
+                    SoundSource.PLAYERS, 2.4F, 0.8F);
+        }
+    }
+
     private static void impactStormBolt(ServerLevel level, ActiveStrike strike, int index) {
         Vec3 ground = Vec3.atCenterOf(strike.target);
         int radius = strike.radius;
@@ -928,13 +1168,19 @@ public final class OrbitalStrikeManager {
         int subRadius = Mth.clamp(Math.round(radius * 0.45F), 2, 12);
         boolean destroy = Config.ORBITAL_STRIKE_DESTROY_BLOCKS.get();
         boolean damage = Config.ORBITAL_STRIKE_DAMAGE_MOBS.get();
+        StrikeProtocol protocol = StrikeProtocols.protocolFor(strike.mode);
+        boolean swarm = "swarm".equals(protocol.id());
 
         if (index == 0) {
             // 第一道落地时排雷声队列（整场风暴只排一次）
             queueThunder(level, ground);
         }
-        if (destroy) {
+        if (destroy && !swarm) {
             enqueueDestroy(level, subPos, subRadius, strike.mode.pierces());
+        }
+        if (swarm && destroy) {
+            // 蜂群：不挖坑，留下会孵化/可拆的巢荚与菌毯。
+            placeBroodPod(level, subPos, sub);
         }
         if (damage) {
             damageArea(level, sub, subRadius * 1.8D, strike.owner, OrbitalStrikeMode.STORM);
@@ -962,6 +1208,9 @@ public final class OrbitalStrikeManager {
         }
         // 最后一道：一记更低的轰鸣把所有落点「串」起来 + 整片区域翻腾的烟
         if (index >= OrbitalStrikeMode.STORM_POINTS - 1) {
+            if (swarm && Config.ORBITAL_STRIKE_SWARM_SPAWN.get()) {
+                spawnSwarmBrood(level, strike, offsets);
+            }
             level.playSound(null, strike.target, SoundEvents.WARDEN_SONIC_BOOM,
                     SoundSource.PLAYERS, 5.0F, 0.55F);
             level.playSound(null, strike.target, SoundEvents.ENDER_DRAGON_GROWL,

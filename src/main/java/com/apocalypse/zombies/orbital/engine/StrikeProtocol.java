@@ -48,6 +48,14 @@ public record StrikeProtocol(
         return "fault".equals(id);
     }
 
+    /** 是否已经接入 v2 相位/电影（P1：断层、蜂群、隔离、焚城；黎明/黑雨后续）。 */
+    public boolean migrated() {
+        return switch (id) {
+            case "fault", "swarm", "quarantine", "cinder" -> true;
+            default -> false;
+        };
+    }
+
     /** 相位在整场打击里的开始 tick（impact/aftermath 需要 lock+fall）。 */
     public int phaseStart(StrikePhase phase, int lockTicks, int fallTicks) {
         return switch (phase) {

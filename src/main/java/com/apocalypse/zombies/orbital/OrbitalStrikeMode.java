@@ -63,7 +63,7 @@ public enum OrbitalStrikeMode {
             1.60F, 1.80F, 1.50F, 1.80F, 2.00F, false, 10, 380.0D);
 
     /** 风暴模式的落点数（服务端挖地 + 客户端画环都用同一个常量）。 */
-    public static final int STORM_POINTS = 5;
+    public static final int STORM_POINTS = 7;
     /** 风暴模式每道闪电之间的间隔（tick）—— 分批落地，不是一发全砸。 */
     public static final int STORM_STAGGER_TICKS = 8;
 

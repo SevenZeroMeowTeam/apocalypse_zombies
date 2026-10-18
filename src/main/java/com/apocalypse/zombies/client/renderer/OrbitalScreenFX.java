@@ -170,7 +170,7 @@ public final class OrbitalScreenFX {
         }
         OrbitalStrikeMode mode = OrbitalStrikeClientState.mode();
         StrikeProtocol protocol = StrikeProtocols.protocolFor(mode);
-        boolean v2 = protocol.fault();
+        boolean v2 = protocol.migrated();
         int protocolColor = (alpha << 24) | (protocol.color() & 0xFFFFFF);
         String callsign = v2 ? protocol.codename() : "天陨-01 · SKYFALL";
         graphics.drawString(minecraft.font, callsign,
@@ -186,6 +186,12 @@ public final class OrbitalScreenFX {
         graphics.drawString(minecraft.font, modeLine,
                 width / 2 - minecraft.font.width(modeLine) / 2, inset + len + 30,
                 v2 ? protocolColor : dimCyan, true);
+        if (v2 && "swarm".equals(protocol.id())) {
+            String warn = "警告：巢荚会唤醒尸群";
+            graphics.drawString(minecraft.font, warn,
+                    width / 2 - minecraft.font.width(warn) / 2, inset + len + 42,
+                    (alpha << 24) | 0xB6FF9A, true);
+        }
         // v2 电影：K 跳过提示（跳过后不再显示）
         if (v2 && OrbitalCinematic.isEngaged() && !OrbitalCinematic.isSkipped()) {
             String skip = "[K] SKIP // 跳过过场";

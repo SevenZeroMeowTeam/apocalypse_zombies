@@ -84,7 +84,7 @@ public final class OrbitalCinematic {
     /** 升空时长：要飞 400 格到轨道，慢一点才不像瞬移。v2 断层用协议自己的 ascent。 */
     public static int ascentTicks() {
         StrikeProtocol protocol = StrikeProtocols.protocolFor(OrbitalStrikeClientState.mode());
-        return protocol.fault() ? Math.max(20, protocol.ascentTicks()) : ASCENT_TICKS;
+        return protocol.migrated() ? Math.max(20, protocol.ascentTicks()) : ASCENT_TICKS;
     }
 
     /**
@@ -95,7 +95,7 @@ public final class OrbitalCinematic {
      */
     public static int ascentStartTicks() {
         StrikeProtocol protocol = StrikeProtocols.protocolFor(OrbitalStrikeClientState.mode());
-        return protocol.fault() ? Math.max(1, protocol.markTicks()) : 0;
+        return protocol.migrated() ? Math.max(1, protocol.markTicks()) : 0;
     }
 
     /** 旧名保留（外部按「拉出前导」理解的调用方仍可编译）。 */

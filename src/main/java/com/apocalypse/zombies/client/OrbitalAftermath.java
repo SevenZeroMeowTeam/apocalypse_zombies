@@ -1,11 +1,13 @@
 package com.apocalypse.zombies.client;
 
 import com.apocalypse.zombies.client.renderer.OrbitalCinematic;
+import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import com.apocalypse.zombies.registry.ModParticles;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -30,6 +32,8 @@ public final class OrbitalAftermath {
     private static BlockPos target;
     /** 落地时刻的世界时间；-1 = 还没锁定。 */
     private static long impactGameTime = -1L;
+    /** 落地时锁定的弹种：决定余波的粒子语言（焚城火/蜂群孢子/隔离白光）。 */
+    private static OrbitalStrikeMode mode = OrbitalStrikeMode.CANNON;
 
     private OrbitalAftermath() {
     }
@@ -52,6 +56,7 @@ public final class OrbitalAftermath {
                     && (!current.equals(target) || impactGameTime < 0)) {
                 target = current.immutable();
                 impactGameTime = level.getGameTime();
+                mode = OrbitalStrikeClientState.mode();
             }
         }
         if (target == null || impactGameTime < 0) {
@@ -78,6 +83,31 @@ public final class OrbitalAftermath {
                     (level.random.nextDouble() - 0.5D) * 0.02D,
                     0.012D + level.random.nextDouble() * 0.03D,
                     (level.random.nextDouble() - 0.5D) * 0.02D);
+            // 各协议的余波语言：焚城余火、蜂群孢子、隔离冷白。
+            switch (mode) {
+                case CANNON -> {
+                    level.addParticle(ParticleTypes.FLAME, true, x, y, z,
+                            (level.random.nextDouble() - 0.5D) * 0.02D,
+                            0.01D + level.random.nextDouble() * 0.02D,
+                            (level.random.nextDouble() - 0.5D) * 0.02D);
+                    if ((since & 3) == 0) {
+                        level.addParticle(ParticleTypes.LARGE_SMOKE, true, x, y + 1.0D, z,
+                                (level.random.nextDouble() - 0.5D) * 0.01D,
+                                0.02D + level.random.nextDouble() * 0.02D,
+                                (level.random.nextDouble() - 0.5D) * 0.01D);
+                    }
+                }
+                case STORM -> level.addParticle(ParticleTypes.SCULK_SOUL, true, x, y, z,
+                        (level.random.nextDouble() - 0.5D) * 0.02D,
+                        0.01D + level.random.nextDouble() * 0.02D,
+                        (level.random.nextDouble() - 0.5D) * 0.02D);
+                case GRAVITY -> level.addParticle(ParticleTypes.END_ROD, true, x, y, z,
+                        (level.random.nextDouble() - 0.5D) * 0.01D,
+                        0.006D + level.random.nextDouble() * 0.012D,
+                        (level.random.nextDouble() - 0.5D) * 0.01D);
+                default -> {
+                }
+            }
         }
     }
 

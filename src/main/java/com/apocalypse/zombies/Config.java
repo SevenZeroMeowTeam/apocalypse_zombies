@@ -481,6 +481,10 @@ public final class Config {
     public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_KILL_CHANCE;
     /** 是否对生物造成伤害（中心 100% / 边缘 30% 衰减 + 径向击退）。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_DAMAGE_MOBS;
+    /** 蜂群 SWARM：每枚巢荚孵化的僵尸数量（0 = 只留巢荚，不刷怪）。 */
+    public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_SWARM_BROOD;
+    /** 蜂群 SWARM：是否允许巢荚孵出僵尸（关掉后巢荚只是地形/氛围）。 */
+    public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_SWARM_SPAWN;
     /** 是否摧毁选区内方块（不掉落物）。关闭后只打生物 + 视觉。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_DESTROY_BLOCKS;
     /** 破坏模式：{@code layers}（逐层下削，默认）/ {@code cube}（整块立方体）/ {@code column}（整列挖穿）。 */
@@ -1142,6 +1146,13 @@ public final class Config {
         ORBITAL_STRIKE_DAMAGE_MOBS = b.comment("Apply the AOE damage to living entities (including the",
                         "caller and their allies if the crosshair is on top of them).")
                 .define("damage_mobs", true);
+        ORBITAL_STRIKE_SWARM_BROOD = b.comment("SWARM protocol: zombies hatched from each brood pod (0~8).",
+                        "Seven pods: 7 x this number. Default 3 = 21 zombies; lower it if your",
+                        "server/PC struggles with a sudden horde.")
+                .defineInRange("swarm_brood", 3, 0, 8);
+        ORBITAL_STRIKE_SWARM_SPAWN = b.comment("SWARM protocol: allow the pods to hatch zombies. False =",
+                        "the pods/sculk stay as a terrain signature but no horde is spawned.")
+                .define("swarm_spawn", true);
         ORBITAL_STRIKE_DESTROY_BLOCKS = b.comment("Destroy the blocks inside the cube. Block-entity tiles",
                         "(chests, furnaces, spawners, signs) are NEVER destroyed regardless; barriers,",
                         "command blocks and hardness > max_hardness are also skipped.",

@@ -394,6 +394,68 @@ public final class OrbitalStrikeHighlighter {
                 1.0F, 0.95F, 0.78F, alpha * 0.75F, 0, 1, 0);
     }
 
+    /** 隔离 QUARANTINE 的前摇：一圈白/冷青的力场墙，从地面升到 24 格，顶部有环。 */
+    private static void renderQuarantinePreview(PoseStack pose, VertexConsumer lines,
+                                                double cx, double cz, double gy, int radius,
+                                                float progress, double time) {
+        float pulse = 0.75F + 0.25F * (float) Math.sin(time * 0.5D);
+        float a = (0.12F + 0.48F * progress) * pulse;
+        int segments = 32;
+        double height = 24.0D;
+        for (int i = 0; i < segments; i++) {
+            double ang = i * Math.PI * 2.0D / segments;
+            double x = cx + Math.cos(ang) * radius;
+            double z = cz + Math.sin(ang) * radius;
+            line(pose, lines, x, gy, z, x, gy + height, z,
+                    0.72F, 0.92F, 1.0F, a, 0, 1, 0);
+        }
+        drawCircle(pose, lines, cx, gy + height, cz, radius,
+                0.72F, 0.92F, 1.0F, a * 0.9F);
+        drawCircle(pose, lines, cx, gy + 12.0D, cz, radius * 0.98D,
+                0.55F, 0.82F, 1.0F, a * 0.45F);
+        line(pose, lines, cx, gy, cz, cx, gy + height, cz,
+                1.0F, 1.0F, 1.0F, a * 0.8F, 0, 1, 0);
+    }
+
+    /** 隔离命中：白/冷青力场墙保留一段时间，然后缓慢熄灭；中心信标一束光。 */
+    private static void renderQuarantineImpact(PoseStack pose, VertexConsumer lines,
+                                               double cx, double cz, double gy, int radius,
+                                               float age) {
+        float fade = Mth.clamp(1.0F - age / 180.0F, 0.0F, 1.0F);
+        if (fade <= 0.01F) {
+            return;
+        }
+        int segments = 40;
+        double height = 30.0D;
+        for (int i = 0; i < segments; i++) {
+            double ang = i * Math.PI * 2.0D / segments;
+            double x = cx + Math.cos(ang) * radius;
+            double z = cz + Math.sin(ang) * radius;
+            line(pose, lines, x, gy, z, x, gy + height, z,
+                    0.72F, 0.92F, 1.0F, fade * 0.35F, 0, 1, 0);
+        }
+        drawCircle(pose, lines, cx, gy + height, cz, radius,
+                0.80F, 0.96F, 1.0F, fade * 0.55F);
+        drawCircle(pose, lines, cx, gy + 0.08D, cz, radius,
+                0.92F, 1.0F, 1.0F, fade * 0.75F);
+        line(pose, lines, cx, gy, cz, cx, gy + height + 8.0D, cz,
+                1.0F, 1.0F, 1.0F, fade * 0.8F, 0, 1, 0);
+    }
+
+    /** 焚城 CINDER 的前摇：一条红橙目标矛从天空钉到中心 + 火色警戒环。 */
+    private static void renderCinderPreview(PoseStack pose, VertexConsumer lines,
+                                            double cx, double cz, double gy, int radius,
+                                            float progress, double time) {
+        float pulse = 0.7F + 0.3F * (float) Math.sin(time * 0.6D);
+        float a = (0.20F + 0.62F * progress) * pulse;
+        line(pose, lines, cx, gy, cz, cx, BEAM_TOP_Y, cz,
+                1.0F, 0.34F, 0.12F, a * 0.75F, 0, 1, 0);
+        drawCircle(pose, lines, cx, gy + 0.08D, cz,
+                Math.max(2.0D, radius * 0.95D), 1.0F, 0.42F, 0.14F, a * 0.65F);
+        drawCircle(pose, lines, cx, gy + 0.12D, cz,
+                Math.max(1.2D, radius * 0.55D), 1.0F, 0.72F, 0.30F, a * 0.45F);
+    }
+
     /**
      * 锁定阶段（前摇动画）。四条线索一起走：
      * <ol>
@@ -443,6 +505,12 @@ public final class OrbitalStrikeHighlighter {
                         CYAN_R, CYAN_G, CYAN_B, 0.85F * progress);
             }
             case GRAVITY -> {
+                StrikeProtocol quarantine = StrikeProtocols.protocolFor(mode);
+                if ("quarantine".equals(quarantine.id())) {
+                    renderQuarantinePreview(pose, lines, cx, cz, gy, strikeRadius, progress,
+                            gameTime + partial);
+                    break;
+                }
                 // 奇点：三圈倾斜的环绕着一个悬空焦点旋转、收缩（没有激光）
                 double focusY = gy + 6.0D + 4.0D * (1.0D - progress);
                 double orbit = Mth.lerp(progress, strikeRadius * 1.15D, Math.max(0.8D, strikeRadius * 0.28D));
@@ -455,13 +523,18 @@ public final class OrbitalStrikeHighlighter {
                         CYAN_R, CYAN_G, CYAN_B, 0.55F * progress);
             }
             case STORM -> {
-                // 风暴：五个落点各自冒电，相邻落点之间拉出锯齿电弧 —— 一片雷暴在蓄势
+                // 风暴/蜂群：七个落点各自冒电/孢子，相邻落点之间拉出锯齿电弧。
+                StrikeProtocol stormProtocol = StrikeProtocols.protocolFor(mode);
+                boolean swarm = "swarm".equals(stormProtocol.id());
+                float nr = swarm ? 0.55F : CYAN_R;
+                float ng = swarm ? 1.00F : CYAN_G;
+                float nb = swarm ? 0.55F : CYAN_B;
                 double[][] offsets = OrbitalStrikeMode.stormOffsets(
                         OrbitalStrikeClientState.target(), strikeRadius);
                 float a = 0.22F + 0.58F * progress;
                 for (double[] offset : offsets) {
                     drawCircle(pose, lines, cx + offset[0], gy + 0.08D, cz + offset[1],
-                            Math.max(0.8D, strikeRadius * 0.30D), CYAN_R, CYAN_G, CYAN_B, 0.50F * progress);
+                            Math.max(0.8D, strikeRadius * 0.30D), nr, ng, nb, 0.50F * progress);
                 }
                 for (int i = 0; i < offsets.length; i++) {
                     double[] p1 = offsets[i];
@@ -513,6 +586,11 @@ public final class OrbitalStrikeHighlighter {
                         1.0F, 1.0F, 1.0F, 0.20F + 0.70F * progress);
             }
             default -> {
+                StrikeProtocol cinder = StrikeProtocols.protocolFor(mode);
+                if ("cinder".equals(cinder.id())) {
+                    renderCinderPreview(pose, lines, cx, cz, gy, strikeRadius, progress,
+                            gameTime + partial);
+                }
                 // 轨道炮：地面瞄准标（同心环 + 四角标）+ 平台下方的弹体充能球 —— 没有激光
                 double r1 = strikeRadius * (1.15D - 0.10D * progress);
                 drawCircle(pose, lines, cx, gy + 0.05D, cz, r1,
@@ -663,7 +741,13 @@ public final class OrbitalStrikeHighlighter {
                         renderLanceImpact(quads, matrix, cx, gy, cz, beamR, strikeRadius, age);
                     }
                 }
-                case GRAVITY -> renderImplosion(quads, matrix, cx, gy, cz, beamR, strikeRadius, age);
+                case GRAVITY -> {
+                    if ("quarantine".equals(StrikeProtocols.protocolFor(mode).id())) {
+                        renderQuarantineImpact(pose, lines, cx, cz, gy, strikeRadius, age);
+                    } else {
+                        renderImplosion(quads, matrix, cx, gy, cz, beamR, strikeRadius, age);
+                    }
+                }
                 case STORM -> renderStormImpact(quads, lines, matrix, cx, gy, cz, beamR,
                         strikeRadius, age, target, pose, gameTime, partial);
                 case LASER -> renderLaserImpact(quads, matrix, cx, gy, cz, strikeRadius, age);
