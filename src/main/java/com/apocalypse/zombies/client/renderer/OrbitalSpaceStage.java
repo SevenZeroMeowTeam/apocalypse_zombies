@@ -43,6 +43,11 @@ public final class OrbitalSpaceStage {
     private static final double EARTH_RADIUS = 21.0D;
     /** 太阳方向（相机平面内的角度）：约左上 137°。 */
     private static final double SUN_ANGLE = Math.toRadians(137.0D);
+    /**
+     * 视距自适应：原版远裁剪面 = 有效视距 × 16 × 4。低视距（2~6 区块）下 170 格外的
+     * 深空底会被裁掉、地球也会顶到裁剪面，所以整场布景按比例拉近，构图不变。
+     */
+    private static double sceneScale = 1.0D;
 
     private OrbitalSpaceStage() {
     }
@@ -59,6 +64,8 @@ public final class OrbitalSpaceStage {
         if (minecraft.level == null || stageOpacity <= 0.005F) {
             return;
         }
+        double far = Math.max(160.0D, minecraft.options.getEffectiveRenderDistance() * 16.0D * 4.0D);
+        sceneScale = Mth.clamp(far / 768.0D, 0.42D, 1.0D);
         Camera cam = minecraft.gameRenderer.getMainCamera();
         Vec3 camPos = cam.getPosition();
         double yaw = Math.toRadians(cam.getYRot());
@@ -87,23 +94,23 @@ public final class OrbitalSpaceStage {
         drawBackdrop(pose, lines, quads, matrix, eye, fwd, right, up, time, fade);
 
         double[] earth = offset(eye, fwd, right, up, EARTH_FORWARD, EARTH_SIDE, EARTH_HEIGHT);
-        renderEarth(pose, lines, quads, matrix, earth, fwd, right, up, EARTH_RADIUS, fade, time);
+        renderEarth(pose, lines, quads, matrix, earth, fwd, right, up, EARTH_RADIUS * sceneScale, fade, time);
 
         OrbitalStrikeMode mode = OrbitalStrikeClientState.mode();
         double phase = OrbitalCinematic.spaceFireProgress();
         switch (mode) {
             case CANNON -> renderCannon(pose, lines, quads, matrix, eye, fwd, right, up,
-                    earth, EARTH_RADIUS, fade, time, phase);
+                    earth, EARTH_RADIUS * sceneScale, fade, time, phase);
             case LANCE -> renderLance(pose, lines, matrix, eye, fwd, right, up,
-                    earth, EARTH_RADIUS, fade, time, phase);
+                    earth, EARTH_RADIUS * sceneScale, fade, time, phase);
             case GRAVITY -> renderSingularity(pose, lines, quads, matrix, eye, fwd, right, up,
-                    earth, EARTH_RADIUS, fade, time, phase);
+                    earth, EARTH_RADIUS * sceneScale, fade, time, phase);
             case STORM -> renderStorm(pose, lines, quads, matrix, eye, fwd, right, up,
-                    earth, EARTH_RADIUS, fade, time);
+                    earth, EARTH_RADIUS * sceneScale, fade, time);
             case PLANET -> renderMeteor(pose, lines, quads, matrix, eye, fwd, right, up,
-                    earth, EARTH_RADIUS, fade, time);
+                    earth, EARTH_RADIUS * sceneScale, fade, time);
             default -> renderSatelliteBeam(pose, lines, quads, matrix, eye, fwd, right, up,
-                    earth, EARTH_RADIUS, fade, time, phase);
+                    earth, EARTH_RADIUS * sceneScale, fade, time, phase);
         }
     }
 
@@ -114,19 +121,20 @@ public final class OrbitalSpaceStage {
                                      Matrix4f matrix, double[] eye,
                                      double[] fwd, double[] right, double[] up,
                                      double time, float alpha) {
-        boxFace(quads, matrix, eye, fwd, right, up, BACKDROP_FAR, alpha);
-        boxFace(quads, matrix, eye, fwd, right, up, -BACKDROP_FAR, alpha);
-        boxSide(quads, matrix, eye, fwd, right, up, BACKDROP_FAR, alpha);
-        boxSide(quads, matrix, eye, fwd, right, up, -BACKDROP_FAR, alpha);
-        boxTop(quads, matrix, eye, fwd, right, up, BACKDROP_FAR, alpha);
-        boxTop(quads, matrix, eye, fwd, right, up, -BACKDROP_FAR, alpha);
+        double boxDist = BACKDROP_FAR * sceneScale;
+        boxFace(quads, matrix, eye, fwd, right, up, boxDist, alpha);
+        boxFace(quads, matrix, eye, fwd, right, up, -boxDist, alpha);
+        boxSide(quads, matrix, eye, fwd, right, up, boxDist, alpha);
+        boxSide(quads, matrix, eye, fwd, right, up, -boxDist, alpha);
+        boxTop(quads, matrix, eye, fwd, right, up, boxDist, alpha);
+        boxTop(quads, matrix, eye, fwd, right, up, -boxDist, alpha);
 
         // 星云：三块极低透明度的冷色面，给纯黑底一点纵深。
         double[] nebula = offset(eye, fwd, right, up, 168.0D, -40.0D, 30.0D);
-        planeQuad(quads, matrix, nebula, right, up, -70.0D, -34.0D, 44.0D, 30.0D,
+        planeQuad(quads, matrix, nebula, right, up, -70.0D * sceneScale, -34.0D * sceneScale, 44.0D * sceneScale, 30.0D * sceneScale,
                 0.10F, 0.16F, 0.34F, alpha * 0.10F);
         double[] nebula2 = offset(eye, fwd, right, up, 166.0D, 52.0D, -26.0D);
-        planeQuad(quads, matrix, nebula2, right, up, -38.0D, -30.0D, 62.0D, 26.0D,
+        planeQuad(quads, matrix, nebula2, right, up, -38.0D * sceneScale, -30.0D * sceneScale, 62.0D * sceneScale, 26.0D * sceneScale,
                 0.18F, 0.12F, 0.30F, alpha * 0.08F);
 
         RandomSource stars = RandomSource.create(0x53504143454CL);
@@ -134,7 +142,7 @@ public final class OrbitalSpaceStage {
             double theta = stars.nextDouble() * Math.PI * 2.0D;
             double cosPhi = stars.nextDouble() * 2.0D - 1.0D;
             double sinPhi = Math.sqrt(Math.max(0.0D, 1.0D - cosPhi * cosPhi));
-            double dist = 140.0D + stars.nextDouble() * 22.0D;
+            double dist = (140.0D + stars.nextDouble() * 22.0D) * sceneScale;
             double dx = Math.cos(theta) * sinPhi;
             double dy = cosPhi;
             double dz = Math.sin(theta) * sinPhi;
@@ -151,7 +159,7 @@ public final class OrbitalSpaceStage {
 
     private static void boxFace(VertexConsumer quads, Matrix4f matrix, double[] eye,
                                 double[] fwd, double[] right, double[] up, double dist, float alpha) {
-        double e = BACKDROP_EXTENT;
+        double e = BACKDROP_EXTENT * sceneScale;
         double cx = eye[0] + fwd[0] * dist;
         double cy = eye[1] + fwd[1] * dist;
         double cz = eye[2] + fwd[2] * dist;
@@ -165,7 +173,7 @@ public final class OrbitalSpaceStage {
 
     private static void boxSide(VertexConsumer quads, Matrix4f matrix, double[] eye,
                                 double[] fwd, double[] right, double[] up, double dist, float alpha) {
-        double e = BACKDROP_EXTENT;
+        double e = BACKDROP_EXTENT * sceneScale;
         double cx = eye[0] + right[0] * dist;
         double cy = eye[1] + right[1] * dist;
         double cz = eye[2] + right[2] * dist;
@@ -179,7 +187,7 @@ public final class OrbitalSpaceStage {
 
     private static void boxTop(VertexConsumer quads, Matrix4f matrix, double[] eye,
                                double[] fwd, double[] right, double[] up, double dist, float alpha) {
-        double e = BACKDROP_EXTENT;
+        double e = BACKDROP_EXTENT * sceneScale;
         double cx = eye[0] + up[0] * dist;
         double cy = eye[1] + up[1] * dist;
         double cz = eye[2] + up[2] * dist;
@@ -337,7 +345,7 @@ public final class OrbitalSpaceStage {
                                      double[] right, double[] up, double[] earth, double earthR,
                                      float alpha, double time, double phase) {
         double[] station = offset(eye, fwd, right, up, 52.0D, 30.0D, 22.0D);
-        renderStation(pose, lines, station, right, up, fwd, 1.25D, alpha, time);
+        renderStation(pose, lines, station, right, up, fwd, 1.25D * sceneScale, alpha, time);
 
         double[] dir = norm(sub(earth, station));
         double[] muzzle = add(station, mul(dir, 9.0D));
@@ -389,7 +397,7 @@ public final class OrbitalSpaceStage {
                                     double[] earth, double earthR, float alpha, double time,
                                     double phase) {
         double[] station = offset(eye, fwd, right, up, 46.0D, 25.0D, 24.0D);
-        renderStation(pose, lines, station, right, up, fwd, 0.85D, alpha, time);
+        renderStation(pose, lines, station, right, up, fwd, 0.85D * sceneScale, alpha, time);
         double[] dir = norm(sub(earth, station));
         double[] contact = sub(earth, mul(dir, earthR * 0.94D));
         double[] tip = lerp3(station, contact, smooth01(phase));
@@ -504,8 +512,10 @@ public final class OrbitalSpaceStage {
                     20.0D + i * 2.6D, 17.0D + (i % 2) * 5.0D);
             renderPod(pose, lines, pod, right, up, fwd, alpha, time, i);
             double angle = i * (Math.PI * 2.0D / OrbitalStrikeMode.STORM_POINTS) + 0.35D;
-            double[] contact = offset(earth, fwd, right, up, -0.6D,
-                    Math.cos(angle) * earthR * 0.62D, Math.sin(angle) * earthR * 0.62D);
+            // earthR 已经是缩放后的世界单位，这里直接加，不能再走 offset（会二次缩放）。
+            double[] contact = add(earth, add(mul(fwd, -0.6D),
+                    add(mul(right, Math.cos(angle) * earthR * 0.62D),
+                            mul(up, Math.sin(angle) * earthR * 0.62D))));
             double fireAt = impactTick + i * (double) stagger;
             double chargeAt = fireAt - 9.0D;
             if (elapsed >= chargeAt && elapsed < fireAt) {
@@ -531,7 +541,7 @@ public final class OrbitalSpaceStage {
     private static void renderPod(PoseStack pose, VertexConsumer lines, double[] pod,
                                   double[] right, double[] up, double[] fwd,
                                   float alpha, double time, int index) {
-        double s = 0.75D;
+        double s = 0.75D * sceneScale;
         camBox(pose, lines, pod, right, up, fwd, 1.1D * s, 0.9D * s, 1.1D * s,
                 0.72F, 0.94F, 1.0F, alpha * 0.85F);
         for (int side = -1; side <= 1; side += 2) {
@@ -581,7 +591,7 @@ public final class OrbitalSpaceStage {
         double t = smooth01(fall);
         double[] pos = lerp3(start, contact, t);
         // 岩质本体：几块大小不一的小方体拼出不规则轮廓
-        double r = 3.2D;
+        double r = 3.2D * sceneScale;
         camBox(pose, lines, pos, right, up, fwd, r, r * 0.85D, r, 0.55F, 0.42F, 0.34F, alpha * 0.95F);
         double[] chunkA = add(pos, add(mul(right, r * 0.9D), mul(up, r * 0.5D)));
         camBox(pose, lines, chunkA, right, up, fwd, r * 0.45D, r * 0.40D, r * 0.45D,
@@ -597,7 +607,7 @@ public final class OrbitalSpaceStage {
             float a = alpha * (float) (0.55D - i * 0.04D) * (float) heat;
             planeRing(pose, lines, tail, right, up, rr, 1.0F, 0.58F, 0.30F, a);
         }
-        double[] trailEnd = sub(pos, mul(dir, 58.0D * heat));
+        double[] trailEnd = sub(pos, mul(dir, 58.0D * heat * sceneScale));
         line(pose, lines, pos[0], pos[1], pos[2],
                 trailEnd[0], trailEnd[1], trailEnd[2], 1.0F, 0.70F, 0.42F, alpha * 0.7F, 0, 0, 1);
         if (fall >= 0.999F) {
@@ -617,7 +627,7 @@ public final class OrbitalSpaceStage {
                                             double[] right, double[] up, double[] earth, double earthR,
                                             float alpha, double time, double phase) {
         double[] station = offset(eye, fwd, right, up, 54.0D, 28.0D, 19.0D);
-        renderStation(pose, lines, station, right, up, fwd, 1.0D, alpha, time);
+        renderStation(pose, lines, station, right, up, fwd, 1.0D * sceneScale, alpha, time);
         double[] dir = norm(sub(earth, station));
         double[] muzzle = add(station, mul(dir, 8.0D));
         double[] contact = sub(earth, mul(dir, earthR * 0.92D));
@@ -829,9 +839,9 @@ public final class OrbitalSpaceStage {
     private static double[] offset(double[] from, double[] fwd, double[] right, double[] up,
                                    double forward, double side, double height) {
         return new double[]{
-                from[0] + fwd[0] * forward + right[0] * side + up[0] * height,
-                from[1] + fwd[1] * forward + right[1] * side + up[1] * height,
-                from[2] + fwd[2] * forward + right[2] * side + up[2] * height};
+                from[0] + (fwd[0] * forward + right[0] * side + up[0] * height) * sceneScale,
+                from[1] + (fwd[1] * forward + right[1] * side + up[1] * height) * sceneScale,
+                from[2] + (fwd[2] * forward + right[2] * side + up[2] * height) * sceneScale};
     }
 
     private static double[] add(double[] a, double[] b) {

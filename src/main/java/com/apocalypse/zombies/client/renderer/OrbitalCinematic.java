@@ -288,6 +288,41 @@ public final class OrbitalCinematic {
         return weight() > 0.01F;
     }
 
+    /** 保存的本地降水（<0 = 当前没有压制）。 */
+    private static float savedRain = -1.0F;
+    private static float savedThunder = -1.0F;
+
+    /**
+     * 太空演出期间把本地降水压到 0。
+     *
+     * <p>原版雨雪是绕着<b>相机</b>画的（±10 格），镜头升到 Y=460 以后雨丝就悬在太空底前面，
+     * 一眼破戏。这里只改客户端视觉字段（不发包、不改服务器天气），演出结束原样恢复；
+     * 若服务器恰好在窗口内改变了天气，下一次天气包会重新同步。</p>
+     */
+    public static void tickWeather(Minecraft minecraft) {
+        if (minecraft.level == null) {
+            savedRain = -1.0F;
+            return;
+        }
+        if (isSpaceStage()) {
+            if (savedRain < 0.0F) {
+                savedRain = minecraft.level.rainLevel;
+                savedThunder = minecraft.level.thunderLevel;
+            }
+            minecraft.level.setRainLevel(0.0F);
+            minecraft.level.setThunderLevel(0.0F);
+            // 同时清掉插值源，否则 getRainLevel(partial) 还会从旧值淡出一帧。
+            minecraft.level.oRainLevel = 0.0F;
+            minecraft.level.oThunderLevel = 0.0F;
+        } else if (savedRain >= 0.0F) {
+            minecraft.level.setRainLevel(savedRain);
+            minecraft.level.setThunderLevel(savedThunder);
+            minecraft.level.oRainLevel = savedRain;
+            minecraft.level.oThunderLevel = savedThunder;
+            savedRain = -1.0F;
+        }
+    }
+
     /** 太空舞台只在轨道过场内绘制；落点挖掘/余晖不触发全屏空间遮罩。 */
     public static boolean isSpaceStage() {
         Minecraft minecraft = Minecraft.getInstance();

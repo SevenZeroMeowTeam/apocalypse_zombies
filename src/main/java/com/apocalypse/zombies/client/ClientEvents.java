@@ -166,6 +166,8 @@ public final class ClientEvents {
 
         // 演出机位的兜底还原（比如刚退出世界、演出窗口被掐断）：每 tick 检查一次，幂等。
         OrbitalCinematic.tickRestore(minecraft);
+        // 太空演出期间压掉本地降水：雨丝绕相机画，会悬在太空底前面。
+        OrbitalCinematic.tickWeather(minecraft);
 
         // 落地余晖：弹坑上方的电青余烬（纯客户端粒子，飘 25 s）。要排在下面那些提前 return 之前 ——
         // 手里换成别的物品时，余烬也该继续飘。

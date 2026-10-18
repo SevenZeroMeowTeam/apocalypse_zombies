@@ -91,11 +91,66 @@ public final class OrbitalStrikeHighlighter {
     }
 
     public static void render(RenderLevelStageEvent event) {
+        // 太空舞台画在「切边方块之后」：此时水/云/粒子的深度副本还没做，
+        // 我们写下的深度会把这些层挡在后面（Fancy 与 Fabulous 都成立）。
+        if (event.getStage() == RenderLevelStageEvent.Stage.AFTER_CUTOUT_BLOCKS) {
+            if (OrbitalCinematic.isSpaceStage()) {
+                renderSpaceStage(event);
+            }
+            return;
+        }
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) {
+            return;
+        }
+        // 太空演出期间世界层已经交给轨道舞台，别再画一遍地面光柱/选区。
+        if (OrbitalCinematic.isSpaceStage()) {
             return;
         }
         renderBeam(event);          // 先画光柱（深度上它在该画的地方）
         renderSelection(event);     // 再画手持选区
+    }
+
+    /**
+     * 轨道舞台（所有弹种）：相机相对布景 + 六种发射构图。
+     * 单独挂在切边层之后，回位段太空底淡出后由世界层的真实落点效果接上。
+     */
+    private static void renderSpaceStage(RenderLevelStageEvent event) {
+        BlockPos target = OrbitalStrikeClientState.target();
+        Minecraft minecraft = Minecraft.getInstance();
+        ClientLevel level = minecraft.level;
+        if (target == null || level == null) {
+            return;
+        }
+        long elapsed = OrbitalStrikeClientState.elapsed();
+        int lockTicks = OrbitalStrikeClientState.lockTicks();
+        long gameTime = level.getGameTime();
+        float partial = event.getPartialTick();
+
+        Vec3 camera = event.getCamera().getPosition();
+        PoseStack pose = event.getPoseStack();
+        MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
+        pose.pushPose();
+        pose.translate(-camera.x, -camera.y, -camera.z);
+        Matrix4f matrix = pose.last().pose();
+        VertexConsumer lines = buffers.getBuffer(RenderType.lines());
+
+        double cx = target.getX() + 0.5D;
+        double cz = target.getZ() + 0.5D;
+        double gy = target.getY() + 1.0D;
+        int strikeRadius = OrbitalStrikeClientState.radius();
+        double beamR = beamRadius(strikeRadius);
+
+        float spaceOpacity = OrbitalCinematic.spaceOpacity();
+        OrbitalSpaceStage.render(pose, lines, buffers, matrix, gameTime, partial, spaceOpacity);
+        // 太空底完全淡出后才画真实世界落点：背景盒写深度，会挡住身后的世界几何。
+        if (spaceOpacity <= 0.01F) {
+            renderFallPhase(pose, lines, buffers, matrix, level, target, cx, cz, gy,
+                    beamR, strikeRadius, OrbitalStrikeClientState.mode(), elapsed, lockTicks,
+                    gameTime, partial);
+        }
+        pose.popPose();
+        buffers.endBatch(RenderType.debugQuads());
+        buffers.endBatch(RenderType.lines());
     }
 
     // ---------------------------------------------------------------- 选区
@@ -168,24 +223,6 @@ public final class OrbitalStrikeHighlighter {
         // 选区半径 → 光柱半径：大范围打击时束要更粗，否则「范围大」看不出来
         int strikeRadius = OrbitalStrikeClientState.radius();
         double beamR = beamRadius(strikeRadius);
-
-        // LASER 的发射段切到相机相对轨道布景：不让主世界天空/地形与有限视距裁剪
-        // 抢走画面。布景完全是客户端几何，地面目标仍用同一个服务器坐标结算。
-        if (OrbitalCinematic.isSpaceStage()) {
-            float spaceOpacity = OrbitalCinematic.spaceOpacity();
-            OrbitalSpaceStage.render(pose, lines, buffers, matrix, gameTime, partial, spaceOpacity);
-            // 太空布景完全淡出后才画真实世界的落点效果：背景盒写深度，会把身后的
-            // 光柱/弹体整根挡掉 —— 等盒子隐去、再让世界里的那一击接上。
-            if (spaceOpacity <= 0.01F) {
-                renderFallPhase(pose, lines, buffers, matrix, level, target, cx, cz, gy,
-                        beamR, strikeRadius, OrbitalStrikeClientState.mode(), elapsed, lockTicks,
-                        gameTime, partial);
-            }
-            pose.popPose();
-            buffers.endBatch(RenderType.debugQuads());
-            buffers.endBatch(RenderType.lines());
-            return;
-        }
 
         OrbitalStrikeMode mode = OrbitalStrikeClientState.mode();
         // —— 「太空里的东西」：普通模式是轨道平台 + 天穹裂缝；
