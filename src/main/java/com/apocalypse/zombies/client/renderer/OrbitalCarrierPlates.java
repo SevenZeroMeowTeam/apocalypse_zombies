@@ -179,6 +179,8 @@ public final class OrbitalCarrierPlates {
         double cu;
         double cv;
         double progress = Mth.clamp((float) (elapsed / Math.max(1.0D, impactTick)), 0.0F, 1.0F);
+        double dollyProgress = smooth((float) Mth.clamp(elapsed / Math.max(1.0D, lock * 0.65D),
+                0.0D, 1.0D));
         if (spec.style == Style.ASTEROID) {
             // 小行星模式没有载体特写：星云背景缓慢推近，地球和小行星是独立的 2.5D 层。
             zoom = 1.0D + 0.10D * smooth(progress);
@@ -194,10 +196,14 @@ public final class OrbitalCarrierPlates {
                 pull = smooth((float) Mth.clamp(fireAge / 12.0D, 0.0D, 1.0D));
             }
             double kick = fireAge >= 0.0D && fireAge < 8.0D ? 0.025D * (1.0D - fireAge / 8.0D) : 0.0D;
-            double close = spec.chargeZoom + 0.06D * charge + kick;
+            // 由远到近：开场是整幅载体/地球的远景，锁定前 65% 内平滑推近到平台特写。
+            double close = Mth.lerp((float) dollyProgress, 1.0F, (float) spec.chargeZoom)
+                    + 0.05D * charge + kick;
             zoom = Mth.lerp((float) pull, (float) close, 1.0F);
-            cu = Mth.lerp((float) pull, (float) spec.focusU, 0.5F);
-            cv = Mth.lerp((float) pull, (float) spec.focusV, 0.5F);
+            cu = Mth.lerp((float) pull,
+                    (float) Mth.lerp((float) dollyProgress, 0.5F, (float) spec.focusU), 0.5F);
+            cv = Mth.lerp((float) pull,
+                    (float) Mth.lerp((float) dollyProgress, 0.5F, (float) spec.focusV), 0.5F);
         }
 
         // 命中帧的 FOV punch 对 billboard 不产生缩放，这里补一记小幅推近
@@ -265,6 +271,10 @@ public final class OrbitalCarrierPlates {
                     1.0F, 1.0F, 1.0F, alpha, fwd);
             buffers.endBatch(spec.type);
         }
+        // 远景阶段压暗：避免一开场就把画里的光束/爆炸/命中点全剧透；
+        // 镜头推近的同时亮度恢复，等画面亮起来时命中点已经在特写画外。
+        darken(buffers, matrix, center, rr, uu, halfW, halfH,
+                (1.0F - (float) dollyProgress) * 0.70F * alpha);
 
         // —— 坐标映射
         double[] muzzle = platePoint(spec.muzzleU, spec.muzzleV, center, rr, uu, halfW, halfH,
@@ -290,9 +300,10 @@ public final class OrbitalCarrierPlates {
         switch (spec.style) {
             case CANNON -> renderCannonStyle(lines, glow, beam, matrix, center, rr, uu,
                     halfW, halfH, chargePoint, impact, spec, charge, fireAge, impactAge, fall,
-                    alpha, time, fwd);
+                    alpha, time, fwd, u0, v0, u1, v1);
             case LANCE -> renderLanceStyle(lines, glow, beam, matrix, center, rr, uu,
-                    halfW, halfH, chargePoint, impact, charge, fireAge, alpha, time, fwd);
+                    halfW, halfH, chargePoint, impact, charge, fireAge, alpha, time, fwd,
+                    u0, v0, u1, v1);
             case GRAVITY -> renderGravityStyle(lines, glow, beam, matrix, center, rr, uu,
                     halfW, halfH, chargePoint, impact, spec, charge, fireAge, alpha, time, fwd,
                     u0, v0, u1, v1);
@@ -314,9 +325,20 @@ public final class OrbitalCarrierPlates {
                                           Matrix4f matrix, double[] c, double[] r, double[] u,
                                           double hw, double hh, double[] muzzle, double[] impact,
                                           Spec spec, float charge, double fireAge, double impactAge,
-                                          double fall, float alpha, double time, double[] fwd) {
+                                          double fall, float alpha, double time, double[] fwd,
+                                          double u0, double v0, double u1, double v1) {
         // 充能：炮口蓄能核 + 两圈收拢环
         chargeGlow(lines, glow, matrix, muzzle, r, u, hh, charge, ORANGE, alpha, time, fwd);
+        // 炮身能量脉冲：三团橙光沿画里的炮管向炮口跑（平台在「装弹加压」）
+        double[] barrelA = platePoint(0.630D, 0.370D, c, r, u, hw, hh, u0, v0, u1, v1);
+        for (int i = 0; i < 3; i++) {
+            double f = (time * 0.16D + i * 0.33D) % 1.0D;
+            double[] pulse = lerp3(barrelA, muzzle, f);
+            glowQuad(glow, matrix, pulse, r, u, 0.017D * hh,
+                    1.0F, 0.58F, 0.20F, alpha * charge * 0.45F * (1.0F - (float) f * 0.6F), fwd);
+        }
+        ellipse(lines, matrix, muzzle, r, u, 0.10D * hh, 0.065D * hh,
+                time * 0.8D, ORANGE[0], ORANGE[1], ORANGE[2], alpha * 0.28F * charge, fwd);
         if (fireAge >= 0.0D && fireAge < 10.0D) {
             float k = 1.0F - (float) fireAge / 10.0F;
             glowQuad(glow, matrix, muzzle, r, u, (0.10D + 0.05D * k) * hh,
@@ -349,8 +371,29 @@ public final class OrbitalCarrierPlates {
                                          Matrix4f matrix, double[] c, double[] r, double[] u,
                                          double hw, double hh, double[] muzzle, double[] impact,
                                          float charge, double fireAge, float alpha,
-                                         double time, double[] fwd) {
+                                         double time, double[] fwd,
+                                         double u0, double v0, double u1, double v1) {
         chargeGlow(lines, glow, matrix, muzzle, r, u, hh, charge, BLUE, alpha, time, fwd);
+        // 五级电磁线圈：从舰体到炮口依次点亮
+        double[][] coils = new double[5][];
+        for (int i = 0; i < 5; i++) {
+            double f = i / 4.0D;
+            coils[i] = platePoint(Mth.lerp(f, 0.400D, 0.600D), Mth.lerp(f, 0.440D, 0.530D),
+                    c, r, u, hw, hh, u0, v0, u1, v1);
+            float lit = Mth.clamp((float) ((charge - i * 0.16D) / 0.20D), 0.0F, 1.0F);
+            ellipse(lines, matrix, coils[i], r, u, 0.034D * hh, 0.024D * hh,
+                    time * 0.25D + i * 0.7D, BLUE[0], BLUE[1], BLUE[2],
+                    alpha * (0.16F + 0.62F * lit), fwd);
+            glowQuad(glow, matrix, coils[i], r, u, 0.014D * hh,
+                    BLUE[0], BLUE[1], BLUE[2], alpha * lit * 0.55F, fwd);
+        }
+        if (charge > 0.42F) {
+            for (int i = 0; i < 4; i++) {
+                crackle(lines, matrix, coils[i], coils[i + 1], r, u,
+                        time * 1.3D + i * 2.1D, 0.65F, 0.90F, 1.0F,
+                        alpha * (charge - 0.42F) * 0.55F, fwd);
+            }
+        }
         if (fireAge >= 0.0D) {
             double p = Mth.clamp((float) (fireAge / 9.0D), 0.0F, 1.0F);
             double[] tip = lerp3(muzzle, impact, p);
@@ -378,7 +421,7 @@ public final class OrbitalCarrierPlates {
                                            double u0, double v0, double u1, double v1) {
         // 画面里的奇点涡旋：两圈缓慢旋转的椭圆 + 中心脉动
         double[] vortex = platePoint(0.410D, 0.490D, c, r, u, hw, hh, u0, v0, u1, v1);
-        double tilt = time * (0.025D + 0.030D * charge);
+        double tilt = time * (0.020D + 0.100D * charge);
         ellipse(lines, matrix, vortex, r, u, 0.125D * hh, 0.095D * hh, tilt,
                 0.45F, 0.72F, 1.0F, alpha * (0.18F + 0.32F * charge), fwd);
         ellipse(lines, matrix, vortex, r, u, 0.165D * hh, 0.125D * hh, -tilt * 0.7D,
@@ -387,6 +430,24 @@ public final class OrbitalCarrierPlates {
                 0.55F, 0.78F, 1.0F, alpha * (0.16F + 0.35F * charge), fwd);
 
         chargeGlow(lines, glow, matrix, muzzle, r, u, hh, charge, BLUE, alpha, time, fwd);
+        // 炮管四段线圈依次点亮（从涡旋到炮口）
+        for (int i = 0; i < 4; i++) {
+            double f = i / 3.0D;
+            double[] coil = platePoint(Mth.lerp(f, 0.560D, 0.835D), 0.490D,
+                    c, r, u, hw, hh, u0, v0, u1, v1);
+            float lit = Mth.clamp((float) ((charge - i * 0.20D) / 0.24D), 0.0F, 1.0F);
+            ellipse(lines, matrix, coil, r, u, 0.032D * hh, 0.032D * hh,
+                    time * 0.4D + i, BLUE[0], BLUE[1], BLUE[2],
+                    alpha * (0.18F + 0.62F * lit), fwd);
+            glowQuad(glow, matrix, coil, r, u, 0.016D * hh,
+                    BLUE[0], BLUE[1], BLUE[2], alpha * lit * 0.55F, fwd);
+        }
+        // 发射瞬间：奇点向外推一圈
+        if (fireAge >= 0.0D && fireAge < 14.0D) {
+            float k = 1.0F - (float) fireAge / 14.0F;
+            ring(lines, matrix, vortex, r, u, (0.12D + 0.020D * fireAge) * hh,
+                    BLUE[0], BLUE[1], BLUE[2], alpha * 0.55F * k, fwd);
+        }
         if (fireAge >= 0.0D) {
             double p = Mth.clamp((float) (fireAge / 10.0D), 0.0F, 1.0F);
             double[] end = lerp3(muzzle, impact, p);
@@ -414,6 +475,21 @@ public final class OrbitalCarrierPlates {
                                          float alpha, double time, double[] fwd,
                                          double u0, double v0, double u1, double v1) {
         chargeGlow(lines, glow, matrix, chargePoint, r, u, hh, charge, CYAN, alpha, time, fwd);
+        // 反应堆约束环 + 能量导管：光团从舰体反应堆一路流向炮口
+        for (int i = 0; i < 2; i++) {
+            ellipse(lines, matrix, chargePoint, r, u,
+                    (0.10D + i * 0.05D) * hh, (0.075D + i * 0.035D) * hh,
+                    time * (0.25D + 0.55D * charge) + i * 1.2D,
+                    CYAN[0], CYAN[1], CYAN[2], alpha * (0.14F + 0.30F * charge), fwd);
+        }
+        double[] cannonBase = platePoint(0.460D, 0.340D, c, r, u, hw, hh, u0, v0, u1, v1);
+        for (int i = 0; i < 3; i++) {
+            double f = (time * 0.22D + i / 3.0D) % 1.0D;
+            double[] pulse = lerp3(chargePoint, cannonBase, f);
+            glowQuad(glow, matrix, pulse, r, u, 0.013D * hh,
+                    0.72F, 0.94F, 1.0F, alpha * charge * 0.50F * (1.0F - (float) f * 0.55F), fwd);
+        }
+
         // 发射瞬间：舰体反应堆先爆一圈白蓝光（炮口在特写画外，靠这一下交代「已经开火」）
         double fireAge = elapsed - (impactTick - OrbitalStrikeClientState.fallTicks());
         if (fireAge >= 0.0D && fireAge < 10.0D) {
@@ -531,9 +607,27 @@ public final class OrbitalCarrierPlates {
         buffers.endBatch(RT_GLOW);
 
         if (impactAge < 0.0D) {
-            // 岩体本体（在尾焰之后画，遮住身后的光）
+            // 迎风激波：两条从岩体前缘张开的斜线（朝地球方向）
+            double dirU = 0.60D - 0.30D;
+            double dirV = 0.63D - 0.32D;
+            double dirLen = Math.max(1.0E-6D, Math.hypot(dirU, dirV));
+            dirU /= dirLen;
+            dirV /= dirLen;
+            double[] nose = platePoint(au + dirU * as * 0.75D, av + dirV * as * 0.75D,
+                    c, r, u, hw, hh, u0, v0, u1, v1);
+            double[] flareA = platePoint(au + dirU * as * 1.55D + 0.020D,
+                    av + dirV * as * 1.55D, c, r, u, hw, hh, u0, v0, u1, v1);
+            double[] flareB = platePoint(au + dirU * as * 1.55D - 0.020D,
+                    av + dirV * as * 1.55D, c, r, u, hw, hh, u0, v0, u1, v1);
+            line(lines, matrix, nose, flareA, 1.0F, 0.62F, 0.26F, alpha * 0.30F, fwd);
+            line(lines, matrix, nose, flareB, 1.0F, 0.62F, 0.26F, alpha * 0.30F, fwd);
+
+            // 岩体本体（在尾焰之后画，遮住身后的光）；缓慢自转，像真的在翻滚
+            double spin = time * 0.12D + move * 1.6D;
+            double[] ar = add(mul(r, Math.cos(spin)), mul(u, Math.sin(spin)));
+            double[] au2 = add(mul(u, Math.cos(spin)), mul(r, -Math.sin(spin)));
             VertexConsumer cut = buffers.getBuffer(RT_ASTEROID_CUT);
-            texQuad(cut, matrix, asteroid, r, u, as * hh, as * hh,
+            texQuad(cut, matrix, asteroid, ar, au2, as * hh, as * hh,
                     0.0F, 0.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, alpha, fwd);
             buffers.endBatch(RT_ASTEROID_CUT);
             // 本体边缘的热辉（在岩体之后，贴边发光）
@@ -649,6 +743,31 @@ public final class OrbitalCarrierPlates {
         double fy = (v - v0) / Math.max(1.0E-6D, v1 - v0);
         return add(c, add(mul(r, (fx - 0.5D) * 2.0D * hw),
                 mul(uu, (0.5D - fy) * 2.0D * hh)));
+    }
+
+    /** 全屏压暗四边形（debugQuads：POSITION_COLOR，透明混合）。 */
+    private static void darken(MultiBufferSource.BufferSource buffers, Matrix4f matrix,
+                               double[] c, double[] r, double[] u,
+                               double hw, double hh, float alpha) {
+        if (alpha <= 0.002F) {
+            return;
+        }
+        VertexConsumer vc = buffers.getBuffer(RenderType.debugQuads());
+        double[] p1 = add(c, add(mul(r, -hw), mul(u, hh)));
+        double[] p2 = add(c, add(mul(r, hw), mul(u, hh)));
+        double[] p3 = add(c, add(mul(r, hw), mul(u, -hh)));
+        double[] p4 = add(c, add(mul(r, -hw), mul(u, -hh)));
+        darkVertex(vc, matrix, p1, alpha);
+        darkVertex(vc, matrix, p2, alpha);
+        darkVertex(vc, matrix, p3, alpha);
+        darkVertex(vc, matrix, p4, alpha);
+        buffers.endBatch(RenderType.debugQuads());
+    }
+
+    private static void darkVertex(VertexConsumer vc, Matrix4f matrix, double[] p, float alpha) {
+        vc.vertex(matrix, (float) p[0], (float) p[1], (float) p[2])
+                .color(0.0F, 0.0F, 0.0F, alpha)
+                .endVertex();
     }
 
     /** 相机平面贴图四边形（uv 为图片坐标：v=0 顶、v=1 底）。 */
