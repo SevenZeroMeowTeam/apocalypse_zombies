@@ -1,7 +1,6 @@
 package com.apocalypse.zombies.client;
 
 import com.apocalypse.zombies.client.renderer.OrbitalCinematic;
-import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import com.apocalypse.zombies.registry.ModParticles;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -88,8 +87,7 @@ public final class OrbitalAftermath {
      * 同时开始冒魂，开火后 8 tick 收尾。
      */
     private static void soulTrail(Minecraft minecraft, ClientLevel level) {
-        if (!OrbitalStrikeClientState.isActive()
-                || OrbitalStrikeClientState.mode() != OrbitalStrikeMode.LASER) {
+        if (!OrbitalStrikeClientState.isActive()) {
             return;
         }
         long elapsed = OrbitalStrikeClientState.elapsed();

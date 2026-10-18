@@ -3,7 +3,6 @@ package com.apocalypse.zombies.client.renderer;
 import com.apocalypse.zombies.ApocalypseZombies;
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.client.OrbitalStrikeClientState;
-import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import net.minecraft.client.Camera;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
@@ -75,24 +74,24 @@ public final class OrbitalCinematic {
         return Mth.clamp(radius * 0.85D + 7.0D, 8.0D, 30.0D);
     }
 
-    /** 当前是不是宇宙激光的「灵魂出窍」机位（升到卫星高度、看行星）。 */
-    private static boolean isSoulShot() {
-        return OrbitalStrikeClientState.mode() == OrbitalStrikeMode.LASER;
+    /** 所有弹种都走轨道机位：打击一律从外太空发起，地面上不再出现「天际线」。 */
+    private static boolean isSpaceShot() {
+        return true;
     }
 
-    /** 拉出时长：灵魂出窍要飞 400 格，得比常规机位慢得多。 */
+    /** 拉出时长：要飞 400 格到轨道，慢一点才不像瞬移。 */
     public static int pullLeadTicks() {
-        return isSoulShot() ? SOUL_PULL_LEAD_TICKS : PULL_LEAD_TICKS;
+        return isSpaceShot() ? SOUL_PULL_LEAD_TICKS : PULL_LEAD_TICKS;
     }
 
     private static int holdTicks() {
-        return isSoulShot()
+        return isSpaceShot()
                 ? SOUL_SPACE_HOLD_TICKS + SOUL_BEAM_HOLD_TICKS + SOUL_GROUND_HOLD_TICKS
                 : HOLD_TICKS;
     }
 
     private static int outTicks() {
-        return isSoulShot() ? SOUL_OUT_TICKS : OUT_TICKS;
+        return isSpaceShot() ? SOUL_OUT_TICKS : OUT_TICKS;
     }
 
     // ------------------------------------------------------------------ 状态
@@ -203,37 +202,27 @@ public final class OrbitalCinematic {
         // HUD 黑边 / 长焦压缩读这个权重：与镜头的位置插值同一拍，收尾不会跳。
         lastWeight = ease;
 
-        // 慢摇只服务于传统落地镜头。宇宙激光用确定的轨道镜头段落，避免同一帧里
-        // 一边绕地表转、一边要求观众看卫星/行星的空间构图。
+        // 全部弹种共用同一套轨道机位：升到 Y≥460、水平外移、看地球弧面。
+        // 落点只决定「地球上的哪一块」，机位角度仍按玩家所在方向定，构图稳定。
         long impactAge = OrbitalStrikeClientState.impactAge();
-        OrbitalStrikeMode mode = OrbitalStrikeClientState.mode();
-        boolean soul = mode == OrbitalStrikeMode.LASER;
         double elapsedAfterImpact = elapsed - impact;
-        double drift = 0.0D;
-        if (!soul && impactAge >= 0) {
-            drift = Math.toRadians(Math.max(0L, impactAge - 2L) * DRIFT_DEGREES_PER_TICK);
-        }
-        double angle = baseAngle + drift;
+        double angle = baseAngle;
         int radius = OrbitalStrikeClientState.radius();
         Vec3 anchor = Vec3.atCenterOf(OrbitalStrikeClientState.target());
-        double pull = pullDistance(radius);
-        double height = pullHeight(radius);
+        double pull = Mth.clamp(radius * 2.0D + 34.0D, 72.0D, 150.0D);
+        double height = Math.max(anchor.y + 92.0D, SOUL_HEIGHT) - anchor.y;
         double lookX = anchor.x;
         double lookY = anchor.y + radius * LOOK_UP_FACTOR;
         double lookZ = anchor.z;
-        if (soul) {
-            // 镜头与实体仍在原维度，但进入轨道尺度：Y 不低于 460，水平外移以便读出
-            // 行星弧面，而非从正上方把行星压成一个点。
-            pull = Mth.clamp(radius * 2.0D + 34.0D, 72.0D, 150.0D);
-            height = Math.max(anchor.y + 92.0D, SOUL_HEIGHT) - anchor.y;
+        {
             double lockProgress = Mth.clamp((elapsed - (lock - pullLead)) / Math.max(1.0D, pullLead), 0.0D, 1.0D);
             double phase = elapsedAfterImpact;
             double groundBlend = phase < SOUL_SPACE_HOLD_TICKS + SOUL_BEAM_HOLD_TICKS
                     ? 0.0D
                     : smooth((float) Mth.clamp((phase - SOUL_SPACE_HOLD_TICKS - SOUL_BEAM_HOLD_TICKS)
                     / SOUL_GROUND_HOLD_TICKS, 0.0D, 1.0D));
-            // 锁定阶段先盯住蓝白轨道目标；命中前让行星弧面成为主构图；卫星发射后仍留在
-            // 太空视角看光束穿过行星，最后短暂俯回地面，交代真实落点。
+            // 锁定阶段先盯住蓝白轨道目标；命中后留在轨道看投放/光束，最后短暂俯回地面，
+            // 交代真实落点（此时太空底已淡出，世界里的贯穿效果接上）。
             double orbitalLookY = anchor.y + 300.0D;
             double launchLookY = anchor.y + 245.0D;
             double groundLookY = anchor.y + radius * 0.9D;
@@ -247,30 +236,10 @@ public final class OrbitalCinematic {
             } else {
                 lookY = Mth.lerp((float) groundBlend, launchLookY, groundLookY);
             }
-            // 回位段保持轨道机位目标，随后只插值相机位置/方向回玩家眼位。
         }
-        // 普通镜头的轻微推进不应用于轨道激光，否则会把外太空构图拉回目标点。
-        double push = !soul && impactAge >= 0
-                ? smooth(Mth.clamp((float) impactAge / Math.max(1, hold), 0.0F, 1.0F))
-                : 0.0D;
-        pull *= 1.0D - 0.18D * push;
-        height *= 1.0D - 0.10D * push;
         double vx = anchor.x + Math.cos(angle) * pull;
         double vz = anchor.z + Math.sin(angle) * pull;
         double vy = anchor.y + height;
-        if (mode == OrbitalStrikeMode.PLANET) {
-            // 陨石是从天边斜切进来的：锁定末 30 tick 先抬头看行星，
-            // 下落段跟着陨石一路把视线压回地面 —— 一颗陨石从天上砸下来该有的「跟拍」。
-            double fallElapsed = elapsed - lock;
-            if (fallElapsed < 0.0D) {
-                float k = smooth(Mth.clamp((float) ((elapsed - (lock - 30.0D)) / 30.0F), 0.0F, 1.0F));
-                lookY = Mth.lerp(k, lookY, anchor.y + 230.0D);
-            } else {
-                float fp = Mth.clamp((float) (fallElapsed / Math.max(1, fall)), 0.0F, 1.0F);
-                double down = impactAge >= 0 ? anchor.y + radius * LOOK_UP_FACTOR : anchor.y;
-                lookY = Mth.lerp(smooth(fp), anchor.y + 230.0D, down);
-            }
-        }
 
         // 从玩家真实的眼位/视角插值过去（e 的两头正好贴合原版相机，全程无跳变）。
         float partialTick = (float) event.getPartialTick();
@@ -319,10 +288,10 @@ public final class OrbitalCinematic {
         return weight() > 0.01F;
     }
 
-    /** 太空背景和轨道模型只在 LASER 过场内绘制；长时间挖掘光束不触发全屏空间遮罩。 */
-    public static boolean isLaserSpaceStage() {
+    /** 太空舞台只在轨道过场内绘制；落点挖掘/余晖不触发全屏空间遮罩。 */
+    public static boolean isSpaceStage() {
         Minecraft minecraft = Minecraft.getInstance();
-        if (!isSoulShot() || !Config.ORBITAL_STRIKE_CINEMATIC.get()
+        if (!isSpaceShot() || !Config.ORBITAL_STRIKE_CINEMATIC.get()
                 || !OrbitalStrikeClientState.isActive() || minecraft.player == null || minecraft.level == null
                 || minecraft.player.isSpectator()
                 || OrbitalStrikeClientState.distanceToPlayer() > MAX_DISTANCE) {
@@ -341,8 +310,8 @@ public final class OrbitalCinematic {
      * 太空布景的不透明度：发射段全开，最后一段「压回地面」时淡出，
      * 让真实世界的地表/光柱在回位前先露出来（否则会从黑箱里硬切回世界）。
      */
-    public static float laserSpaceOpacity() {
-        if (!isLaserSpaceStage()) {
+    public static float spaceOpacity() {
+        if (!isSpaceStage()) {
             return 0.0F;
         }
         double elapsed = OrbitalStrikeClientState.elapsed();
@@ -357,9 +326,9 @@ public final class OrbitalCinematic {
                 0.0F, 1.0F);
     }
 
-    /** 阶段进度 0..1：锁定/拉出=行星建立，首段保持=卫星瞄准，随后=光束展示。 */
-    public static float laserSpaceProgress() {
-        if (!isLaserSpaceStage()) {
+    /** 开火进度 0..1：锁定末段充能，服务端命中时刻打满（各弹种共用同一拍）。 */
+    public static float spaceFireProgress() {
+        if (!isSpaceStage()) {
             return 0.0F;
         }
         double elapsed = OrbitalStrikeClientState.elapsed();
