@@ -2,8 +2,11 @@ package com.apocalypse.zombies.client.music;
 
 import com.apocalypse.zombies.ApocalypseZombies;
 import com.apocalypse.zombies.Config;
+import com.apocalypse.zombies.client.KeyBindings;
 import com.apocalypse.zombies.registry.ModSounds;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.sounds.SoundEvent;
@@ -16,10 +19,12 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
 /**
- * 「朋友的酒」—— 常驻背景音乐。
+ * 「朋友的酒」—— 全局背景音乐。
  *
- * <p>玩家要的是「进游戏就一直循环放」，所以这里不走原版那套「隔几分钟随机挑一首」的节奏，
- * 而是把它挂成一个常驻的 {@link SoundInstance}，一直放到离开世界或关掉开关为止。</p>
+ * <p>玩家要的是「在整个游戏里一直循环放」（主菜单、暂停、进世界都算），所以这里不走原版那套
+ * 「隔几分钟随机挑一首」的节奏，而是把它挂成一个常驻的 {@link SoundInstance}，一直放到
+ * 关掉开关或把音乐音量拉到 0 为止。F10 是快捷开关，与配置里的
+ * {@code [friends_wine_music] enabled} 同步。</p>
  *
  * <h2>循环为什么不交给 SoundEngine</h2>
  * 这首音频在 {@code sounds.json} 里标了 {@code "stream": true}（5.5 MB，必须流式解码，否则整曲进内存），
@@ -53,12 +58,16 @@ public final class FriendsWineMusic {
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
+        // F10：运行时切换，写回配置并立刻生效
+        while (KeyBindings.MUSIC.consumeClick()) {
+            toggle(minecraft);
+        }
         if (!Config.FRIENDS_WINE_MUSIC.get()) {
             stop(minecraft);
             return;
         }
-        if (minecraft.level == null || minecraft.player == null) {
-            stop(minecraft);
+        // 全局：主菜单 / 暂停 / 世界里都放（SoundManager 未初始化时先跳过）
+        if (minecraft.getSoundManager() == null) {
             return;
         }
         // 玩家把「音乐」音量拉到 0 就别占着解码线程了 —— SoundEngine 会把它静音，但流式解码照跑
@@ -67,7 +76,8 @@ public final class FriendsWineMusic {
             return;
         }
 
-        if (Config.FRIENDS_WINE_SUPPRESS_VANILLA.get()) {
+        // 原版音乐（含主菜单音乐）让位；没有正在播的时候这个调用是空操作
+        if (Config.FRIENDS_WINE_SUPPRESS_VANILLA.get() && minecraft.getMusicManager() != null) {
             minecraft.getMusicManager().stopPlaying();
         }
         // 还在放就什么都不做；放完了（或从没开始）就起一首 —— 这就是「循环」的全部实现
@@ -106,5 +116,22 @@ public final class FriendsWineMusic {
         }
         minecraft.getSoundManager().stop(current);
         current = null;
+    }
+
+    /** F10：开/关这首背景音乐；写回配置（下次启动保持），并立刻起停。 */
+    private static void toggle(Minecraft minecraft) {
+        boolean next = !Config.FRIENDS_WINE_MUSIC.get();
+        Config.FRIENDS_WINE_MUSIC.set(next);
+        Config.SPEC.save();
+        if (!next) {
+            stop(minecraft);
+        }
+        if (minecraft.player != null) {
+            Component msg = Component.translatable(next
+                            ? "message.apocalypse_zombies.music_on"
+                            : "message.apocalypse_zombies.music_off")
+                    .withStyle(next ? ChatFormatting.AQUA : ChatFormatting.GRAY);
+            minecraft.player.displayClientMessage(msg, true);
+        }
     }
 }

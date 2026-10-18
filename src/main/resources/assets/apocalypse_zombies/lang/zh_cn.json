@@ -155,5 +155,8 @@
   "orbital_mode.gravity": "引力奇点",
   "orbital_mode.storm": "等离子风暴",
   "orbital_mode.laser": "宇宙激光",
-  "orbital_mode.planet": "行星陨落"
+  "orbital_mode.planet": "行星陨落",
+  "key.apocalypse_zombies.music": "朋友的酒 音乐开关",
+  "message.apocalypse_zombies.music_on": "朋友的酒 · 背景音乐已开启",
+  "message.apocalypse_zombies.music_off": "朋友的酒 · 背景音乐已关闭"
 }

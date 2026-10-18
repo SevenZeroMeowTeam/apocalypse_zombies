@@ -46,6 +46,7 @@ public final class ClientModBusEvents {
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(KeyBindings.RELOAD);
         event.register(KeyBindings.COLLECT);
+        event.register(KeyBindings.MUSIC);
     }
 
     /** 能量火花粒子：贴图（原版 glow）+ 渲染逻辑都收在 {@link OrbitalSparkParticle}。 */

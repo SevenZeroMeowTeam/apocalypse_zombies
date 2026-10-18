@@ -155,5 +155,8 @@
   "orbital_mode.gravity": "Singularity",
   "orbital_mode.storm": "Plasma Storm",
   "orbital_mode.laser": "Extracosmic Beam",
-  "orbital_mode.planet": "Planetary Impact"
+  "orbital_mode.planet": "Planetary Impact",
+  "key.apocalypse_zombies.music": "Friends' Wine Music Toggle",
+  "message.apocalypse_zombies.music_on": "Friends' Wine · background music on",
+  "message.apocalypse_zombies.music_off": "Friends' Wine · background music off"
 }

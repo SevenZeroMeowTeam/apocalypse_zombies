@@ -21,6 +21,10 @@ public final class KeyBindings {
     public static final KeyMapping COLLECT = new KeyMapping(
             "key.apocalypse_zombies.collect", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, CATEGORY);
 
+    /** F10 — 开关「朋友的酒」全局背景音乐（与配置文件里的开关同步）。 */
+    public static final KeyMapping MUSIC = new KeyMapping(
+            "key.apocalypse_zombies.music", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F10, CATEGORY);
+
     private KeyBindings() {
     }
 }

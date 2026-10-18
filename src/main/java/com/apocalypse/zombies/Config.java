@@ -1055,10 +1055,10 @@ public final class Config {
         b.pop();
 
         // 同样是纯客户端表现：只有客户端的音乐控制器读它，专用服务器上不会被求值。
-        b.comment("The player's own background track (\"朋友的酒\"), looped for as long as you are in a world.",
-                        "玩家自备的背景音乐，进世界就一直循环放；离开世界或关掉开关即停。纯客户端。")
+        b.comment("The player's own background track (\"朋友的酒\"), looped globally (menus and worlds).",
+                        "玩家自备的全局背景音乐：主菜单、暂停、世界里一直循环；可按 F10 或关掉 enabled 即停。纯客户端。")
                 .push("friends_wine_music");
-        FRIENDS_WINE_MUSIC = b.comment("Play it at all.")
+        FRIENDS_WINE_MUSIC = b.comment("Play it at all. F10 toggles this at runtime and writes it back.")
                 .define("enabled", true);
         FRIENDS_WINE_VOLUME = b.comment("Volume multiplier (0~1). Multiplied with your own Music slider, not replacing it.")
                 .defineInRange("volume", 1.0D, 0.0D, 1.0D);
