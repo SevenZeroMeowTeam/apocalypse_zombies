@@ -101,7 +101,7 @@ public final class OrbitalSpaceStage {
         switch (mode) {
             case CANNON -> renderCannon(pose, lines, quads, matrix, eye, fwd, right, up,
                     earth, EARTH_RADIUS * sceneScale, fade, time, phase);
-            case LANCE -> renderLance(pose, lines, matrix, eye, fwd, right, up,
+            case LANCE -> renderLance(pose, lines, quads, matrix, eye, fwd, right, up,
                     earth, EARTH_RADIUS * sceneScale, fade, time, phase);
             case GRAVITY -> renderSingularity(pose, lines, quads, matrix, eye, fwd, right, up,
                     earth, EARTH_RADIUS * sceneScale, fade, time, phase);
@@ -513,7 +513,7 @@ public final class OrbitalSpaceStage {
                 ? Math.max(0.0D, 1.0D - OrbitalStrikeClientState.impactAge() / 8.0D) * 1.6D * sceneScale
                 : 0.0D;
         double[] station = add(stationBase, mul(dir, -recoil));
-        renderStation(pose, lines, station, right, up, fwd, 1.25D * sceneScale, alpha, time);
+        renderStation(pose, quads, lines, station, right, up, fwd, 1.25D * sceneScale, alpha, time);
 
         double[] muzzle = add(station, mul(dir, 9.0D));
         // 炮管：三条平行线（近似厚度）
@@ -524,6 +524,11 @@ public final class OrbitalSpaceStage {
             line(pose, lines, a[0], a[1], a[2], b[0], b[1], b[2],
                     0.68F, 0.88F, 1.0F, alpha * 0.62F, 0, 0, 1);
         }
+        // 炮口制退器：实心环座（线框炮管上的一个实体段落）
+        double[] brake = sub(muzzle, mul(dir, 1.6D * sceneScale));
+        solidBox(quads, matrix, brake, right, up, fwd,
+                1.4D * sceneScale, 1.4D * sceneScale, 1.6D * sceneScale,
+                0.44F, 0.50F, 0.56F, alpha);
         planeRing(pose, lines, muzzle, right, up, 2.6D, CYAN_R, CYAN_G, CYAN_B, alpha * 0.45F);
         float charge = Mth.clamp((float) OrbitalStrikeClientState.lockProgress(), 0.0F, 1.0F);
         if (phase < 0.999D) {
@@ -570,7 +575,8 @@ public final class OrbitalSpaceStage {
     // ------------------------------------------------------------------ 长矛
 
     /** 天基长矛：细长的轨道矛台，锁定时收束成一针，命中时整根光矛扎进地球。 */
-    private static void renderLance(PoseStack pose, VertexConsumer lines, Matrix4f matrix,
+    private static void renderLance(PoseStack pose, VertexConsumer lines, VertexConsumer quads,
+                                    Matrix4f matrix,
                                     double[] eye, double[] fwd, double[] right, double[] up,
                                     double[] earth, double earthR, float alpha, double time,
                                     double phase) {
@@ -580,7 +586,7 @@ public final class OrbitalSpaceStage {
                 ? Math.max(0.0D, 1.0D - OrbitalStrikeClientState.impactAge() / 10.0D) * 1.2D * sceneScale
                 : 0.0D;
         double[] station = add(stationBase, mul(dir, -recoil));
-        renderStation(pose, lines, station, right, up, fwd, 0.85D * sceneScale, alpha, time);
+        renderStation(pose, quads, lines, station, right, up, fwd, 0.85D * sceneScale, alpha, time);
         double[] contact = sub(earth, mul(dir, earthR * 0.94D));
         double[] tip = lerp3(station, contact, smooth01(phase));
         double reach = len(sub(tip, station));
@@ -691,7 +697,7 @@ public final class OrbitalSpaceStage {
         for (int i = 0; i < OrbitalStrikeMode.STORM_POINTS; i++) {
             double[] pod = offset(eye, fwd, right, up, 44.0D + i * 2.4D,
                     20.0D + i * 2.6D, 17.0D + (i % 2) * 5.0D);
-            renderPod(pose, lines, pod, right, up, fwd, alpha, time, i);
+            renderPod(pose, quads, lines, pod, right, up, fwd, alpha, time, i);
             double angle = i * (Math.PI * 2.0D / OrbitalStrikeMode.STORM_POINTS) + 0.35D;
             // earthR 已经是缩放后的世界单位，这里直接加，不能再走 offset（会二次缩放）。
             double[] contact = add(earth, add(mul(fwd, -0.6D),
@@ -725,17 +731,19 @@ public final class OrbitalSpaceStage {
         }
     }
 
-    /** 一枚投放舱：小方体 + 两片太阳能板 + 朝向地球的发射口。 */
-    private static void renderPod(PoseStack pose, VertexConsumer lines, double[] pod,
-                                  double[] right, double[] up, double[] fwd,
+    /** 一枚投放舱：实心金色舱体 + 两片深蓝太阳能板 + 朝向地球的发射口。 */
+    private static void renderPod(PoseStack pose, VertexConsumer quads, VertexConsumer lines,
+                                  double[] pod, double[] right, double[] up, double[] fwd,
                                   float alpha, double time, int index) {
         double s = 0.75D * sceneScale;
-        camBox(pose, lines, pod, right, up, fwd, 1.1D * s, 0.9D * s, 1.1D * s,
-                0.72F, 0.94F, 1.0F, alpha * 0.85F);
+        solidBox(quads, matrixOf(pose), pod, right, up, fwd,
+                1.1D * s, 0.9D * s, 1.1D * s, 0.60F, 0.52F, 0.36F, alpha);
+        solidBox(quads, matrixOf(pose), add(pod, mul(up, 0.95D * s)), right, up, fwd,
+                0.8D * s, 0.12D * s, 0.8D * s, 0.72F, 0.76F, 0.80F, alpha);
         for (int side = -1; side <= 1; side += 2) {
             double[] arm = add(pod, mul(right, side * 2.3D * s));
-            camBox(pose, lines, arm, right, up, fwd, 1.2D * s, 0.10D * s, 0.75D * s,
-                    CYAN_R, CYAN_G, CYAN_B, alpha * 0.65F);
+            solidBox(quads, matrixOf(pose), arm, right, up, fwd,
+                    1.2D * s, 0.09D * s, 0.75D * s, 0.08F, 0.14F, 0.30F, alpha);
         }
         double[] mouth = add(pod, mul(up, -1.2D * s));
         planeRing(pose, lines, mouth, right, up, 0.55D * s,
@@ -743,6 +751,11 @@ public final class OrbitalSpaceStage {
         float blink = 0.35F + 0.65F * (0.5F + 0.5F * (float) Math.sin(time * 0.18D + index * 1.3D));
         planeRing(pose, lines, add(pod, mul(up, 1.1D * s)), right, up, 0.30D * s,
                 1.0F, 1.0F, 1.0F, alpha * blink);
+    }
+
+    /** 从 PoseStack 取当前矩阵（solidBox 的便捷入口）。 */
+    private static Matrix4f matrixOf(PoseStack pose) {
+        return pose.last().pose();
     }
 
     /** 锯齿闪电：两端固定、中间按正弦抖动的折线（每帧重抖 = 噼啪感）。 */
@@ -833,7 +846,7 @@ public final class OrbitalSpaceStage {
                                             double[] right, double[] up, double[] earth, double earthR,
                                             float alpha, double time, double phase) {
         double[] station = offset(eye, fwd, right, up, 54.0D, 28.0D, 19.0D);
-        renderStation(pose, lines, station, right, up, fwd, 1.0D * sceneScale, alpha, time);
+        renderStation(pose, quads, lines, station, right, up, fwd, 1.0D * sceneScale, alpha, time);
         double[] dir = norm(sub(earth, station));
         double[] muzzle = add(station, mul(dir, 8.0D));
         double[] contact = sub(earth, mul(dir, earthR * 0.92D));
@@ -861,35 +874,152 @@ public final class OrbitalSpaceStage {
 
     // ------------------------------------------------------------------ 轨道站
 
-    /** 轨道站：核心舱 + 两侧桁架 + 太阳能板 + 天线碟 + 导航灯。 */
-    private static void renderStation(PoseStack pose, VertexConsumer lines, double[] center,
-                                      double[] right, double[] up, double[] fwd,
+    /**
+     * 实体卫星：金色多层隔热膜舱体 + 设备平台 + 两侧桁架 + 深蓝太阳能电池翼
+     * （带电池片网格）+ 白色抛物面天线 + 天线杆 + 导航灯。
+     *
+     * <p>全部由实心小方体（六面填充、分面向光）与实心圆盘拼成 —— 不再是一圈线框。
+     * 只有电池片网格与灯是线。</p>
+     */
+    private static void renderStation(PoseStack pose, VertexConsumer quads, VertexConsumer lines,
+                                      double[] center, double[] right, double[] up, double[] fwd,
                                       double scale, float alpha, double time) {
         double s = scale;
-        camBox(pose, lines, center, right, up, fwd, 1.5D * s, 1.1D * s, 1.2D * s,
-                0.74F, 0.96F, 1.0F, alpha * 0.90F);
+        double[] top = add(center, mul(up, 1.25D * s));
+        // 舱体：金色隔热膜（微暖的金黄）
+        solidBox(quads, matrixOf(pose), center, right, up, fwd,
+                1.5D * s, 1.1D * s, 1.2D * s, 0.58F, 0.50F, 0.34F, alpha);
+        // 顶部设备平台（浅灰）
+        solidBox(quads, matrixOf(pose), top, right, up, fwd,
+                1.05D * s, 0.16D * s, 0.85D * s, 0.70F, 0.74F, 0.78F, alpha);
         for (int side = -1; side <= 1; side += 2) {
+            // 桁架
             double[] arm = add(center, mul(right, side * 3.4D * s));
-            camBox(pose, lines, arm, right, up, fwd, 1.9D * s, 0.16D * s, 0.30D * s,
-                    0.60F, 0.86F, 0.98F, alpha * 0.75F);
+            solidBox(quads, matrixOf(pose), arm, right, up, fwd,
+                    1.9D * s, 0.15D * s, 0.28D * s, 0.55F, 0.59F, 0.63F, alpha);
+            // 太阳能翼：先铺浅灰边框，再压深蓝电池片（电池片略厚，边缘露出框）
             double[] panel = add(center, mul(right, side * 6.8D * s));
-            camBox(pose, lines, panel, right, up, fwd, 1.6D * s, 0.07D * s, 2.3D * s,
-                    CYAN_R, CYAN_G, CYAN_B, alpha * 0.60F);
-            for (int i = -1; i <= 1; i++) {
-                double[] gp = add(panel, mul(fwd, i * 1.4D * s));
-                camBox(pose, lines, gp, right, up, fwd, 1.5D * s, 0.08D * s, 0.05D * s,
-                        0.50F, 0.80F, 0.95F, alpha * 0.45F);
+            solidBox(quads, matrixOf(pose), panel, right, up, fwd,
+                    1.78D * s, 0.085D * s, 2.48D * s, 0.60F, 0.65F, 0.70F, alpha);
+            solidBox(quads, matrixOf(pose), panel, right, up, fwd,
+                    1.60D * s, 0.115D * s, 2.30D * s, 0.055F, 0.11F, 0.26F, alpha);
+            // 电池片网格（贴在翼面上方一点点，避免与面共面）
+            double[] gridBase = add(panel, mul(up, 0.125D * s));
+            for (int g = -1; g <= 1; g++) {
+                double off = g * 0.80D * s;
+                double[] a = add(gridBase, mul(right, off));
+                line(pose, lines,
+                        a[0] - fwd[0] * 2.25D * s, a[1] - fwd[1] * 2.25D * s, a[2] - fwd[2] * 2.25D * s,
+                        a[0] + fwd[0] * 2.25D * s, a[1] + fwd[1] * 2.25D * s, a[2] + fwd[2] * 2.25D * s,
+                        0.42F, 0.62F, 0.82F, alpha * 0.55F, 0, 0, 1);
+            }
+            for (int g = -1; g <= 1; g++) {
+                double off = g * 1.10D * s;
+                double[] a = add(gridBase, mul(fwd, off));
+                line(pose, lines,
+                        a[0] - right[0] * 1.55D * s, a[1] - right[1] * 1.55D * s, a[2] - right[2] * 1.55D * s,
+                        a[0] + right[0] * 1.55D * s, a[1] + right[1] * 1.55D * s, a[2] + right[2] * 1.55D * s,
+                        0.42F, 0.62F, 0.82F, alpha * 0.45F, 0, 0, 1);
             }
         }
-        double[] dish = add(center, mul(up, -1.7D * s));
-        planeRing(pose, lines, dish, right, up, 1.0D * s, CYAN_R, CYAN_G, CYAN_B, alpha * 0.80F);
-        line(pose, lines,
-                dish[0] - right[0] * s, dish[1] - right[1] * s, dish[2] - right[2] * s,
-                dish[0] + right[0] * s, dish[1] + right[1] * s, dish[2] + right[2] * s,
-                CYAN_R, CYAN_G, CYAN_B, alpha * 0.55F, 0, 0, 1);
+        // 抛物面天线：实心圆盘 + 亮边 + 馈源杆
+        double[] dish = add(center, mul(up, -1.85D * s));
+        solidDisc(quads, matrixOf(pose), dish, right, up, 1.05D * s,
+                0.80F, 0.84F, 0.88F, alpha);
+        planeRing(pose, lines, dish, right, up, 1.05D * s,
+                0.92F, 0.96F, 1.0F, alpha * 0.65F);
+        double[] feed = add(dish, mul(up, -0.55D * s));
+        line(pose, lines, dish[0], dish[1], dish[2], feed[0], feed[1], feed[2],
+                0.80F, 0.84F, 0.88F, alpha * 0.70F, 0, 0, 1);
+        planeRing(pose, lines, feed, right, up, 0.18D * s,
+                1.0F, 1.0F, 1.0F, alpha * 0.80F);
+        // 导航灯
         float blink = 0.35F + 0.65F * (0.5F + 0.5F * (float) Math.sin(time * 0.20D));
-        planeRing(pose, lines, add(center, mul(up, 1.5D * s)), right, up, 0.34D * s,
+        planeRing(pose, lines, add(top, mul(up, 0.22D * s)), right, up, 0.24D * s,
                 1.0F, 1.0F, 1.0F, alpha * blink);
+        planeRing(pose, lines, add(center, mul(right, -1.55D * s)), right, up, 0.16D * s,
+                1.0F, 0.35F, 0.28F, alpha * blink);
+    }
+
+    /** 实心长方体：六个面都填色，按朝向给不同亮度，读出体积。 */
+    private static void solidBox(VertexConsumer quads, Matrix4f matrix, double[] c,
+                                 double[] right, double[] up, double[] fwd,
+                                 double hx, double hy, double hz,
+                                 float r, float g, float b, float a) {
+        boxFace(quads, matrix, c, right, up, fwd, hx, hy, hz,
+                1, 0, 0, 0.88F, r, g, b, a);       // +right
+        boxFace(quads, matrix, c, right, up, fwd, hx, hy, hz,
+                -1, 0, 0, 0.62F, r, g, b, a);      // -right
+        boxFace(quads, matrix, c, right, up, fwd, hx, hy, hz,
+                0, 1, 0, 1.02F, r, g, b, a);       // +up（受光面）
+        boxFace(quads, matrix, c, right, up, fwd, hx, hy, hz,
+                0, -1, 0, 0.40F, r, g, b, a);      // -up（背光面）
+        boxFace(quads, matrix, c, right, up, fwd, hx, hy, hz,
+                0, 0, 1, 0.56F, r, g, b, a);       // +fwd（背向镜头的远面）
+        boxFace(quads, matrix, c, right, up, fwd, hx, hy, hz,
+                0, 0, -1, 0.94F, r, g, b, a);      // -fwd（朝向镜头）
+    }
+
+    /** 长方体的一个面（axis 指定法线方向，shade 是该面的亮度系数）。 */
+    private static void boxFace(VertexConsumer quads, Matrix4f matrix, double[] c,
+                                double[] right, double[] up, double[] fwd,
+                                double hx, double hy, double hz,
+                                int ax, int ay, int az, float shade,
+                                float r, float g, float b, float a) {
+        // 面中心 = 中心 + 法线轴上的半长；四个角在另外两根轴上取 ±
+        double[] fc = add(c, add(add(mul(right, ax * hx), mul(up, ay * hy)), mul(fwd, az * hz)));
+        double[] u;
+        double[] v;
+        double hu;
+        double hv;
+        if (ax != 0) {
+            u = up;
+            v = fwd;
+            hu = hy;
+            hv = hz;
+        } else if (ay != 0) {
+            u = right;
+            v = fwd;
+            hu = hx;
+            hv = hz;
+        } else {
+            u = right;
+            v = up;
+            hu = hx;
+            hv = hy;
+        }
+        float rr = Math.min(1.0F, r * shade);
+        float gg = Math.min(1.0F, g * shade);
+        float bb = Math.min(1.0F, b * shade);
+        quad(quads, matrix,
+                fc[0] - u[0] * hu - v[0] * hv, fc[1] - u[1] * hu - v[1] * hv, fc[2] - u[2] * hu - v[2] * hv,
+                fc[0] + u[0] * hu - v[0] * hv, fc[1] + u[1] * hu - v[1] * hv, fc[2] + u[2] * hu - v[2] * hv,
+                fc[0] + u[0] * hu + v[0] * hv, fc[1] + u[1] * hu + v[1] * hv, fc[2] + u[2] * hu + v[2] * hv,
+                fc[0] - u[0] * hu + v[0] * hv, fc[1] - u[1] * hu + v[1] * hv, fc[2] - u[2] * hu + v[2] * hv,
+                rr, gg, bb, a);
+    }
+
+    /** 实心圆盘：同心环带填满，中心比边缘亮一点（受光的天线碟）。 */
+    private static void solidDisc(VertexConsumer quads, Matrix4f matrix, double[] c,
+                                  double[] right, double[] up, double radius,
+                                  float r, float g, float b, float a) {
+        int rings = 10;
+        int segs = 24;
+        for (int ri = 0; ri < rings; ri++) {
+            double r0 = radius * ri / rings;
+            double r1 = radius * (ri + 1) / rings;
+            float shade = 1.0F - 0.45F * (ri / (float) rings);
+            for (int si = 0; si < segs; si++) {
+                double a1 = Math.PI * 2.0D * si / segs;
+                double a2 = Math.PI * 2.0D * (si + 1) / segs;
+                planeQuad4(quads, matrix, c, right, up,
+                        r0 * Math.cos(a1), r0 * Math.sin(a1),
+                        r0 * Math.cos(a2), r0 * Math.sin(a2),
+                        r1 * Math.cos(a2), r1 * Math.sin(a2),
+                        r1 * Math.cos(a1), r1 * Math.sin(a1),
+                        r * shade, g * shade, b * shade, a);
+            }
+        }
     }
 
     /** 炮口激波：白热环 + 青环 + 五道火花（发射瞬间的「枪口焰」）。 */
