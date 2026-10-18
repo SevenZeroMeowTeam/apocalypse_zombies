@@ -108,12 +108,19 @@ public final class OrbitalSpaceStage {
         double[] eye = new double[]{camPos.x, camPos.y, camPos.z};
         double time = gameTime + partial;
 
-        // 布景从镜头离开地面时淡入；回位段再由 stageOpacity 淡出。
-        float fadeIn = Mth.clamp((float) ((OrbitalStrikeClientState.elapsed()
-                - (OrbitalStrikeClientState.lockTicks() - OrbitalCinematic.pullLeadTicks())) / 14.0D),
+        // 布景从打击发起就开始淡入（不再等锁定末段）；回位段再由 stageOpacity 淡出。
+        float fadeIn = Mth.clamp((float) ((OrbitalStrikeClientState.elapsed() - 2.0D) / 18.0D),
                 0.0F, 1.0F);
         float fade = smooth(fadeIn) * stageOpacity;
         if (fade <= 0.005F) {
+            return;
+        }
+
+        OrbitalStrikeMode mode = OrbitalStrikeClientState.mode();
+        // 五种打击：写实电影板（载体特写 → 发射 → 命中拉镜）。LASER 保留程序化卫星舞台。
+        if (OrbitalCarrierPlates.has(mode)) {
+            OrbitalCarrierPlates.render(pose, lines, buffers, matrix, eye, fwd, right, up,
+                    fade, time, mode, sceneScale);
             return;
         }
 
@@ -123,7 +130,6 @@ public final class OrbitalSpaceStage {
         double[] earth = offset(eye, fwd, right, up, EARTH_FORWARD, EARTH_SIDE, EARTH_HEIGHT);
         renderEarth(pose, lines, quads, buffers, matrix, earth, fwd, right, up, EARTH_RADIUS * sceneScale, fade, time);
 
-        OrbitalStrikeMode mode = OrbitalStrikeClientState.mode();
         double phase = OrbitalCinematic.spaceFireProgress();
         switch (mode) {
             case CANNON -> renderCannon(pose, lines, quads, matrix, eye, fwd, right, up,
@@ -142,17 +148,14 @@ public final class OrbitalSpaceStage {
     }
 
     /**
-     * 发射装置自身的充能进度（0→1）：从**镜头抵达轨道（锁定结束前 40 tick）**算到**开火（锁定结束）**。
+     * 发射装置自身的充能进度（0→1）：从**打击发起**算到**开火（锁定结束）**。
      *
-     * <p>不能用 {@link OrbitalStrikeClientState#lockProgress()}：太空舞台是在锁定末段才淡入的，
-     * 那时 lockProgress 已经 0.7~0.8，炮管/天线/舱门会「一出现就快做完了」。这里单独按舞台窗口归一化，
-     * 镜头一到就是 0，发射那一刻正好 1。</p>
+     * <p>镜头现在一开打就升空，所以充能也从 0 开始，整段锁定都看得见；发射那一刻正好 1。</p>
      */
     private static float stationCharge() {
         double elapsed = OrbitalStrikeClientState.elapsed();
-        double start = OrbitalStrikeClientState.lockTicks() - OrbitalCinematic.pullLeadTicks();
-        double end = OrbitalStrikeClientState.lockTicks();
-        return Mth.clamp((float) ((elapsed - start) / Math.max(1.0D, end - start)), 0.0F, 1.0F);
+        double lock = OrbitalStrikeClientState.lockTicks();
+        return Mth.clamp((float) (elapsed / Math.max(1.0D, lock)), 0.0F, 1.0F);
     }
 
     // ------------------------------------------------------------------ 背景

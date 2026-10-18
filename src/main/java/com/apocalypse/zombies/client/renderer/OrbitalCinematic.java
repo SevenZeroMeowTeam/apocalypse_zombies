@@ -18,7 +18,7 @@ import java.lang.reflect.Method;
  * 而是看见完整的一击：锁定收束 → 光柱坠落 → 落地白光 → 弹坑一圈圈塌下去。
  *
  * <p><b>时间轴</b>（以 {@link OrbitalStrikeClientState} 的锁定/下落时长为基准）：
- * 锁定结束前 {@link #PULL_LEAD_TICKS}（0.7 s）开始从眼位平滑拉出；下落与落地全程保持远机位，
+ * 打击发起后 {@link #ASCENT_TICKS}（2 s）内从眼位平滑升到轨道机位；锁定、下落与落地全程保持远机位，
  * 落地后 {@link #HOLD_TICKS}（1.4 s）内镜头绕目标点慢摇；再用 {@link #OUT_TICKS}（0.6 s）
  * 平滑插值回玩家眼位与视角 —— 最后一帧与原版第一人称完全重合，全程没有一个硬切。</p>
  *
@@ -39,7 +39,7 @@ import java.lang.reflect.Method;
  */
 public final class OrbitalCinematic {
 
-    /** 锁定结束前多少 tick 开始拉出（0.7 s，正好接上倒计时的「1」）。 */
+    /** 非太空弹种的旧拉出时长（当前所有弹种都走 {@link #ASCENT_TICKS}，仅保留常量做文档）。 */
     private static final int PULL_LEAD_TICKS = 14;
     /** 落地后保持全距机位的时长（1.4 s：白闪、冲击波、蘑菇云都在这段里）。 */
     private static final int HOLD_TICKS = 28;
@@ -47,8 +47,8 @@ public final class OrbitalCinematic {
     private static final int OUT_TICKS = 12;
     /** 宇宙激光「灵魂出窍」的最低高度（绝对 Y）：卫星在 466，所以至少升到这里。 */
     private static final double SOUL_HEIGHT = 460.0D;
-    /** 灵魂出窍上升至轨道视点；随后留出独立太空发射镜头，不压缩进普通锁定收尾。 */
-    private static final int SOUL_PULL_LEAD_TICKS = 40;
+    /** 升空时长：打击发起即开始爬升，40 tick（2 s）到轨道机位。 */
+    private static final int ASCENT_TICKS = 40;
     /** 发射前太空构图停留时长。 */
     private static final int SOUL_SPACE_HOLD_TICKS = 30;
     /** 发射后展示卫星光束穿过行星的时长。 */
@@ -79,9 +79,14 @@ public final class OrbitalCinematic {
         return true;
     }
 
-    /** 拉出时长：要飞 400 格到轨道，慢一点才不像瞬移。 */
+    /** 升空时长：要飞 400 格到轨道，慢一点才不像瞬移。打击发起即开始。 */
+    public static int ascentTicks() {
+        return ASCENT_TICKS;
+    }
+
+    /** 旧名保留（外部按「拉出前导」理解的调用方仍可编译）。 */
     public static int pullLeadTicks() {
-        return isSpaceShot() ? SOUL_PULL_LEAD_TICKS : PULL_LEAD_TICKS;
+        return ascentTicks();
     }
 
     private static int holdTicks() {
@@ -175,10 +180,11 @@ public final class OrbitalCinematic {
         double elapsed = OrbitalStrikeClientState.elapsed();
         int lock = OrbitalStrikeClientState.lockTicks();
         int fall = OrbitalStrikeClientState.fallTicks();
-        int pullLead = pullLeadTicks();
+        int ascent = ascentTicks();
         int hold = holdTicks();
         int out = outTicks();
-        double cinemaStart = lock - (double) pullLead;
+        // 打击发起即进入演出：不再等「锁定结束前 40 tick」，玩家从第一帧就能看着载体升空/充能。
+        double cinemaStart = 0.0D;
         double impact = lock + (double) fall;
         double cinemaEnd = impact + hold + out;
 
@@ -188,7 +194,7 @@ public final class OrbitalCinematic {
             disengage(minecraft);
             return;
         } else if (elapsed < lock) {
-            ease = smooth((float) ((elapsed - cinemaStart) / Math.max(1, pullLead)));
+            ease = smooth((float) (elapsed / Math.max(1, ascent)));
         } else if (elapsed < impact + hold) {
             ease = 1.0F;
         } else if (elapsed <= cinemaEnd) {
@@ -220,7 +226,7 @@ public final class OrbitalCinematic {
         double lookY = anchor.y + radius * LOOK_UP_FACTOR;
         double lookZ = anchor.z;
         {
-            double lockProgress = Mth.clamp((elapsed - (lock - pullLead)) / Math.max(1.0D, pullLead), 0.0D, 1.0D);
+            double lockProgress = Mth.clamp(elapsed / Math.max(1.0D, ascent), 0.0D, 1.0D);
             double phase = elapsedAfterImpact;
             double groundBlend = phase < SOUL_SPACE_HOLD_TICKS + SOUL_BEAM_HOLD_TICKS
                     ? 0.0D
@@ -339,11 +345,10 @@ public final class OrbitalCinematic {
         }
         double elapsed = OrbitalStrikeClientState.elapsed();
         double lock = OrbitalStrikeClientState.lockTicks();
-        double start = lock - SOUL_PULL_LEAD_TICKS;
         double impact = lock + OrbitalStrikeClientState.fallTicks();
         double end = impact + SOUL_SPACE_HOLD_TICKS + SOUL_BEAM_HOLD_TICKS
                 + SOUL_GROUND_HOLD_TICKS + SOUL_OUT_TICKS;
-        return elapsed >= start && elapsed <= end && lastWeight > 0.01F;
+        return elapsed >= 0.0D && elapsed <= end && lastWeight > 0.01F;
     }
 
     /**
@@ -391,16 +396,15 @@ public final class OrbitalCinematic {
 
     // ------------------------------------------------------------------ 内部
 
-    /** 演出窗口：锁定末段（PULL_LEAD 前）到落地后 HOLD+OUT（= 余晖结束，isActive 同刻收尾）。 */
+    /** 演出窗口：打击发起（t=0）到落地后 HOLD+OUT（= 余晖结束，isActive 同刻收尾）。 */
     private static boolean inWindow() {
         if (!OrbitalStrikeClientState.isActive()) {
             return false;
         }
         double elapsed = OrbitalStrikeClientState.elapsed();
-        double cinemaStart = OrbitalStrikeClientState.lockTicks() - (double) pullLeadTicks();
         double cinemaEnd = OrbitalStrikeClientState.lockTicks() + OrbitalStrikeClientState.fallTicks()
                 + holdTicks() + outTicks();
-        return elapsed >= cinemaStart && elapsed <= cinemaEnd;
+        return elapsed >= 0.0D && elapsed <= cinemaEnd;
     }
 
     private static void engage(Minecraft minecraft) {

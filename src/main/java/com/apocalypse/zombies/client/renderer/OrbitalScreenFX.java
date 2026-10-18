@@ -405,13 +405,14 @@ public final class OrbitalScreenFX {
         long elapsed = OrbitalStrikeClientState.elapsed();
         int lock = OrbitalStrikeClientState.lockTicks();
         int fall = OrbitalStrikeClientState.fallTicks();
-        double start = lock - OrbitalCinematic.pullLeadTicks();
+        double start = 0.0D;
+        double ascent = OrbitalCinematic.ascentTicks();
         double impact = lock + fall;
         int w = graphics.guiWidth();
         int h = graphics.guiHeight();
         // —— 升空：蓝色大气边缘 + 速度线，强度先增后减
-        if (elapsed >= start && elapsed <= lock + 4L) {
-            float p = Mth.clamp((float) ((elapsed - start) / Math.max(1.0D, lock - start)), 0.0F, 1.0F);
+        if (elapsed >= start && elapsed <= ascent + 4.0D) {
+            float p = Mth.clamp((float) (elapsed / Math.max(1.0D, ascent)), 0.0F, 1.0F);
             float a = (float) Math.sin(p * Math.PI) * 0.34F;
             int edge = ((int) (a * 255.0F) << 24) | 0x6FC7FF;
             int band = (int) (h * 0.20F);
