@@ -9,6 +9,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.worldselection.SelectWorldScreen;
+import net.minecraft.client.gui.screens.worldselection.WorldSelectionList;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
@@ -42,10 +43,30 @@ public final class DoomMenuTheme {
     /** 与标题界面同一张《末日菜单》背景（1408×768）。 */
     private static final ResourceLocation BACKGROUND = new ResourceLocation(
             ApocalypseZombies.MOD_ID, "textures/gui/apocalypse_title.png");
+    /** 选择世界：用户指定的《废土城市》插画（与 ESC 暂停同一张）。 */
+    private static final ResourceLocation SELECT_WORLD_BACKGROUND = new ResourceLocation(
+            ApocalypseZombies.MOD_ID, "textures/gui/pause_background.png");
     private static final int TEX_W = 1408;
     private static final int TEX_H = 768;
 
     private DoomMenuTheme() {
+    }
+
+    /**
+     * 选择世界界面：铺《废土城市》插画。
+     *
+     * <p><b>为什么必须挂在 Render.Pre</b>：{@code SelectWorldScreen.render} 自己不调用
+     * {@code renderBackground}，所以 {@code BackgroundRendered} 根本不会触发；而
+     * {@code WorldSelectionList} 会在列表区域自绘原版泥土。这里在屏幕绘制前先铺图，
+     * 同时在 {@link #onScreenInit} 里把列表的 {@code renderBackground} 关掉 —— 泥土才不会盖住插画。</p>
+     */
+    @SubscribeEvent
+    public static void onScreenRenderPre(ScreenEvent.Render.Pre event) {
+        Screen screen = event.getScreen();
+        if (screen instanceof SelectWorldScreen) {
+            drawCover(event.getGuiGraphics(), screen.width, screen.height,
+                    SELECT_WORLD_BACKGROUND, 0x80000000);
+        }
     }
 
     @SubscribeEvent
@@ -57,19 +78,24 @@ public final class DoomMenuTheme {
         GuiGraphics graphics = event.getGuiGraphics();
         int w = screen.width;
         int h = screen.height;
-        // 选择世界：铺加载插画（与「读取世界数据 / 加载世界」同一张），
-        // 这样存档列表背后不会透出标题图上烤死的菜单按钮。
-        ResourceLocation background = screen instanceof SelectWorldScreen
-                ? ApocalypseLoadingScreen.BACKGROUND : BACKGROUND;
-        // cover 铺满（与标题界面同一套算法）
+        if (screen instanceof SelectWorldScreen) {
+            // 若这个版本仍走了 renderBackground（先画了泥土），这里补铺一次插画把它盖掉。
+            drawCover(graphics, w, h, SELECT_WORLD_BACKGROUND, 0x80000000);
+            return;
+        }
+        drawCover(graphics, w, h, BACKGROUND, 0x99000000);
+    }
+
+    /** cover 铺满 + 压暗 + 冷紫调。 */
+    private static void drawCover(GuiGraphics graphics, int w, int h,
+                                  ResourceLocation background, int dim) {
         float scale = Math.max(w / (float) TEX_W, h / (float) TEX_H);
         int bw = Math.round(TEX_W * scale);
         int bh = Math.round(TEX_H * scale);
         int x = (w - bw) / 2;
         int y = (h - bh) / 2;
         graphics.blit(background, x, y, bw, bh, 0.0F, 0.0F, TEX_W, TEX_H, TEX_W, TEX_H);
-        // 压暗 + 冷紫调：菜单文字/列表压在图上也要读得清
-        graphics.fill(0, 0, w, h, 0x99000000);
+        graphics.fill(0, 0, w, h, dim);
         graphics.fill(0, 0, w, h, 0x2A1A0A28);
     }
 
@@ -78,6 +104,16 @@ public final class DoomMenuTheme {
         Screen screen = event.getScreen();
         if (!isThemed(screen)) {
             return;
+        }
+        // 选择世界的世界列表会自绘一层原版泥土（SelectWorldScreen 自己不调用 renderBackground）；
+        // 关掉它，Render.Pre 铺的插画才能透出来。列表行、搜索框、按钮仍照常画。
+        if (screen instanceof SelectWorldScreen) {
+            for (GuiEventListener listener : screen.children()) {
+                if (listener instanceof WorldSelectionList list) {
+                    list.setRenderBackground(false);
+                    break;
+                }
+            }
         }
         // 先收集再替换：一边迭代 children 一边 addRenderableWidget 会 CME
         List<Button> vanilla = new ArrayList<>();

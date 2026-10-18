@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `3.3.0` |
+| **当前版本** | `3.3.1` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -278,6 +278,19 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 3.3.1 — 2026-10-18
+
+**选择世界界面的泥土底换成图1（废土城市插画）。**
+
+- 根因：`SelectWorldScreen.render` 不调用 `renderBackground`，全局 `DoomMenuTheme` 的
+  `BackgroundRendered` 根本不会触发；`WorldSelectionList` 又在列表区域自绘原版泥土，
+  把主题背景整个盖住（3.2.0 的选择世界背景因此没有生效）；
+- 新增 `ScreenEvent.Render.Pre`：在屏幕绘制前铺 `pause_background.png`（废土城市，
+  `0x80` 压暗 + 紫调）；`ScreenEvent.Init.Post` 里调用
+  `WorldSelectionList#setRenderBackground(false)` 关掉列表自带的泥土；
+  如果某个版本仍走 `BackgroundRendered`，那里会再铺一次同一张图，保证泥土不透出来；
+- 世界列表、搜索框、按钮照常绘制在最上层；按钮仍是末日石质。
 
 ### 3.3.0 — 2026-10-18
 
