@@ -158,5 +158,9 @@
   "orbital_mode.planet": "Planetary Impact",
   "key.apocalypse_zombies.music": "Friends' Wine Music Toggle",
   "message.apocalypse_zombies.music_on": "Friends' Wine · background music on",
-  "message.apocalypse_zombies.music_off": "Friends' Wine · background music off"
+  "message.apocalypse_zombies.music_off": "Friends' Wine · background music off",
+  "menu.apocalypse_zombies.singleplayer": "SINGLEPLAYER",
+  "menu.apocalypse_zombies.multiplayer": "MULTIPLAYER",
+  "menu.apocalypse_zombies.options": "OPTIONS",
+  "menu.apocalypse_zombies.quit": "QUIT GAME"
 }

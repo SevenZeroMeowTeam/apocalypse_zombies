@@ -1,6 +1,7 @@
 package com.apocalypse.zombies.client;
 
 import com.apocalypse.zombies.ApocalypseZombies;
+import com.apocalypse.zombies.client.gui.ApocalypseTitleScreen;
 import com.apocalypse.zombies.client.renderer.OrbitalCinematic;
 import com.apocalypse.zombies.client.renderer.OrbitalScreenFX;
 import com.apocalypse.zombies.client.renderer.OrbitalStrikeHighlighter;
@@ -24,6 +25,7 @@ import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
@@ -40,6 +42,7 @@ import net.minecraftforge.client.event.RenderGuiEvent;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
 import net.minecraftforge.client.event.RenderHandEvent;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
+import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.client.event.ViewportEvent;
 import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
 import net.minecraftforge.event.TickEvent;
@@ -115,6 +118,16 @@ public final class ClientEvents {
     private static final float RETICLE_TICK_FRACTION = 0.045F;
 
     private ClientEvents() {
+    }
+
+    // ------------------------------------------------------------------ title
+
+    /** 原版标题界面 → 末日风自定义界面（只换 TitleScreen，其它界面不动）。 */
+    @SubscribeEvent
+    public static void onScreenOpening(ScreenEvent.Opening event) {
+        if (event.getNewScreen() instanceof TitleScreen) {
+            event.setNewScreen(new ApocalypseTitleScreen());
+        }
     }
 
     // ------------------------------------------------------------------ fog

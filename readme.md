@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `2.7.2` |
+| **当前版本** | `2.8.0` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -278,6 +278,20 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 2.8.0 — 2026-10-17
+
+**主菜单换成末日风：紫电浮空岛背景 + 裂纹石按钮 + 底部项目链接。**
+
+- 原版标题界面由 `ApocalypseTitleScreen` 接管（通过 `ScreenEvent.Opening` 替换 `TitleScreen`）；
+  背景是 `textures/gui/apocalypse_title.png`（1408×768，按 cover 铺满窗口，不拉伸变形）；
+- 四个按钮用代码重绘成参考图的样式：深紫描边、灰色石面、顶面高光、几道随机位置裂纹；
+  悬停时外圈紫色泛光、石面提亮、文字转紫白；
+- 按钮依次是单人游戏 / 多人游戏 / 选项 / 退出游戏，均为原版界面的正常入口；
+- 底部信息条：左侧「Apocalypse Zombies | Ver 版本号 | 玩家名」；
+- **底部中间两个可点击链接**：GitHub（`SevenZeroMeowTeam/apocalypse_zombies`）与团队
+  （`team.qlm.org.cn`），悬停变亮并出现紫色下划线，点击先弹原版外链确认再打开浏览器；
+- 窄窗口下链接自动缩写为「GitHub / Team」，不会挤出屏幕。
 
 ### 2.7.2 — 2026-10-17
 
