@@ -22,14 +22,17 @@ public class OrbitalStrikePacket {
     private final int lockTicks;
     private final int fallTicks;
     private final OrbitalStrikeMode mode;
+    /** 玩家触发时的朝向（度）：断层裂谷沿这个方向展开。 */
+    private final float yaw;
 
     public OrbitalStrikePacket(BlockPos target, int radius, int lockTicks, int fallTicks,
-                               OrbitalStrikeMode mode) {
+                               OrbitalStrikeMode mode, float yaw) {
         this.target = target;
         this.radius = radius;
         this.lockTicks = lockTicks;
         this.fallTicks = fallTicks;
         this.mode = mode;
+        this.yaw = yaw;
     }
 
     public static void encode(OrbitalStrikePacket packet, FriendlyByteBuf buf) {
@@ -38,17 +41,19 @@ public class OrbitalStrikePacket {
         buf.writeVarInt(packet.lockTicks);
         buf.writeVarInt(packet.fallTicks);
         buf.writeUtf(packet.mode.id());
+        buf.writeFloat(packet.yaw);
     }
 
     public static OrbitalStrikePacket decode(FriendlyByteBuf buf) {
         return new OrbitalStrikePacket(buf.readBlockPos(), buf.readVarInt(), buf.readVarInt(),
-                buf.readVarInt(), OrbitalStrikeMode.byId(buf.readUtf()));
+                buf.readVarInt(), OrbitalStrikeMode.byId(buf.readUtf()), buf.readFloat());
     }
 
     public static void handle(OrbitalStrikePacket packet, Supplier<NetworkEvent.Context> context) {
         NetworkEvent.Context ctx = context.get();
         ctx.enqueueWork(() -> OrbitalStrikeClientState.start(
-                packet.target, packet.radius, packet.lockTicks, packet.fallTicks, packet.mode));
+                packet.target, packet.radius, packet.lockTicks, packet.fallTicks, packet.mode,
+                packet.yaw));
         ctx.setPacketHandled(true);
     }
 }

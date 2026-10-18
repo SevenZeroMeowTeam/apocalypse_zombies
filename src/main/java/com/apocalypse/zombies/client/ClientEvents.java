@@ -230,6 +230,13 @@ public final class ClientEvents {
             NetworkHandler.CHANNEL.sendToServer(new CollectPacket());
         }
 
+        // 跳过打击过场：只交还镜头，服务端结算照常；放在提前 return 之前，轮盘/界面里也能按。
+        while (KeyBindings.SKIP_FILM.consumeClick()) {
+            if (OrbitalStrikeClientState.isActive() && OrbitalCinematic.isEngaged()) {
+                OrbitalCinematic.skip();
+            }
+        }
+
         if (minecraft.screen != null || minecraft.player == null) {
             return;
         }

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- P0 v2：断层 FAULT。mark+ascent+device = 服务端 lock；fire = fallTicks。 -->
+<protocol id="fault" mode="lance" display="断层" codename="FAULT // 断层" color="#E0C070">
+    <phases>
+        <phase name="mark" ticks="35"/>
+        <phase name="ascent" ticks="45"/>
+        <phase name="device" ticks="100"/>
+        <phase name="impact" ticks="45"/>
+        <phase name="aftermath" ticks="180"/>
+    </phases>
+    <terrain shape="rift" rift-length="96" rift-width="7" rift-depth="40"/>
+</protocol>

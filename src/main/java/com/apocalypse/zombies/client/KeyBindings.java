@@ -25,6 +25,10 @@ public final class KeyBindings {
     public static final KeyMapping MUSIC = new KeyMapping(
             "key.apocalypse_zombies.music", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F10, CATEGORY);
 
+    /** K — 跳过当前的轨道打击过场（结算不会被跳过）。 */
+    public static final KeyMapping SKIP_FILM = new KeyMapping(
+            "key.apocalypse_zombies.skip_film", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_K, CATEGORY);
+
     private KeyBindings() {
     }
 }

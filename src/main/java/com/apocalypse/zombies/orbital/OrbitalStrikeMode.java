@@ -25,7 +25,7 @@ public enum OrbitalStrikeMode {
      * 天基长矛：半径收得很小，但一路挖穿（含基岩）并造成极高单点伤害。
      * 前摇更长、下落更慢 —— 一根从宇宙扎下来的矛，过程本身就该看得见。
      */
-    LANCE("lance", "天基长矛", "SKY LANCE",
+    LANCE("lance", "断层", "FAULT",
             0.18F, 2.40F, 1.35F, 1.25F, 1.30F, true, 15, 320.0D),
 
     /**

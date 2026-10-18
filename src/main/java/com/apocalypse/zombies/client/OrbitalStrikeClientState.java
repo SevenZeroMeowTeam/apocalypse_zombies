@@ -19,19 +19,24 @@ public final class OrbitalStrikeClientState {
     private static int lockTicks;
     private static int fallTicks = DEFAULT_FALL_TICKS;
     private static OrbitalStrikeMode mode = OrbitalStrikeMode.CANNON;
+    /** 触发时的朝向：断层裂谷用它决定折线方向。 */
+    private static float yaw;
     private static long startGameTime;
 
     private OrbitalStrikeClientState() {
     }
 
     /** 收到新的打击：覆盖旧的（同一时刻只支持一次打击的观感，够用且不会叠图）。 */
-    public static void start(BlockPos pos, int radius, int lockTicks, int fallTicks, OrbitalStrikeMode mode) {
+    public static void start(BlockPos pos, int radius, int lockTicks, int fallTicks,
+                             OrbitalStrikeMode mode, float yaw) {
         target = pos.immutable();
         OrbitalStrikeClientState.radius = radius;
         OrbitalStrikeClientState.lockTicks = lockTicks;
         OrbitalStrikeClientState.fallTicks = Math.max(1, fallTicks);
         OrbitalStrikeClientState.mode = mode == null ? OrbitalStrikeMode.CANNON : mode;
+        OrbitalStrikeClientState.yaw = yaw;
         OrbitalStrikeClientState.startGameTime = now();
+        com.apocalypse.zombies.client.renderer.OrbitalCinematic.onNewStrike();
     }
 
     public static void clear() {
@@ -105,6 +110,11 @@ public final class OrbitalStrikeClientState {
     /** 本次打击选的是哪种弹种（服务端说的算）。 */
     public static OrbitalStrikeMode mode() {
         return mode;
+    }
+
+    /** 触发时的朝向（度）；断层裂谷沿它展开。 */
+    public static float yaw() {
+        return yaw;
     }
 
     /** 已经走过的 tick 数（用于光束下落进度 / 闪烁节奏）。 */

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol id="dawn" mode="laser" display="黎明" codename="DAWN // 黎明" color="#FFF2C4">
+    <phases><phase name="mark" ticks="35"/><phase name="ascent" ticks="45"/>
+        <phase name="device" ticks="100"/><phase name="impact" ticks="35"/>
+        <phase name="aftermath" ticks="160"/></phases>
+    <terrain shape="purge"/>
+</protocol>

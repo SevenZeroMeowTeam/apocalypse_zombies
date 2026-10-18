@@ -109,8 +109,8 @@ public final class OrbitalSpaceStage {
         double time = gameTime + partial;
 
         // 布景从打击发起就开始淡入（不再等锁定末段）；回位段再由 stageOpacity 淡出。
-        float fadeIn = Mth.clamp((float) ((OrbitalStrikeClientState.elapsed() - 2.0D) / 18.0D),
-                0.0F, 1.0F);
+        float fadeIn = Mth.clamp((float) ((OrbitalStrikeClientState.elapsed()
+                - OrbitalCinematic.ascentStartTicks() - 2.0D) / 18.0D), 0.0F, 1.0F);
         float fade = smooth(fadeIn) * stageOpacity;
         if (fade <= 0.005F) {
             return;

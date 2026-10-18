@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `3.5.0` |
+| **当前版本** | `3.6.0` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -278,6 +278,25 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 3.6.0 — 2026-10-18
+
+**打击引擎 v2 第一刀：六份原创「末日协议」的数据层 + 断层 FAULT 实装（不再照抄参考包）。**
+
+- **引擎 v2**：新增 `orbital/engine` —— `StrikePhase`（MARK/ASCENT/DEVICE/FIRE/IMPACT/AFTERMATH）、
+  `StrikeProtocol`（代号/颜色/相位/地形参数）、`StrikeProtocols`（读取
+  `assets/apocalypse_zombies/strike/*.xml`，JDK DocumentBuilder，失败回落内置定义）；
+  六份协议 XML 已登记：焚城/断层/隔离/蜂群/黎明/黑雨，后续逐个迁移；
+- **断层 FAULT（天基长矛的 v2 形态）**：
+  - 服务端：玩家朝向决定裂谷方向；`RiftShape` 生成与服务端/客户端完全一致的折线
+    （长 96、宽 7、深 40，随机游走 + 抖动）；`RiftJob` 按全局 4000 格/tick 预算逐点挖开，
+    截面随深度收窄成 V 形；伤害沿整条折线判定；命中音效 + 按距离延迟的地鸣；
+  - 客户端：MARK 相位（35t）先在地面画金色折线裂缝预告（两侧边线 + 横向刻度 + 中心钉入环），
+    然后升空进入载体特写；命中后沿折线画高温谷口/向下光井，而不是圆坑冲击环；
+  - HUD：`FAULT // 断层`、相位行（MARK/ASCENT/DEVICE/FIRE/IMPACT/AFTERMATH）、
+    `[K] SKIP` 跳过提示；新增 `K` 键绑定（跳过只交还镜头，结算照常）；
+- 电影时间轴开始按协议相位走：FAULT 先留 35t 地面标记再升空；其他五种仍走 v1 时间轴；
+- 仍然只用原版 RenderType / 事件相机，不引入 shader、FBO 或 Mixin。
 
 ### 3.5.0 — 2026-10-18
 

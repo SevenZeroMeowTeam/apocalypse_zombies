@@ -91,8 +91,10 @@ public final class OrbitalAftermath {
             return;
         }
         long elapsed = OrbitalStrikeClientState.elapsed();
-        // 与新的升空时间轴对齐：打击发起即开始冒魂，升空结束后 8 tick 收尾。
-        if (elapsed > OrbitalCinematic.ascentTicks() + 8L) {
+        // 与新的升空时间轴对齐：升空开始冒魂，升空结束后 8 tick 收尾。
+        if (elapsed < OrbitalCinematic.ascentStartTicks()
+                || elapsed > OrbitalCinematic.ascentStartTicks()
+                + OrbitalCinematic.ascentTicks() + 8L) {
             return;
         }
         LocalPlayer player = minecraft.player;

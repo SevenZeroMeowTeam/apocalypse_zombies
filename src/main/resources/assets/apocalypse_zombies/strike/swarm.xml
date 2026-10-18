@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol id="swarm" mode="storm" display="蜂群" codename="SWARM // 蜂群" color="#8DFF7A">
+    <phases><phase name="mark" ticks="30"/><phase name="ascent" ticks="40"/>
+        <phase name="device" ticks="100"/><phase name="impact" ticks="60"/>
+        <phase name="aftermath" ticks="160"/></phases>
+    <terrain shape="brood"/>
+</protocol>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol id="quarantine" mode="gravity" display="隔离" codename="QUARANTINE // 隔离" color="#D8F4FF">
+    <phases><phase name="mark" ticks="40"/><phase name="ascent" ticks="45"/>
+        <phase name="device" ticks="110"/><phase name="impact" ticks="35"/>
+        <phase name="aftermath" ticks="160"/></phases>
+    <terrain shape="cordon"/>
+</protocol>

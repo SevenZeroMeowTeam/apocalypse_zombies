@@ -4,6 +4,9 @@ import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.client.OrbitalStrikeClientState;
 import com.apocalypse.zombies.item.OrbitalStrikeRemoteItem;
 import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
+import com.apocalypse.zombies.orbital.RiftShape;
+import com.apocalypse.zombies.orbital.engine.StrikeProtocol;
+import com.apocalypse.zombies.orbital.engine.StrikeProtocols;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;
@@ -275,6 +278,123 @@ public final class OrbitalStrikeHighlighter {
     }
 
     /**
+     * 断层命中：沿折线画出裂开的谷口（金色高温带 + 向下的光井），不做圆坑冲击环。
+     * 服务端正在分 tick 挖开；客户端把整条裂谷的能量轮廓先亮出来，随后逐渐熄灭。
+     */
+    private static void renderRiftImpact(PoseStack pose, VertexConsumer lines, VertexConsumer quads,
+                                         Matrix4f matrix, ClientLevel level, BlockPos target,
+                                         double gy, int radius, long age, double time) {
+        if (level == null || target == null) {
+            return;
+        }
+        StrikeProtocol protocol = StrikeProtocols.protocolFor(OrbitalStrikeClientState.mode());
+        List<RiftShape.Point> points = RiftShape.points(target, OrbitalStrikeClientState.yaw(),
+                protocol.terrain().riftLength());
+        if (points.isEmpty()) {
+            return;
+        }
+        float fade = Mth.clamp(1.0F - age / 180.0F, 0.0F, 1.0F);
+        if (fade <= 0.01F) {
+            return;
+        }
+        int n = points.size();
+        int depth = Math.max(6, protocol.terrain().riftDepth());
+        double[] top = new double[n];
+        for (int i = 0; i < n; i++) {
+            RiftShape.Point p = points.get(i);
+            top[i] = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, p.x(), p.z()) - 0.90D;
+        }
+        for (int i = 1; i < n; i++) {
+            RiftShape.Point a = points.get(i - 1);
+            RiftShape.Point b = points.get(i);
+            double dx = b.x() - a.x();
+            double dz = b.z() - a.z();
+            double len = Math.max(0.001D, Math.hypot(dx, dz));
+            double px = -dz / len * 1.7D;
+            double pz = dx / len * 1.7D;
+            quad(quads, matrix,
+                    a.x() + 0.5D + px, top[i - 1] + 0.05D, a.z() + 0.5D + pz,
+                    a.x() + 0.5D - px, top[i - 1] + 0.05D, a.z() + 0.5D - pz,
+                    b.x() + 0.5D - px, top[i] + 0.05D, b.z() + 0.5D - pz,
+                    b.x() + 0.5D + px, top[i] + 0.05D, b.z() + 0.5D + pz,
+                    1.0F, 0.78F, 0.30F, fade * 0.20F);
+            line(pose, lines, a.x() + 0.5D, top[i - 1] + 0.08D, a.z() + 0.5D,
+                    b.x() + 0.5D, top[i] + 0.08D, b.z() + 0.5D,
+                    1.0F, 1.0F, 0.92F, fade * 0.85F, 0, 1, 0);
+        }
+        for (int i = 0; i < n; i += 4) {
+            RiftShape.Point p = points.get(i);
+            double bottom = Math.max(level.getMinBuildHeight(), top[i] - depth);
+            line(pose, lines, p.x() + 0.5D, top[i], p.z() + 0.5D,
+                    p.x() + 0.5D, bottom, p.z() + 0.5D,
+                    1.0F, 0.78F, 0.30F, fade * 0.24F, 0, 1, 0);
+            line(pose, lines, p.x() + 0.5D, top[i] + 0.1D, p.z() + 0.5D,
+                    p.x() + 0.5D, top[i] - 1.6D, p.z() + 0.5D,
+                    1.0F, 1.0F, 0.92F, fade * 0.75F, 0, 1, 0);
+        }
+        double cy = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                target.getX(), target.getZ()) - 0.82D;
+        drawCircle(pose, lines, target.getX() + 0.5D, cy + 0.02D, target.getZ() + 0.5D,
+                Math.max(2.5D, radius * 0.14D), 1.0F, 0.78F, 0.30F, fade * 0.65F);
+    }
+
+    /**
+     * 断层 FAULT 的地面裂缝预告：沿 {@link RiftShape} 的折线在真实地表高度上画一条抖动发光的缝，
+     * 两侧横向短刻度表示「正在张开」；中心画一个钉入点圆环和短钉。
+     */
+    private static void renderFaultPreview(PoseStack pose, VertexConsumer lines, BlockPos target,
+                                           int radius, float progress, double time) {
+        ClientLevel level = Minecraft.getInstance().level;
+        if (level == null || target == null) {
+            return;
+        }
+        StrikeProtocol protocol = StrikeProtocols.protocolFor(OrbitalStrikeClientState.mode());
+        List<RiftShape.Point> points = RiftShape.points(target, OrbitalStrikeClientState.yaw(),
+                protocol.terrain().riftLength());
+        if (points.isEmpty()) {
+            return;
+        }
+        float pulse = 0.75F + 0.25F * (float) Math.sin(time * 0.55D);
+        float alpha = (0.16F + 0.68F * progress) * pulse;
+        int n = points.size();
+        double[] y = new double[n];
+        for (int i = 0; i < n; i++) {
+            RiftShape.Point p = points.get(i);
+            y[i] = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, p.x(), p.z()) - 0.90D;
+        }
+        for (int i = 1; i < n; i++) {
+            RiftShape.Point a = points.get(i - 1);
+            RiftShape.Point b = points.get(i);
+            line(pose, lines, a.x() + 0.5D, y[i - 1], a.z() + 0.5D,
+                    b.x() + 0.5D, y[i], b.z() + 0.5D,
+                    1.0F, 0.80F, 0.34F, alpha, 0, 1, 0);
+        }
+        double halfWidth = Math.max(1.2D,
+                protocol.terrain().riftWidth() * 0.5D * (0.4D + 0.6D * progress));
+        for (int i = 1; i < n - 1; i += 3) {
+            RiftShape.Point p = points.get(i);
+            double dx = points.get(i + 1).x() - points.get(i - 1).x();
+            double dz = points.get(i + 1).z() - points.get(i - 1).z();
+            double len = Math.max(0.001D, Math.hypot(dx, dz));
+            double px = -dz / len;
+            double pz = dx / len;
+            double x = p.x() + 0.5D;
+            double z = p.z() + 0.5D;
+            line(pose, lines, x, y[i], z, x + px * halfWidth, y[i], z + pz * halfWidth,
+                    1.0F, 0.80F, 0.34F, alpha * 0.55F, 0, 1, 0);
+            line(pose, lines, x, y[i], z, x - px * halfWidth, y[i], z - pz * halfWidth,
+                    1.0F, 0.80F, 0.34F, alpha * 0.55F, 0, 1, 0);
+        }
+        int cx = target.getX();
+        int cz = target.getZ();
+        double cy = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, cx, cz) - 0.85D;
+        drawCircle(pose, lines, cx + 0.5D, cy + 0.02D, cz + 0.5D,
+                Math.max(2.0D, radius * 0.12D), 1.0F, 0.80F, 0.34F, alpha * 0.80F);
+        line(pose, lines, cx + 0.5D, cy, cz + 0.5D, cx + 0.5D, cy + 7.0D, cz + 0.5D,
+                1.0F, 0.95F, 0.78F, alpha * 0.75F, 0, 1, 0);
+    }
+
+    /**
      * 锁定阶段（前摇动画）。四条线索一起走：
      * <ol>
      *   <li><b>收拢环</b>：地面上的环从 1.8R 收到 0.95R，进度越满越亮 —— 这是「前摇在推进」的主读数；</li>
@@ -301,6 +421,12 @@ public final class OrbitalStrikeHighlighter {
 
         switch (mode) {
             case LANCE -> {
+                StrikeProtocol protocol = StrikeProtocols.protocolFor(mode);
+                if (protocol.fault()) {
+                    renderFaultPreview(pose, lines, OrbitalStrikeClientState.target(),
+                            strikeRadius, progress, gameTime + partial);
+                    break;
+                }
                 // 长矛：矛尖从平台缓缓向下伸（没有整根激光），沿途三圈是「矛身正在成形」
                 double topY = BEAM_TOP_Y + PLATFORM_HEIGHT - 2.0D;
                 double tipY = Mth.lerp(progress, BEAM_TOP_Y, BEAM_TOP_Y - 90.0D);
@@ -507,7 +633,12 @@ public final class OrbitalStrikeHighlighter {
         switch (mode) {
             case GRAVITY -> renderSingularityFall(pose, lines, cx, cz, gy, headY, fall,
                     strikeRadius, gameTime, partial);
-            case LANCE -> renderSpearFall(pose, lines, buffers, matrix, cx, cz, headY, fall, gameTime, partial);
+            case LANCE -> {
+                if (StrikeProtocols.protocolFor(mode).fault()) {
+                    renderFaultPreview(pose, lines, target, strikeRadius, 1.0F, gameTime + partial);
+                }
+                renderSpearFall(pose, lines, buffers, matrix, cx, cz, headY, fall, gameTime, partial);
+            }
             case STORM -> renderStormFall(pose, lines, cx, cz, gy, fallElapsed, fallTicks,
                     strikeRadius, gameTime, partial);
             case LASER -> renderLaserFall(pose, lines, buffers, matrix, cx, cz, gy,
@@ -524,7 +655,14 @@ public final class OrbitalStrikeHighlighter {
             float age = impactAge + partial;
             VertexConsumer quads = buffers.getBuffer(RenderType.debugQuads());
             switch (mode) {
-                case LANCE -> renderLanceImpact(quads, matrix, cx, gy, cz, beamR, strikeRadius, age);
+                case LANCE -> {
+                    if (StrikeProtocols.protocolFor(mode).fault()) {
+                        renderRiftImpact(pose, lines, quads, matrix, level, target, gy,
+                                strikeRadius, impactAge, gameTime + partial);
+                    } else {
+                        renderLanceImpact(quads, matrix, cx, gy, cz, beamR, strikeRadius, age);
+                    }
+                }
                 case GRAVITY -> renderImplosion(quads, matrix, cx, gy, cz, beamR, strikeRadius, age);
                 case STORM -> renderStormImpact(quads, lines, matrix, cx, gy, cz, beamR,
                         strikeRadius, age, target, pose, gameTime, partial);

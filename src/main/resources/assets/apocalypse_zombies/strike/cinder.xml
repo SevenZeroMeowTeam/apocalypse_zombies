@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol id="cinder" mode="cannon" display="焚城" codename="CINDER // 焚城" color="#FF7A2E">
+    <phases><phase name="mark" ticks="30"/><phase name="ascent" ticks="40"/>
+        <phase name="device" ticks="110"/><phase name="impact" ticks="40"/>
+        <phase name="aftermath" ticks="160"/></phases>
+    <terrain shape="column"/>
+</protocol>

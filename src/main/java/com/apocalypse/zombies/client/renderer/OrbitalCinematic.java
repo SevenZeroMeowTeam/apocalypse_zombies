@@ -3,6 +3,8 @@ package com.apocalypse.zombies.client.renderer;
 import com.apocalypse.zombies.ApocalypseZombies;
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.client.OrbitalStrikeClientState;
+import com.apocalypse.zombies.orbital.engine.StrikeProtocol;
+import com.apocalypse.zombies.orbital.engine.StrikeProtocols;
 import net.minecraft.client.Camera;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
@@ -79,9 +81,21 @@ public final class OrbitalCinematic {
         return true;
     }
 
-    /** 升空时长：要飞 400 格到轨道，慢一点才不像瞬移。打击发起即开始。 */
+    /** 升空时长：要飞 400 格到轨道，慢一点才不像瞬移。v2 断层用协议自己的 ascent。 */
     public static int ascentTicks() {
-        return ASCENT_TICKS;
+        StrikeProtocol protocol = StrikeProtocols.protocolFor(OrbitalStrikeClientState.mode());
+        return protocol.fault() ? Math.max(20, protocol.ascentTicks()) : ASCENT_TICKS;
+    }
+
+    /**
+     * 电影从哪一 tick 开始接管镜头。
+     *
+     * <p>v1 是 0（打击发起即升空）；v2 断层先在地面留 {@code MARK} 相位，
+     * 让玩家看到折线裂缝预告，再升空。</p>
+     */
+    public static int ascentStartTicks() {
+        StrikeProtocol protocol = StrikeProtocols.protocolFor(OrbitalStrikeClientState.mode());
+        return protocol.fault() ? Math.max(1, protocol.markTicks()) : 0;
     }
 
     /** 旧名保留（外部按「拉出前导」理解的调用方仍可编译）。 */
@@ -112,6 +126,8 @@ public final class OrbitalCinematic {
     private static float baseAngle;
     /** 本帧的演出权重（0 = 完全在玩家眼里，1 = 全距机位）。HUD 黑边 / FOV 收窄读它。 */
     private static float lastWeight;
+    /** 玩家按了 SKIP：本次打击的余下电影不再接管镜头（结算照常）。 */
+    private static boolean skipped;
 
     // ------------------------------------------------------------------ 反射（Camera.setPosition / setRotation）
 
@@ -157,6 +173,11 @@ public final class OrbitalCinematic {
 
     /** 每帧渲染调用（在 {@code OrbitalScreenFX.shakeCamera} 之前，让落地震动叠在演出机位上）。 */
     public static void apply(ViewportEvent.ComputeCameraAngles event, Minecraft minecraft) {
+        if (skipped) {
+            lastWeight = 0.0F;
+            disengage(minecraft);
+            return;
+        }
         if (!inWindow()) {
             lastWeight = 0.0F;
             disengage(minecraft);
@@ -181,10 +202,11 @@ public final class OrbitalCinematic {
         int lock = OrbitalStrikeClientState.lockTicks();
         int fall = OrbitalStrikeClientState.fallTicks();
         int ascent = ascentTicks();
+        int ascentStart = ascentStartTicks();
         int hold = holdTicks();
         int out = outTicks();
-        // 打击发起即进入演出：不再等「锁定结束前 40 tick」，玩家从第一帧就能看着载体升空/充能。
-        double cinemaStart = 0.0D;
+        // v2 断层先在地面看 MARK；其余模式仍然是打击发起即进入演出。
+        double cinemaStart = ascentStart;
         double impact = lock + (double) fall;
         double cinemaEnd = impact + hold + out;
 
@@ -194,7 +216,7 @@ public final class OrbitalCinematic {
             disengage(minecraft);
             return;
         } else if (elapsed < lock) {
-            ease = smooth((float) (elapsed / Math.max(1, ascent)));
+            ease = smooth((float) ((elapsed - ascentStart) / Math.max(1, ascent)));
         } else if (elapsed < impact + hold) {
             ease = 1.0F;
         } else if (elapsed <= cinemaEnd) {
@@ -226,7 +248,8 @@ public final class OrbitalCinematic {
         double lookY = anchor.y + radius * LOOK_UP_FACTOR;
         double lookZ = anchor.z;
         {
-            double lockProgress = Mth.clamp(elapsed / Math.max(1.0D, ascent), 0.0D, 1.0D);
+            double lockProgress = Mth.clamp((elapsed - ascentStart) / Math.max(1.0D, ascent),
+                    0.0D, 1.0D);
             double phase = elapsedAfterImpact;
             double groundBlend = phase < SOUL_SPACE_HOLD_TICKS + SOUL_BEAM_HOLD_TICKS
                     ? 0.0D
@@ -348,7 +371,7 @@ public final class OrbitalCinematic {
         double impact = lock + OrbitalStrikeClientState.fallTicks();
         double end = impact + SOUL_SPACE_HOLD_TICKS + SOUL_BEAM_HOLD_TICKS
                 + SOUL_GROUND_HOLD_TICKS + SOUL_OUT_TICKS;
-        return elapsed >= 0.0D && elapsed <= end && lastWeight > 0.01F;
+        return elapsed >= ascentStartTicks() && elapsed <= end && lastWeight > 0.01F;
     }
 
     /**
@@ -386,6 +409,23 @@ public final class OrbitalCinematic {
         return Mth.clamp((float) ((elapsed - beamStart) / Math.max(1.0D, beamEnd - beamStart)), 0.0F, 1.0F);
     }
 
+    /** 新一次打击开始：清除上一发的跳过状态。 */
+    public static void onNewStrike() {
+        skipped = false;
+    }
+
+    /** 玩家跳过本次过场：立刻交还镜头，打击继续结算。 */
+    public static void skip() {
+        skipped = true;
+        lastWeight = 0.0F;
+        Minecraft minecraft = Minecraft.getInstance();
+        disengage(minecraft);
+    }
+
+    public static boolean isSkipped() {
+        return skipped;
+    }
+
     /** 每客户端 tick 兜底：窗口外但还挂着第三人称（比如刚退出世界）就立刻还原。 */
     public static void tickRestore(Minecraft minecraft) {
         if (restoreType != null && !inWindow()) {
@@ -404,7 +444,7 @@ public final class OrbitalCinematic {
         double elapsed = OrbitalStrikeClientState.elapsed();
         double cinemaEnd = OrbitalStrikeClientState.lockTicks() + OrbitalStrikeClientState.fallTicks()
                 + holdTicks() + outTicks();
-        return elapsed >= 0.0D && elapsed <= cinemaEnd;
+        return elapsed >= ascentStartTicks() && elapsed <= cinemaEnd;
     }
 
     private static void engage(Minecraft minecraft) {

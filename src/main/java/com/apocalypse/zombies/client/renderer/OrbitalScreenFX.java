@@ -2,6 +2,8 @@ package com.apocalypse.zombies.client.renderer;
 
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.client.OrbitalStrikeClientState;
+import com.apocalypse.zombies.orbital.engine.StrikeProtocol;
+import com.apocalypse.zombies.orbital.engine.StrikeProtocols;
 import com.apocalypse.zombies.item.OrbitalStrikeRemoteItem;
 import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -166,16 +168,30 @@ public final class OrbitalScreenFX {
             status = "命中确认";
             statusColor = (alpha << 24) | CORE_WHITE;
         }
-        String callsign = "天陨-01 · SKYFALL";
+        OrbitalStrikeMode mode = OrbitalStrikeClientState.mode();
+        StrikeProtocol protocol = StrikeProtocols.protocolFor(mode);
+        boolean v2 = protocol.fault();
+        int protocolColor = (alpha << 24) | (protocol.color() & 0xFFFFFF);
+        String callsign = v2 ? protocol.codename() : "天陨-01 · SKYFALL";
         graphics.drawString(minecraft.font, callsign,
-                width / 2 - minecraft.font.width(callsign) / 2, inset + len + 6, dimCyan, true);
+                width / 2 - minecraft.font.width(callsign) / 2, inset + len + 6,
+                v2 ? protocolColor : dimCyan, true);
         graphics.drawString(minecraft.font, status,
                 width / 2 - minecraft.font.width(status) / 2, inset + len + 18, statusColor, true);
-        // 当前弹种：切换后立刻看得到（潜行右键循环）
-        OrbitalStrikeMode mode = OrbitalStrikeClientState.mode();
-        String modeLine = mode.display() + " · " + mode.codename();
+        // 当前弹种/协议：切换后立刻看得到（潜行右键循环）
+        String modeLine = v2
+                ? protocol.display() + " · " + protocol.phaseLabel(
+                        protocol.phaseAt(elapsed, lockTicks, fallTicks))
+                : mode.display() + " · " + mode.codename();
         graphics.drawString(minecraft.font, modeLine,
-                width / 2 - minecraft.font.width(modeLine) / 2, inset + len + 30, dimCyan, true);
+                width / 2 - minecraft.font.width(modeLine) / 2, inset + len + 30,
+                v2 ? protocolColor : dimCyan, true);
+        // v2 电影：K 跳过提示（跳过后不再显示）
+        if (v2 && OrbitalCinematic.isEngaged() && !OrbitalCinematic.isSkipped()) {
+            String skip = "[K] SKIP // 跳过过场";
+            graphics.drawString(minecraft.font, skip,
+                    width - minecraft.font.width(skip) - 12, height - 16, 0xCCFFFFFF, true);
+        }
 
         // 前摇进度条：锁定时在屏幕下三分之一处，一条会从左往右填满的细条。
         // 7 秒的前摇光靠数字倒计时太干，给一条「能量正在灌进去」的读数。
@@ -405,14 +421,15 @@ public final class OrbitalScreenFX {
         long elapsed = OrbitalStrikeClientState.elapsed();
         int lock = OrbitalStrikeClientState.lockTicks();
         int fall = OrbitalStrikeClientState.fallTicks();
-        double start = 0.0D;
+        double start = OrbitalCinematic.ascentStartTicks();
         double ascent = OrbitalCinematic.ascentTicks();
         double impact = lock + fall;
         int w = graphics.guiWidth();
         int h = graphics.guiHeight();
         // —— 升空：蓝色大气边缘 + 速度线，强度先增后减
-        if (elapsed >= start && elapsed <= ascent + 4.0D) {
-            float p = Mth.clamp((float) (elapsed / Math.max(1.0D, ascent)), 0.0F, 1.0F);
+        if (elapsed >= start && elapsed <= start + ascent + 4.0D) {
+            float p = Mth.clamp((float) ((elapsed - start) / Math.max(1.0D, ascent)),
+                    0.0F, 1.0F);
             float a = (float) Math.sin(p * Math.PI) * 0.34F;
             int edge = ((int) (a * 255.0F) << 24) | 0x6FC7FF;
             int band = (int) (h * 0.20F);
@@ -450,6 +467,9 @@ public final class OrbitalScreenFX {
      */
     public static void renderCinematicBars(GuiGraphics graphics, Minecraft minecraft) {
         if (!Config.ORBITAL_STRIKE_CINEMATIC.get() || minecraft.options.hideGui) {
+            return;
+        }
+        if (OrbitalCinematic.isSkipped()) {
             return;
         }
         float weight = OrbitalCinematic.weight();

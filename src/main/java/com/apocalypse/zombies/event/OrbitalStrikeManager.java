@@ -3,6 +3,9 @@ package com.apocalypse.zombies.event;
 import com.apocalypse.zombies.ApocalypseZombies;
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
+import com.apocalypse.zombies.orbital.RiftShape;
+import com.apocalypse.zombies.orbital.engine.StrikeProtocol;
+import com.apocalypse.zombies.orbital.engine.StrikeProtocols;
 import com.apocalypse.zombies.registry.ModParticles;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
@@ -118,13 +121,20 @@ public final class OrbitalStrikeManager {
         int radius = mode.radius(Mth.clamp(Config.ORBITAL_STRIKE_RADIUS.get(), 1, 96));
         int lockTicks = mode.lockTicks(Math.max(20, Config.ORBITAL_STRIKE_LOCK_TICKS.get()));
         int fallTicks = mode.fallTicks(Math.max(6, Config.ORBITAL_STRIKE_FALL_TICKS.get()));
+        float yaw = player.getYRot();
+        StrikeProtocol protocol = StrikeProtocols.protocolFor(mode);
+        // v2 断层：前摇按协议 XML 的 mark+ascent+device 走，让电影相位和服务端完全对齐。
+        if (protocol.fault()) {
+            lockTicks = Math.max(60, protocol.preFireTicks());
+            fallTicks = Math.max(6, Config.ORBITAL_STRIKE_FALL_TICKS.get());
+        }
         ACTIVE.put(player.getUUID(), new ActiveStrike(target.immutable(), player.getUUID(),
-                player.level().dimension(), mode, radius, lockTicks, fallTicks));
+                player.level().dimension(), mode, radius, lockTicks, fallTicks, yaw));
         // 视觉：把目标点告诉客户端（只对本人发，多人时各看各的；别人放技能时不会在你屏幕上画）
         com.apocalypse.zombies.network.NetworkHandler.CHANNEL.send(
                 net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player),
                 new com.apocalypse.zombies.network.OrbitalStrikePacket(
-                        target, radius, lockTicks, fallTicks, mode));
+                        target, radius, lockTicks, fallTicks, mode, yaw));
     }
 
     @SubscribeEvent
@@ -716,6 +726,11 @@ public final class OrbitalStrikeManager {
      */
     private static void impactLance(ServerLevel level, ActiveStrike strike, Vec3 ground,
                                     int radius, boolean destroy, boolean damage) {
+        StrikeProtocol protocol = StrikeProtocols.protocolFor(strike.mode);
+        if (protocol.fault()) {
+            impactFault(level, strike, ground, destroy, damage, protocol);
+            return;
+        }
         BlockPos target = strike.target;
         if (destroy) {
             enqueueDestroy(level, target, radius, strike.mode.pierces());
@@ -747,6 +762,111 @@ public final class OrbitalStrikeManager {
         }
         broadcast(level, ModParticles.ORBITAL_SPARK.get(), ground.x, ground.y + 1.0D, ground.z,
                 Math.min(60, 16 + radius * 3), 0.5D, 5.0D, 0.5D, 0.9D);
+    }
+
+    /**
+     * 断层 FAULT（v2）：不是圆坑，而是一条沿玩家朝向展开的折线裂谷。
+     *
+     * <p>服务端和客户端共用 {@link RiftShape} 生成同一条折线；服务端用 {@link RiftJob}
+     * 分 tick 挖开，客户端用同一条线画裂缝预览和谷底辉光。伤害沿折线判定（不是只打圆心），
+     * 裂开声立即响、音爆/地鸣按距离延迟（{@code queueThunder}）。</p>
+     */
+    private static void impactFault(ServerLevel level, ActiveStrike strike, Vec3 ground,
+                                    boolean destroy, boolean damage, StrikeProtocol protocol) {
+        BlockPos target = strike.target;
+        StrikeProtocol.Terrain terrain = protocol.terrain();
+        List<RiftShape.Point> points = RiftShape.points(target, strike.yaw, terrain.riftLength());
+        if (destroy && !points.isEmpty()) {
+            DESTROY_QUEUE.add(new RiftJob(level, points, terrain.riftWidth(),
+                    terrain.riftDepth(), target.getY()));
+        }
+        if (damage && !points.isEmpty()) {
+            damageRift(level, points, terrain.riftWidth(), strike.owner, ground);
+        }
+        spawnSurfaceDebris(level, target, Math.max(4, terrain.riftWidth() + 2));
+        // 沿裂谷撒真实地表碎屑 + 烟
+        for (int i = 0; i < points.size(); i += 2) {
+            RiftShape.Point p = points.get(i);
+            BlockPos surface = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                    new BlockPos(p.x(), 0, p.z()));
+            BlockState state = level.getBlockState(surface.below());
+            if (!state.isAir() && state.getFluidState().isEmpty()) {
+                broadcast(level, new BlockParticleOption(ParticleTypes.BLOCK, state),
+                        surface.getX() + 0.5D, surface.getY() + 0.2D, surface.getZ() + 0.5D,
+                        4, 0.7D, 0.9D, 0.7D, 0.38D);
+            }
+            broadcast(level, ParticleTypes.LARGE_SMOKE,
+                    p.x() + 0.5D, surface.getY() + 0.8D, p.z() + 0.5D,
+                    2, 0.8D, 1.0D, 0.8D, 0.12D);
+            if (i % 4 == 0) {
+                broadcast(level, ModParticles.ORBITAL_SPARK.get(),
+                        p.x() + 0.5D, surface.getY() + 0.5D, p.z() + 0.5D,
+                        6, 0.3D, 1.2D, 0.3D, 0.35D);
+            }
+        }
+        broadcast(level, ModParticles.ORBITAL_SPARK.get(), ground.x, ground.y + 0.8D, ground.z,
+                Math.min(80, 24 + terrain.riftWidth() * 4), 0.8D, 3.0D, 0.8D, 0.7D);
+        // 金属钉入 + 岩层裂开 + 远处地鸣（音爆延迟）
+        level.playSound(null, target, SoundEvents.ANVIL_LAND, SoundSource.PLAYERS, 5.0F, 0.35F);
+        level.playSound(null, target, SoundEvents.WARDEN_SONIC_BOOM, SoundSource.PLAYERS, 5.0F, 0.55F);
+        level.playSound(null, target, SoundEvents.GENERIC_EXPLODE, SoundSource.PLAYERS, 4.5F, 0.40F);
+        level.playSound(null, target, SoundEvents.STONE_BREAK, SoundSource.PLAYERS, 4.5F, 0.35F);
+        // 远处的音爆/地鸣由 tickImpact 顶部的 queueThunder 统一按距离延迟，别在这里重复排队。
+    }
+
+    /** 沿裂谷折线做伤害：宽 {@code width+1.5} 内按到折线的距离衰减，中心必杀率叠加长矛加成。 */
+    private static void damageRift(ServerLevel level, List<RiftShape.Point> points, int width,
+                                   UUID owner, Vec3 ground) {
+        int minX = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int minZ = Integer.MAX_VALUE;
+        int maxZ = Integer.MIN_VALUE;
+        for (RiftShape.Point p : points) {
+            minX = Math.min(minX, p.x());
+            maxX = Math.max(maxX, p.x());
+            minZ = Math.min(minZ, p.z());
+            maxZ = Math.max(maxZ, p.z());
+        }
+        AABB box = new AABB(minX - 8.0D, ground.y - 96.0D, minZ - 8.0D,
+                maxX + 8.0D, ground.y + 96.0D, maxZ + 8.0D);
+        List<LivingEntity> targets = level.getEntitiesOfClass(LivingEntity.class, box);
+        if (targets.isEmpty()) {
+            return;
+        }
+        float base = Config.ORBITAL_STRIKE_DAMAGE.get().floatValue()
+                * OrbitalStrikeMode.LANCE.damageScale();
+        int killPercent = Mth.clamp(Config.ORBITAL_STRIKE_KILL_CHANCE.get()
+                + OrbitalStrikeMode.LANCE.killBonus(), 0, 100);
+        double max = width + 1.5D;
+        DamageSource source = level.damageSources().explosion(null, ownerPlayer(level, owner));
+        for (LivingEntity entity : targets) {
+            if (entity.isRemoved() || !entity.isAlive() || entity.isSpectator()) {
+                continue;
+            }
+            double d = RiftShape.distanceTo(points, entity.getX(), entity.getZ());
+            if (d > max) {
+                continue;
+            }
+            if (killPercent > 0 && level.random.nextInt(100) < killPercent) {
+                entity.hurt(source, Float.MAX_VALUE);
+                if (entity.isAlive()) {
+                    entity.setHealth(0.0F);
+                    entity.die(source);
+                }
+                level.sendParticles(ParticleTypes.EXPLOSION_EMITTER,
+                        entity.getX(), entity.getY() + 0.5D, entity.getZ(), 1,
+                        0.0D, 0.0D, 0.0D, 0.0D);
+                continue;
+            }
+            float scale = (float) (1.0D - 0.7D * (d / max));
+            entity.hurt(source, base * scale);
+            // 沿裂缝横向被推开，并轻微抬起：像被地裂甩了一下。
+            double dx = entity.getX() - (minX + maxX) * 0.5D;
+            double dz = entity.getZ() - (minZ + maxZ) * 0.5D;
+            double len = Math.max(0.001D, Math.sqrt(dx * dx + dz * dz));
+            entity.push(dx / len * 0.8D, 0.45D, dz / len * 0.8D);
+            entity.hurtMarked = true;
+        }
     }
 
     /**
@@ -1078,6 +1198,99 @@ public final class OrbitalStrikeManager {
     }
 
     /**
+     * 断层 FAULT 的折线裂谷：沿 {@link RiftShape} 的节点逐点挖开。
+     *
+     * <p>每个节点向下挖到 {@code centerY - depth}，横截面随深度收窄（V 形/阶梯），
+     * 节点之间每 3 格一个、宽 7，彼此重叠所以不会出现断口。全局每 tick 预算由
+     * {@code DESTROY_QUEUE} 统一分配，和圆坑/整列共享同一份 4000 格上限。</p>
+     */
+    private static final class RiftJob implements DestroyJob {
+        private final ServerLevel level;
+        private final List<RiftShape.Point> points;
+        private final int width;
+        private final int depth;
+        private final int centerY;
+        private int index;
+        private int xi;
+        private int zi;
+        private int y;
+        private int surfaceY;
+        private int bottomY;
+        private boolean started;
+
+        RiftJob(ServerLevel level, List<RiftShape.Point> points, int width, int depth, int centerY) {
+            this.level = level;
+            this.points = points;
+            this.width = Math.max(2, Math.min(16, width));
+            this.depth = Math.max(6, Math.min(128, depth));
+            this.centerY = centerY;
+            if (!points.isEmpty()) {
+                startPoint();
+            }
+        }
+
+        private void startPoint() {
+            RiftShape.Point p = points.get(index);
+            surfaceY = Math.max(level.getMinBuildHeight() + 1,
+                    level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, p.x(), p.z()));
+            bottomY = Math.max(level.getMinBuildHeight() + 1, centerY - depth);
+            y = surfaceY - 1;
+            xi = -width;
+            zi = -width;
+            started = true;
+        }
+
+        @Override
+        public int step(int budget) {
+            if (points.isEmpty()) {
+                return 0;
+            }
+            int processed = 0;
+            while (processed < budget && !done()) {
+                if (!started) {
+                    startPoint();
+                }
+                RiftShape.Point p = points.get(index);
+                // 越深越窄：每 10 格收 1 格，形成 V 形裂谷和阶梯状谷壁。
+                int taper = Math.max(1, width - Math.max(0, (surfaceY - 1 - y)) / 10);
+                if (Math.abs(xi) + Math.abs(zi) <= taper) {
+                    BlockPos pos = new BlockPos(p.x() + xi, y, p.z() + zi);
+                    BlockState destroyed = destroyOne(level, pos);
+                    if (destroyed != null) {
+                        spawnDebris(level, pos, destroyed);
+                    }
+                    // 只把真正落在菱形截面内的格子算进全局预算；扫描空白不算。
+                    processed++;
+                }
+                zi++;
+                if (zi > width) {
+                    zi = -width;
+                    xi++;
+                }
+                if (xi > width) {
+                    xi = -width;
+                    zi = -width;
+                    y--;
+                    if (y < bottomY) {
+                        index++;
+                        if (index >= points.size()) {
+                            started = false;
+                            break;
+                        }
+                        startPoint();
+                    }
+                }
+            }
+            return processed;
+        }
+
+        @Override
+        public boolean done() {
+            return points.isEmpty() || index >= points.size();
+        }
+    }
+
+    /**
      * 逐层下削模式（默认）：以落点为圆心、半径 {@code r} 的方形区域，<b>一层（同高度的一整片）
      * 挖完之后停 {@code layer_ticks} tick，再往下一层</b> —— 激光不是一炮到底，而是看得见地
      * 一层一层把弹坑磨深。深度与立方体模式一致（半径格）。
@@ -1312,10 +1525,12 @@ public final class OrbitalStrikeManager {
         final int radius;
         final int lockTicks;
         final int fallTicks;
+        /** 触发时的朝向：断层裂谷沿它展开。 */
+        final float yaw;
         int age;
 
         ActiveStrike(BlockPos target, UUID owner, net.minecraft.resources.ResourceKey<Level> dimension,
-                     OrbitalStrikeMode mode, int radius, int lockTicks, int fallTicks) {
+                     OrbitalStrikeMode mode, int radius, int lockTicks, int fallTicks, float yaw) {
             this.target = target;
             this.owner = owner;
             this.dimension = dimension;
@@ -1323,6 +1538,7 @@ public final class OrbitalStrikeManager {
             this.radius = radius;
             this.lockTicks = lockTicks;
             this.fallTicks = fallTicks;
+            this.yaw = yaw;
         }
     }
 }
