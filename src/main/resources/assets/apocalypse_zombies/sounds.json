@@ -239,5 +239,32 @@
         "stream": true
       }
     ]
+  },
+  "music_the_quiet_latitude": {
+    "category": "music",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:music/the_quiet_latitude",
+        "stream": true
+      }
+    ]
+  },
+  "music_the_weight_of_stone": {
+    "category": "music",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:music/the_weight_of_stone",
+        "stream": true
+      }
+    ]
+  },
+  "music_crimson_countdown": {
+    "category": "music",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:music/crimson_countdown",
+        "stream": true
+      }
+    ]
   }
 }

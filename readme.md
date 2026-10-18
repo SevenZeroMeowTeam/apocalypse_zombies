@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `2.9.0` |
+| **当前版本** | `2.10.0` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -278,6 +278,26 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 2.10.0 — 2026-10-18
+
+**情境音乐导演：世界内 BGM 按场景自动换曲（探索 / 矿洞 / 血月 / 蓝月）。**
+
+- 新增三首配乐（全部 ffmpeg 转流式 OGG，libvorbis q6 / 44.1 kHz）：
+  《The Quiet Latitude》(2:50)、《The Weight Of Stone》(2:52)、《Crimson Countdown》(2:55)；
+  `sounds.json` + `ModSounds` 各注册三条 `music_*`；
+- 新 `client/music/ContextMusic` 优先级导演：
+  **血月（含超级血月）→ Crimson Countdown > 蓝月（含超级蓝月）→ The Last Known Meridian >
+  矿洞（主世界、头顶看不到天空）→ The Last Known Meridian > 地表探索（其余，含下界/末地）
+  → The Quiet Latitude**；
+- 防抖：月亮状态立即切换；探索 ⇄ 矿洞需连续 3 s 稳定才切（洞口来回走不会疯狂切歌）；
+  切曲从新曲开头开始；循环沿用「`looping=false` + 每 tick 查 `isActive`」；
+- 新配置段 `[context_music]`：`enabled` / `volume` / `exploration_track` / `cave_track` /
+  `blood_moon_track` / `blue_moon_track` —— 曲名可换（例如把 `cave_track` 改成
+  `the_weight_of_stone` 就换成《石之重》，不用改代码；未使用的曲目也已随包分发）；
+- 与既有两套的关系：主菜单 = 《The Last Known Meridian》（2.9.0）；世界内 = 情境导演接管，
+  「朋友的酒」让位；把 `context_music.enabled` 关掉即回到「朋友的酒」全局播放的旧行为。
+  F10 / `friends_wine_music.enabled` 仍是自研音乐总开关。
 
 ### 2.9.0 — 2026-10-18
 

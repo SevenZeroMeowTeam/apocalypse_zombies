@@ -457,6 +457,19 @@ public final class Config {
     /** 主菜单曲音量乘子（0~1），与玩家自己的「音乐」滑块相乘。 */
     public static final ForgeConfigSpec.DoubleValue MAIN_MENU_MUSIC_VOLUME;
 
+    /** 情境音乐总开关：世界内按场景（探索/矿洞/血月/蓝月）自动切曲。关掉则回到「朋友的酒」全局播放。 */
+    public static final ForgeConfigSpec.BooleanValue CONTEXT_MUSIC;
+    /** 情境音乐音量乘子（0~1）。 */
+    public static final ForgeConfigSpec.DoubleValue CONTEXT_MUSIC_VOLUME;
+    /** 地表探索曲（曲目名，见配置注释；默认 The Quiet Latitude）。 */
+    public static final ForgeConfigSpec.ConfigValue<String> CONTEXT_EXPLORATION_TRACK;
+    /** 矿洞探索曲（默认 The Last Known Meridian）。 */
+    public static final ForgeConfigSpec.ConfigValue<String> CONTEXT_CAVE_TRACK;
+    /** 血月升起曲（默认 Crimson Countdown）。 */
+    public static final ForgeConfigSpec.ConfigValue<String> CONTEXT_BLOOD_MOON_TRACK;
+    /** 蓝月升起曲（默认 The Last Known Meridian）。 */
+    public static final ForgeConfigSpec.ConfigValue<String> CONTEXT_BLUE_MOON_TRACK;
+
     // ===== 轨道打击遥控器 =====
     /** 全局开关。关掉 = 物品右键 use 立刻 noop，描边也不再画。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_ENABLED;
@@ -1081,6 +1094,28 @@ public final class Config {
                 .define("enabled", true);
         MAIN_MENU_MUSIC_VOLUME = b.comment("Volume multiplier (0~1). Multiplied with your own Music slider.")
                 .defineInRange("volume", 1.0D, 0.0D, 1.0D);
+        b.pop();
+
+        b.comment("Context music: the in-world soundtrack switches with the situation.",
+                        "Priority: blood/blue moon > cave (no sky overhead, overworld) > surface exploration.",
+                        "Track values are sound names: 'the_quiet_latitude', 'the_weight_of_stone',",
+                        "'the_last_known_meridian', 'crimson_countdown' (or the full",
+                        "apocalypse_zombies:music_* id). Unknown names fall back to the default.",
+                        "情境音乐：地表探索 / 矿洞 / 血月 / 蓝月自动切曲；关掉则回到「朋友的酒」全局播放。")
+                .push("context_music");
+        CONTEXT_MUSIC = b.comment("Enable contextual in-world music. Off = friends_wine plays everywhere again.")
+                .define("enabled", true);
+        CONTEXT_MUSIC_VOLUME = b.comment("Volume multiplier (0~1). Multiplied with your own Music slider.")
+                .defineInRange("volume", 1.0D, 0.0D, 1.0D);
+        CONTEXT_EXPLORATION_TRACK = b.comment("Surface exploration track (default The Quiet Latitude).")
+                .define("exploration_track", "the_quiet_latitude");
+        CONTEXT_CAVE_TRACK = b.comment("Cave / underground track (cave = can't see the sky, overworld only).",
+                        "The Weight Of Stone is also shipped: set 'the_weight_of_stone' to use it here.")
+                .define("cave_track", "the_last_known_meridian");
+        CONTEXT_BLOOD_MOON_TRACK = b.comment("Blood moon (incl. super blood moon) track.")
+                .define("blood_moon_track", "crimson_countdown");
+        CONTEXT_BLUE_MOON_TRACK = b.comment("Blue moon (incl. super blue moon) track.")
+                .define("blue_moon_track", "the_last_known_meridian");
         b.pop();
 
         // 「轨道打击」总开关。锁定阶段、Y=320 下落、方块摧毁、伤害生物全在这一个段里。

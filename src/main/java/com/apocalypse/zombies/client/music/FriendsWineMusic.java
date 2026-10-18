@@ -67,6 +67,11 @@ public final class FriendsWineMusic {
             stop(minecraft);
             return;
         }
+        // 情境音乐（探索/矿洞/月相）开着时，世界内由它按场景切曲，这首让位
+        if (Config.CONTEXT_MUSIC.get()) {
+            stop(minecraft);
+            return;
+        }
         if (!Config.FRIENDS_WINE_MUSIC.get()) {
             stop(minecraft);
             return;

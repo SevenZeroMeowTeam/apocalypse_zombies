@@ -100,6 +100,16 @@ public final class ModSounds {
     public static final RegistryObject<SoundEvent> MUSIC_THE_LAST_KNOWN_MERIDIAN =
             sound("music_the_last_known_meridian");
 
+    /** 情境音乐：地表探索（The Quiet Latitude）。 */
+    public static final RegistryObject<SoundEvent> MUSIC_THE_QUIET_LATITUDE =
+            sound("music_the_quiet_latitude");
+    /** 情境音乐：石之重（The Weight Of Stone）—— 备选矿洞曲，默认未挂载，可在配置里指定。 */
+    public static final RegistryObject<SoundEvent> MUSIC_THE_WEIGHT_OF_STONE =
+            sound("music_the_weight_of_stone");
+    /** 情境音乐：血月升起（Crimson Countdown）。 */
+    public static final RegistryObject<SoundEvent> MUSIC_CRIMSON_COUNTDOWN =
+            sound("music_crimson_countdown");
+
     private ModSounds() {
     }
 
