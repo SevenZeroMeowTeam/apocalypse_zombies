@@ -49,6 +49,11 @@ public final class OrbitalCarrierPlates {
     private static final RenderType RT_PLASMA = RenderType.entityTranslucentEmissive(TEX_PLASMA);
     private static final RenderType RT_GLOW = RenderType.entityTranslucentEmissive(TEX_GLOW);
     private static final RenderType RT_BEAM = RenderType.entityTranslucentEmissive(TEX_BEAM);
+    /** 行星陨落重做用：星云背景 / 地球 / 小行星抠图。 */
+    private static final RenderType RT_SPACE = RenderType.entityTranslucentEmissive(tex("nebula"));
+    private static final RenderType RT_EARTH_PLATE = RenderType.entityTranslucentEmissive(tex("earth"));
+    private static final RenderType RT_ASTEROID_CUT =
+            RenderType.entityTranslucentEmissive(tex("carrier_asteroid_cutout"));
 
     /** 电影板原始比例（所有图都是 1408×768）。 */
     private static final double TEX_ASPECT = 1408.0D / 768.0D;
@@ -175,11 +180,19 @@ public final class OrbitalCarrierPlates {
         double cv;
         double progress = Mth.clamp((float) (elapsed / Math.max(1.0D, impactTick)), 0.0F, 1.0F);
         if (spec.style == Style.ASTEROID) {
-            zoom = 1.0D + 0.38D * smooth(progress);
-            cu = spec.focusU;
-            cv = spec.focusV;
+            // 小行星模式没有载体特写：星云背景缓慢推近，地球和小行星是独立的 2.5D 层。
+            zoom = 1.0D + 0.10D * smooth(progress);
+            cu = 0.5D;
+            cv = 0.5D;
         } else {
-            double pull = smooth((float) Mth.clamp((impactAge + 2.0D) / 10.0D, 0.0D, 1.0D));
+            // 轨道炮/长矛/奇点：**发射瞬间就开始拉镜**，让玩家看见平台开火 + 弹体飞出；
+            // 等离子风暴保持到命中前才拉（画里的爆炸太抢眼，提前展开会剧透）。
+            double pull;
+            if (spec.style == Style.STORM) {
+                pull = smooth((float) Mth.clamp((impactAge + 4.0D) / 10.0D, 0.0D, 1.0D));
+            } else {
+                pull = smooth((float) Mth.clamp(fireAge / 12.0D, 0.0D, 1.0D));
+            }
             double kick = fireAge >= 0.0D && fireAge < 8.0D ? 0.025D * (1.0D - fireAge / 8.0D) : 0.0D;
             double close = spec.chargeZoom + 0.06D * charge + kick;
             zoom = Mth.lerp((float) pull, (float) close, 1.0F);
@@ -237,6 +250,13 @@ public final class OrbitalCarrierPlates {
         double u1 = u0 + uSpan;
         double v1 = v0 + vSpan;
 
+        // —— 行星陨落：不用整张静态小行星板，改成「星云背景 + 地球 + 会飞会变小的小行星」
+        if (spec.style == Style.ASTEROID) {
+            renderAsteroidScene(lines, buffers, matrix, center, rr, uu, halfW, halfH,
+                    u0, v0, u1, v1, alpha, time, elapsed, lock, fall, impactAge, fwd);
+            return;
+        }
+
         // —— 1. 电影板本体
         {
             VertexConsumer plate = buffers.getBuffer(spec.type);
@@ -279,8 +299,9 @@ public final class OrbitalCarrierPlates {
             case STORM -> renderStormStyle(lines, glow, beam, matrix, center, rr, uu,
                     halfW, halfH, muzzle, chargePoint, spec, charge, elapsed, lock + fall,
                     alpha, time, fwd, u0, v0, u1, v1);
-            case ASTEROID -> renderAsteroidStyle(lines, glow, matrix, center, rr, uu,
-                    halfW, halfH, impactAge, progress, alpha, time, fwd, u0, v0, u1, v1);
+            default -> {
+                // ASTEROID 在上面的 renderAsteroidScene 分支提前返回，不会走到这里。
+            }
         }
 
         buffers.endBatch(RT_GLOW);
@@ -308,8 +329,13 @@ public final class OrbitalCarrierPlates {
             beamLayers(beam, matrix, c, r, u, muzzle, end, 0.040D * hh, ORANGE,
                     alpha * 0.85F, fwd);
             if (p > 0.02D) {
-                glowQuad(glow, matrix, end, r, u, 0.030D * hh,
-                        1.0F, 0.82F, 0.45F, alpha * 0.90F, fwd);
+                // 弹芯：越飞越小，尾部一小段白热
+                double[] coreTail = lerp3(muzzle, impact, Math.max(0.0D, p - 0.05D));
+                beamLayers(beam, matrix, c, r, u, coreTail, end, 0.012D * hh, WHITE,
+                        alpha * 0.80F, fwd);
+                glowQuad(glow, matrix, end, r, u,
+                        Mth.lerp((float) p, 0.040F, 0.022F) * hh,
+                        1.0F, 0.88F, 0.60F, alpha * 0.95F, fwd);
             }
         }
         // 命中：画里的爆点被拉开后露出来，再叠白闪 + 双环
@@ -330,8 +356,17 @@ public final class OrbitalCarrierPlates {
             double[] tip = lerp3(muzzle, impact, p);
             beamLayers(beam, matrix, c, r, u, muzzle, tip, 0.032D * hh, BLUE,
                     alpha * 0.90F, fwd);
+            double[] coreTail = lerp3(muzzle, impact, Math.max(0.0D, p - 0.12D));
+            beamLayers(beam, matrix, c, r, u, coreTail, tip, 0.010D * hh, WHITE,
+                    alpha * 0.85F, fwd);
             glowQuad(glow, matrix, tip, r, u, 0.035D * hh,
                     1.0F, 1.0F, 1.0F, alpha * 0.95F, fwd);
+        }
+        // 发射瞬间：炮口/导轨端头爆一圈蓝白（特写里能直接看到「矛射出去了」）
+        if (fireAge >= 0.0D && fireAge < 10.0D) {
+            float k = 1.0F - (float) fireAge / 10.0F;
+            glowQuad(glow, matrix, muzzle, r, u, (0.08D + 0.04D * k) * hh,
+                    0.62F, 0.88F, 1.0F, alpha * k, fwd);
         }
     }
 
@@ -357,6 +392,18 @@ public final class OrbitalCarrierPlates {
             double[] end = lerp3(muzzle, impact, p);
             beamLayers(beam, matrix, c, r, u, muzzle, end, 0.036D * hh, BLUE,
                     alpha * 0.85F, fwd);
+            double[] coreTail = lerp3(muzzle, impact, Math.max(0.0D, p - 0.08D));
+            beamLayers(beam, matrix, c, r, u, coreTail, end, 0.011D * hh, WHITE,
+                    alpha * 0.80F, fwd);
+            glowQuad(glow, matrix, end, r, u,
+                    Mth.lerp((float) p, 0.034F, 0.020F) * hh,
+                    0.62F, 0.88F, 1.0F, alpha * 0.92F, fwd);
+        }
+        // 发射瞬间：炮口爆一圈蓝白
+        if (fireAge >= 0.0D && fireAge < 10.0D) {
+            float k = 1.0F - (float) fireAge / 10.0F;
+            glowQuad(glow, matrix, muzzle, r, u, (0.09D + 0.04D * k) * hh,
+                    0.58F, 0.85F, 1.0F, alpha * k, fwd);
         }
     }
 
@@ -407,32 +454,100 @@ public final class OrbitalCarrierPlates {
         }
     }
 
-    private static void renderAsteroidStyle(VertexConsumer lines, VertexConsumer glow, Matrix4f matrix,
+    /**
+     * 行星陨落：星云背景 + 地球 + 会飞、会变小的小行星。
+     *
+     * <p>小行星从左上向右下的地球飞来，飞行途中线性缩小到原来的 62%（不会小到看不见），
+     * 身后拖一条橙红尾焰；命中点在地球朝向来袭方向的表面上，撞击时白闪 + 双层扩散环。
+     * 原来那张「小行星特写」不再整张铺屏，只把本体抠出来当 2.5D 精灵。</p>
+     */
+    private static void renderAsteroidScene(VertexConsumer lines,
+                                            MultiBufferSource.BufferSource buffers, Matrix4f matrix,
                                             double[] c, double[] r, double[] u,
-                                            double hw, double hh, double impactAge,
-                                            double progress, float alpha, double time, double[] fwd,
-                                            double u0, double v0, double u1, double v1) {
-        double[] asteroid = platePoint(0.49D, 0.47D, c, r, u, hw, hh, u0, v0, u1, v1);
-        // 进入大气前的炽热外晕：越接近命中越亮
-        glowQuad(glow, matrix, asteroid, r, u,
-                (0.18D + 0.14D * progress) * hh, 1.0F, 0.42F, 0.14F,
-                alpha * (0.10F + 0.24F * (float) progress), fwd);
-        ellipse(lines, matrix, asteroid, r, u,
-                (0.28D + 0.08D * progress) * hh, (0.22D + 0.06D * progress) * hh,
-                time * 0.08D, 1.0F, 0.55F, 0.22F,
-                alpha * (0.12F + 0.22F * (float) progress), fwd);
-        // 碎屑：绕本体向外飘
-        for (int i = 0; i < 14; i++) {
-            double ang = time * 0.06D + i * 2.399D;
-            double rad = (0.26D + 0.06D * (i % 5) + 0.14D * (float) progress) * hh;
-            double[] p = add(asteroid, add(mul(r, Math.cos(ang) * rad), mul(u, Math.sin(ang) * rad)));
-            float a = alpha * (0.20F + 0.30F * (float) progress)
-                    * (0.5F + 0.5F * (float) Math.sin(time * 3.1D + i));
-            glowQuad(glow, matrix, p, r, u, 0.012D * hh, 1.0F, 0.45F, 0.16F, a, fwd);
+                                            double hw, double hh,
+                                            double u0, double v0, double u1, double v1,
+                                            float alpha, double time, double elapsed,
+                                            double lock, double fall, double impactAge,
+                                            double[] fwd) {
+        // —— 星云背景（P0 的宇宙全景）
+        {
+            VertexConsumer space = buffers.getBuffer(RT_SPACE);
+            texQuad(space, matrix, c, r, u, hw, hh,
+                    (float) u0, (float) v0, (float) u1, (float) v1,
+                    0.86F, 0.90F, 1.0F, alpha * 0.96F, fwd);
+            buffers.endBatch(RT_SPACE);
         }
-        if (impactAge >= 0.0D) {
-            impactBurst(lines, glow, matrix, asteroid, r, u, hh, (float) impactAge,
+        // —— 地球（P0 的参考图地球圆盘）：放在右下，露出上半球
+        double earthSize = 0.46D * hh;
+        double[] earth = platePoint(0.70D, 0.80D, c, r, u, hw, hh, u0, v0, u1, v1);
+        {
+            VertexConsumer tex = buffers.getBuffer(RT_EARTH_PLATE);
+            texQuad(tex, matrix, earth, r, u, earthSize, earthSize,
+                    0.0F, 0.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, alpha, fwd);
+            buffers.endBatch(RT_EARTH_PLATE);
+        }
+        // 大气外晕
+        VertexConsumer glow = buffers.getBuffer(RT_GLOW);
+        glowQuad(glow, matrix, earth, r, u, earthSize * 1.10D,
+                0.36F, 0.66F, 1.0F, alpha * 0.16F, fwd);
+        ring(lines, matrix, earth, r, u, earthSize * 1.02D,
+                0.45F, 0.72F, 1.0F, alpha * 0.22F, fwd);
+        ring(lines, matrix, earth, r, u, earthSize * 1.06D,
+                0.30F, 0.55F, 0.95F, alpha * 0.10F, fwd);
+
+        // —— 小行星飞行：从锁定 25% 处就开始朝地球缓缓压过去（不干等），
+        //    到命中时正好落到地球表面；全程线性缩小到原来的 62%，不会小到看不见。
+        double approachStart = lock * 0.25D;
+        double flight = Mth.clamp((float) ((elapsed - approachStart)
+                / Math.max(1.0D, (lock + fall) - approachStart)), 0.0F, 1.0F);
+        double move = smooth(flight);
+        double au = Mth.lerp(move, 0.30D, 0.60D);
+        double av = Mth.lerp(move, 0.32D, 0.63D);
+        double as = Mth.lerp(move, 0.34D, 0.21D);
+        double[] asteroid = platePoint(au, av, c, r, u, hw, hh, u0, v0, u1, v1);
+
+        // 尾焰：沿「终点 → 起点」方向拖一串橙红光团（在岩体后面）
+        double du = 0.30D - 0.60D;
+        double dv = 0.32D - 0.63D;
+        double dl = Math.max(1.0E-6D, Math.hypot(du, dv));
+        for (int i = 1; i <= 10; i++) {
+            double f = i * 0.016D;
+            double[] tp = platePoint(au + du / dl * f, av + dv / dl * f,
+                    c, r, u, hw, hh, u0, v0, u1, v1);
+            double size = (0.020D + as * 0.16D) * (1.0D - i * 0.06D) * hh;
+            glowQuad(glow, matrix, tp, r, u, Math.max(0.002D, size),
+                    1.0F, 0.44F, 0.14F, alpha * 0.26F * (1.0F - i / 12.0F), fwd);
+        }
+        // 碎屑：绕本体向外飘
+        for (int i = 0; i < 12; i++) {
+            double ang = time * 0.10D + i * 2.399D;
+            double rad = (0.26D + 0.10D * (i % 4) + 0.18D * (float) move) * as / 0.34D * hh;
+            double[] p = add(asteroid, add(mul(r, Math.cos(ang) * rad), mul(u, Math.sin(ang) * rad)));
+            glowQuad(glow, matrix, p, r, u, 0.009D * hh,
+                    1.0F, 0.48F, 0.18F,
+                    alpha * 0.22F * (0.4F + 0.6F * (0.5F + 0.5F * (float) Math.sin(time * 3.0D + i))),
+                    fwd);
+        }
+        buffers.endBatch(RT_GLOW);
+
+        if (impactAge < 0.0D) {
+            // 岩体本体（在尾焰之后画，遮住身后的光）
+            VertexConsumer cut = buffers.getBuffer(RT_ASTEROID_CUT);
+            texQuad(cut, matrix, asteroid, r, u, as * hh, as * hh,
+                    0.0F, 0.0F, 1.0F, 1.0F, 1.0F, 1.0F, 1.0F, alpha, fwd);
+            buffers.endBatch(RT_ASTEROID_CUT);
+            // 本体边缘的热辉（在岩体之后，贴边发光）
+            VertexConsumer rim = buffers.getBuffer(RT_GLOW);
+            glowQuad(rim, matrix, asteroid, r, u, as * hh * 1.20D,
+                    1.0F, 0.42F, 0.12F, alpha * 0.16F, fwd);
+            buffers.endBatch(RT_GLOW);
+        } else {
+            // 撞击地球：在地球上的入射点炸开
+            double[] hit = platePoint(0.60D, 0.63D, c, r, u, hw, hh, u0, v0, u1, v1);
+            VertexConsumer hitGlow = buffers.getBuffer(RT_GLOW);
+            impactBurst(lines, hitGlow, matrix, hit, r, u, hh, (float) impactAge,
                     ORANGE, alpha, fwd);
+            buffers.endBatch(RT_GLOW);
         }
     }
 
