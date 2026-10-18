@@ -270,7 +270,7 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 | `orbital_strike` | **轨道打击遥控器**（1.2.5 起；2.0.0 起四种弹种）：`enabled`（总开关）、`radius`（基础选区半边长 1~96，各模式再乘倍率）、`damage`（中心伤害，半心单位）、`kill_chance`（每次命中秒杀几率 %）、`damage_mobs`、`destroy_blocks`、`destroy_mode`（`cube` / `column`）、`fall_ticks`、`cooldown`（冷却秒，按模式缩放）、`lock_ticks`（**前摇 tick，默认 140 = 7 s**）、`max_hardness`、`protected`、`cinematic_camera`、`break_bedrock`（**能否挖穿基岩，默认开**）、`default_mode`（`cannon` / `lance` / `gravity` / `storm` / `laser`）、`allow_mode_switch` |
 
 > **图形界面**：`模组列表 → 选中 Apocalypse Zombies → 配置`（1.1.79 起真能用了）——
-> 列出**全部 196 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
+> 列出**全部 202 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
 > 也就是说：界面和手改是**同一份配置**，不存在两套。
 
 > `specials.elite_spawn_weight` 改完要**重进世界**才生效 —— biome modifier 在加载时烘焙。
