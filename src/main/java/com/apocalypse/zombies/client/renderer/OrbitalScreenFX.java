@@ -208,6 +208,11 @@ public final class OrbitalScreenFX {
         if (target == null) {
             return;
         }
+        // 太空舞台里的卫星是按相机相对坐标画的，屏幕上本来就看得到；
+        // 再按世界坐标投一个角框会指到画面外去，反而穿帮。
+        if (OrbitalCinematic.isLaserSpaceStage()) {
+            return;
+        }
         Vec3 satellite = new Vec3(target.getX() + 0.5D, 320.0D + 6.0D, target.getZ() + 0.5D);
         Camera camera = minecraft.gameRenderer.getMainCamera();
         Vec3 eye = camera.getPosition();

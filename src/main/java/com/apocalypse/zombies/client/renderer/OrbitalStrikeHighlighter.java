@@ -6,6 +6,7 @@ import com.apocalypse.zombies.item.OrbitalStrikeRemoteItem;
 import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -168,6 +169,23 @@ public final class OrbitalStrikeHighlighter {
         // 选区半径 → 光柱半径：大范围打击时束要更粗，否则「范围大」看不出来
         int strikeRadius = OrbitalStrikeClientState.radius();
         double beamR = beamRadius(strikeRadius);
+
+        // LASER 的发射段切到相机相对轨道布景：不让主世界天空/地形与有限视距裁剪
+        // 抢走画面。布景完全是客户端几何，地面目标仍用同一个服务器坐标结算。
+        if (OrbitalCinematic.isLaserSpaceStage()) {
+            float spaceOpacity = OrbitalCinematic.laserSpaceOpacity();
+            renderLaserSpaceStage(pose, lines, buffers, matrix, gameTime, partial, spaceOpacity);
+            // 太空布景完全淡出后才画真实世界的贯穿光柱：背景盒写深度，会把身后的
+            // 光柱整根挡掉 —— 等盒子隐去、再让世界里的那根柱子接上。
+            if (spaceOpacity <= 0.01F) {
+                renderLaserFall(pose, lines, buffers, matrix, cx, cz, gy, strikeRadius,
+                        gameTime, partial);
+            }
+            pose.popPose();
+            buffers.endBatch(RenderType.debugQuads());
+            buffers.endBatch(RenderType.lines());
+            return;
+        }
 
         OrbitalStrikeMode mode = OrbitalStrikeClientState.mode();
         // —— 「太空里的东西」：普通模式是轨道平台 + 天穹裂缝；
@@ -1162,6 +1180,358 @@ public final class OrbitalStrikeHighlighter {
         drawCircle(pose, buffer, cx, cy + 1.6D * s, cz, 0.35D * s,
                 1.0F, 1.0F, 1.0F, alpha * blink);
     }
+    /**
+     * 宇宙激光的纯客户端轨道舞台。
+     *
+     * <p><b>为什么是相机相对坐标</b>：本方法拿到的 PoseStack 已经平移了 -camera，
+     * 写死世界坐标会把这套布景丢在世界的原点附近（相机在落点上方 460 格，根本看不见）。
+     * 这里按相机的 yaw/pitch 构造右/上/前三轴，所有物件都放在镜头前方 —— 卫星、行星、
+     * 光束因此永远构图正确，也不受原世界视距/地形遮挡影响。</p>
+     *
+     * <p>布景只在这个窗口内画：主世界仍照常渲染，而激光的落地/挖井仍由服务端在
+     * 真实目标坐标结算。窗口结束后回到原来的世界坐标光柱（一直烧到虚空）。</p>
+     */
+    private static void renderLaserSpaceStage(PoseStack pose, VertexConsumer lines,
+                                              MultiBufferSource.BufferSource buffers, Matrix4f matrix,
+                                              long gameTime, float partial, float stageOpacity) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null || stageOpacity <= 0.005F) {
+            return;
+        }
+        Camera cam = minecraft.gameRenderer.getMainCamera();
+        Vec3 camPos = cam.getPosition();
+        double yaw = Math.toRadians(cam.getYRot());
+        double pitch = Math.toRadians(cam.getXRot());
+        double sy = Math.sin(yaw);
+        double cyw = Math.cos(yaw);
+        double sp = Math.sin(pitch);
+        double cp = Math.cos(pitch);
+        // 与 OrbitalScreenFX 的 HUD 投影同一套相机基（Minecraft yaw：0 = 朝 +Z）。
+        double[] fwd = new double[]{-sy * cp, -sp, cyw * cp};
+        double[] right = new double[]{-cyw, 0.0D, -sy};
+        double[] up = new double[]{-sy * sp, cp, cyw * sp};
+        double[] eye = new double[]{camPos.x, camPos.y, camPos.z};
+        double time = gameTime + partial;
+
+        double phase = OrbitalCinematic.laserSpaceProgress();
+        float fadeIn = Mth.clamp((float) ((OrbitalStrikeClientState.elapsed()
+                - (OrbitalStrikeClientState.lockTicks() - OrbitalCinematic.pullLeadTicks())) / 14.0D),
+                0.0F, 1.0F);
+        float fade = fadeIn * fadeIn * (3.0F - 2.0F * fadeIn) * stageOpacity;
+
+        VertexConsumer quads = buffers.getBuffer(RenderType.debugQuads());
+        drawSpaceBackdrop(pose, lines, quads, matrix, eye, fwd, right, up, time, fade);
+
+        // —— 行星：镜头左下方，占画面约 1/3 高的蓝白地球弧面（NASA 影像里的色彩层次，
+        //    几何全部是程序化的：球面填充 + 经纬弦 + 陆块斑块 + 大气外晕）。
+        double[] planet = offset(eye, fwd, right, up, 96.0D, -24.0D, -7.0D);
+        double planetR = 17.0D;
+        renderOrbitalPlanet(pose, lines, quads, matrix, planet, right, up, planetR,
+                0.96F * fade, time);
+
+        // —— 卫星：右上，比行星近，太阳能板张开 —— 激光从这里发射。
+        double[] satellite = offset(eye, fwd, right, up, 52.0D, 26.0D, 15.0D);
+        renderSatellite(pose, lines, satellite[0], satellite[1], satellite[2], 1.05D,
+                0.95F * fade, time);
+
+        // 发射前：卫星充能环一圈圈收拢（与锁定进度同拍）。
+        float charge = Mth.clamp((float) OrbitalStrikeClientState.lockProgress(), 0.0F, 1.0F);
+        for (int i = 0; i < 3; i++) {
+            double r = 4.5D - charge * 2.0D + i * 0.9D;
+            planeRing(pose, lines, satellite, right, up, r + 0.6D * Math.sin(time * 0.12D + i),
+                    CYAN_R, CYAN_G, CYAN_B, (0.18F + 0.30F * charge) * fade);
+        }
+
+        // —— 主光束：从卫星天线一路射向右下的行星表面，穿过行星后在远侧继续延伸。
+        //    线几何走 lines 缓冲（line() 带法线，塞进 POSITION_COLOR 会崩）。
+        double[] muzzle = offset(satellite, fwd, right, up, 0.0D, 0.0D, -2.2D);
+        double[] impact = offset(planet, fwd, right, up, -1.0D,
+                -planetR * 0.30D, -planetR * 0.42D);
+        if (phase > 0.01D) {
+            float p = (float) phase;
+            // 束芯 + 外晕（两条平行线近似粗细）
+            line(pose, lines, muzzle[0], muzzle[1], muzzle[2],
+                    impact[0], impact[1], impact[2], 1.0F, 1.0F, 1.0F, 0.95F * p * fade, 0, -1, 0);
+            line(pose, lines,
+                    muzzle[0] - up[0] * 0.35D, muzzle[1] - up[1] * 0.35D, muzzle[2] - up[2] * 0.35D,
+                    impact[0] - up[0] * 0.35D, impact[1] - up[1] * 0.35D, impact[2] - up[2] * 0.35D,
+                    CYAN_R, CYAN_G, CYAN_B, 0.40F * p * fade, 0, -1, 0);
+            // 穿过行星后从远侧露出的一段（更淡）：读作「打穿了，一路往地表去」
+            double[] exit = offset(impact, fwd, right, up, 14.0D, -8.0D, -26.0D);
+            line(pose, lines, impact[0], impact[1], impact[2],
+                    exit[0], exit[1], exit[2], CYAN_R, CYAN_G, CYAN_B, 0.30F * p * fade, 0, -1, 0);
+            // 接触点白闪 + 扩散环
+            planeRing(pose, lines, impact, right, up, 1.2D + p * 3.4D,
+                    1.0F, 1.0F, 1.0F, 0.85F * p * fade);
+            planeRing(pose, lines, impact, right, up, 2.0D + p * 8.0D,
+                    CYAN_R, CYAN_G, CYAN_B, 0.35F * p * fade);
+            // 卫星端炮口耀斑
+            planeRing(pose, lines, muzzle, right, up, 2.2D + 0.35D * Math.sin(time * 0.5D),
+                    1.0F, 1.0F, 1.0F, 0.75F * p * fade);
+        }
+
+        // 视角标记：一条很淡的星野十字，帮助确认「这是外太空的固定机位」。
+        planeRing(pose, lines, offset(eye, fwd, right, up, 130.0D, 0.0D, 0.0D),
+                right, up, 0.8D, CYAN_R, CYAN_G, CYAN_B, 0.20F * fade);
+    }
+
+    /** 深空背景：一个包围相机的暗蓝色盒子（六面，朝内），加一层稀疏星点。
+     *  盒子只在这个窗口里存在，窗口结束立刻回到原版天空。 */
+    private static void drawSpaceBackdrop(PoseStack pose, VertexConsumer lines, VertexConsumer quads,
+                                          Matrix4f matrix, double[] eye,
+                                          double[] fwd, double[] right, double[] up,
+                                          double time, float alpha) {
+        if (alpha <= 0.01F) {
+            return;
+        }
+        double far = 170.0D;
+        // 6 个内表面：debugQuads 关剔除，单面即可从内部看见。
+        face(quads, matrix, eye, fwd, right, up, far, alpha);
+        face(quads, matrix, eye, fwd, right, up, -far, alpha);
+        sideFace(quads, matrix, eye, fwd, right, up, far, alpha);
+        sideFace(quads, matrix, eye, fwd, right, up, -far, alpha);
+        topFace(quads, matrix, eye, fwd, right, up, far, alpha);
+        topFace(quads, matrix, eye, fwd, right, up, -far, alpha);
+
+        // 星点：在盒子内表面附近按随机方向撒，三轴十字（不用贴图）。
+        RandomSource stars = RandomSource.create(0x53504143454CL);
+        for (int i = 0; i < 96; i++) {
+            double theta = stars.nextDouble() * Math.PI * 2.0D;
+            double cosPhi = stars.nextDouble() * 2.0D - 1.0D;
+            double sinPhi = Math.sqrt(Math.max(0.0D, 1.0D - cosPhi * cosPhi));
+            double dist = 140.0D + stars.nextDouble() * 20.0D;
+            double dx = Math.cos(theta) * sinPhi;
+            double dy = cosPhi;
+            double dz = Math.sin(theta) * sinPhi;
+            double x = eye[0] + (fwd[0] * dx + right[0] * dz + up[0] * dy) * dist;
+            double y = eye[1] + (fwd[1] * dx + right[1] * dz + up[1] * dy) * dist;
+            double z = eye[2] + (fwd[2] * dx + right[2] * dz + up[2] * dy) * dist;
+            float pulse = 0.35F + 0.65F * (0.5F + 0.5F * (float) Math.sin(time * 0.05D + i * 1.7D));
+            float a = alpha * pulse * 0.70F;
+            double s = i % 11 == 0 ? 0.34D : 0.16D;
+            line(pose, lines, x - s, y, z, x + s, y, z, 0.78F, 0.90F, 1.0F, a, 0, 0, 1);
+            line(pose, lines, x, y - s, z, x, y + s, z, 0.78F, 0.90F, 1.0F, a, 0, 0, 1);
+        }
+    }
+
+    /** 前后两个面（垂直于视线）：由 right/up 张成，沿 fwd 前后各放一张。 */
+    private static void face(VertexConsumer quads, Matrix4f matrix, double[] eye,
+                             double[] fwd, double[] right, double[] up, double dist, float alpha) {
+        double e = 220.0D;
+        double cx = eye[0] + fwd[0] * dist;
+        double cy = eye[1] + fwd[1] * dist;
+        double cz = eye[2] + fwd[2] * dist;
+        quad(quads, matrix,
+                cx - right[0] * e - up[0] * e, cy - right[1] * e - up[1] * e, cz - right[2] * e - up[2] * e,
+                cx + right[0] * e - up[0] * e, cy + right[1] * e - up[1] * e, cz + right[2] * e - up[2] * e,
+                cx + right[0] * e + up[0] * e, cy + right[1] * e + up[1] * e, cz + right[2] * e + up[2] * e,
+                cx - right[0] * e + up[0] * e, cy - right[1] * e + up[1] * e, cz - right[2] * e + up[2] * e,
+                0.004F, 0.012F, 0.030F, alpha * 0.96F);
+    }
+
+    /** 左/右两个面：由 fwd/up 张成，法线沿 ±right。 */
+    private static void sideFace(VertexConsumer quads, Matrix4f matrix, double[] eye,
+                                 double[] fwd, double[] right, double[] up, double dist, float alpha) {
+        double e = 220.0D;
+        double cx = eye[0] + right[0] * dist;
+        double cy = eye[1] + right[1] * dist;
+        double cz = eye[2] + right[2] * dist;
+        quad(quads, matrix,
+                cx - fwd[0] * e - up[0] * e, cy - fwd[1] * e - up[1] * e, cz - fwd[2] * e - up[2] * e,
+                cx + fwd[0] * e - up[0] * e, cy + fwd[1] * e - up[1] * e, cz + fwd[2] * e - up[2] * e,
+                cx + fwd[0] * e + up[0] * e, cy + fwd[1] * e + up[1] * e, cz + fwd[2] * e + up[2] * e,
+                cx - fwd[0] * e + up[0] * e, cy - fwd[1] * e + up[1] * e, cz - fwd[2] * e + up[2] * e,
+                0.004F, 0.012F, 0.030F, alpha * 0.96F);
+    }
+
+    /** 上/下两个面：由 fwd/right 张成，法线沿 ±up。 */
+    private static void topFace(VertexConsumer quads, Matrix4f matrix, double[] eye,
+                                double[] fwd, double[] right, double[] up, double dist, float alpha) {
+        double e = 220.0D;
+        double cx = eye[0] + up[0] * dist;
+        double cy = eye[1] + up[1] * dist;
+        double cz = eye[2] + up[2] * dist;
+        quad(quads, matrix,
+                cx - fwd[0] * e - right[0] * e, cy - fwd[1] * e - right[1] * e, cz - fwd[2] * e - right[2] * e,
+                cx + fwd[0] * e - right[0] * e, cy + fwd[1] * e - right[1] * e, cz + fwd[2] * e - right[2] * e,
+                cx + fwd[0] * e + right[0] * e, cy + fwd[1] * e + right[1] * e, cz + fwd[2] * e + right[2] * e,
+                cx - fwd[0] * e + right[0] * e, cy - fwd[1] * e + right[1] * e, cz - fwd[2] * e + right[2] * e,
+                0.004F, 0.012F, 0.030F, alpha * 0.96F);
+    }
+
+    /** 相机基里的一个点：eye + fwd*forward + right*side + up*height。 */
+    private static double[] offset(double[] from, double[] fwd, double[] right, double[] up,
+                                   double forward, double side, double height) {
+        return new double[]{
+                from[0] + fwd[0] * forward + right[0] * side + up[0] * height,
+                from[1] + fwd[1] * forward + right[1] * side + up[1] * height,
+                from[2] + fwd[2] * forward + right[2] * side + up[2] * height};
+    }
+
+    /** 相机平面内的圆环（行星经纬/冲击环/炮口耀斑）。线几何，走 lines 缓冲。 */
+    private static void planeRing(PoseStack pose, VertexConsumer buffer, double[] center,
+                                  double[] right, double[] up, double radius,
+                                  float r, float g, float b, float a) {
+        int segments = 32;
+        for (int i = 0; i < segments; i++) {
+            double a1 = i * Math.PI * 2.0D / segments;
+            double a2 = (i + 1) * Math.PI * 2.0D / segments;
+            double c1 = Math.cos(a1) * radius;
+            double s1 = Math.sin(a1) * radius;
+            double c2 = Math.cos(a2) * radius;
+            double s2 = Math.sin(a2) * radius;
+            line(pose, buffer,
+                    center[0] + right[0] * c1 + up[0] * s1,
+                    center[1] + right[1] * c1 + up[1] * s1,
+                    center[2] + right[2] * c1 + up[2] * s1,
+                    center[0] + right[0] * c2 + up[0] * s2,
+                    center[1] + right[1] * c2 + up[1] * s2,
+                    center[2] + right[2] * c2 + up[2] * s2,
+                    r, g, b, a, 0, 0, 1);
+        }
+    }
+
+    /** 相机平面内的矩形（行星球面填充、陆块）。 */
+    private static void planeQuad(VertexConsumer buffer, Matrix4f matrix, double[] center,
+                                  double[] right, double[] up,
+                                  double x1, double y1, double x2, double y2,
+                                  float r, float g, float b, float a) {
+        quad(buffer, matrix,
+                center[0] + right[0] * x1 + up[0] * y1,
+                center[1] + right[1] * x1 + up[1] * y1,
+                center[2] + right[2] * x1 + up[2] * y1,
+                center[0] + right[0] * x2 + up[0] * y1,
+                center[1] + right[1] * x2 + up[1] * y1,
+                center[2] + right[2] * x2 + up[2] * y1,
+                center[0] + right[0] * x2 + up[0] * y2,
+                center[1] + right[1] * x2 + up[1] * y2,
+                center[2] + right[2] * x2 + up[2] * y2,
+                center[0] + right[0] * x1 + up[0] * y2,
+                center[1] + right[1] * x1 + up[1] * y2,
+                center[2] + right[2] * x1 + up[2] * y2,
+                r, g, b, a);
+    }
+
+    /** 相机平面内的任意四边形（四个角显式给出，环形扇区用）。 */
+    private static void planeQuad4(VertexConsumer buffer, Matrix4f matrix, double[] center,
+                                   double[] right, double[] up,
+                                   double x1, double y1, double x2, double y2,
+                                   double x3, double y3, double x4, double y4,
+                                   float r, float g, float b, float a) {
+        quad(buffer, matrix,
+                center[0] + right[0] * x1 + up[0] * y1,
+                center[1] + right[1] * x1 + up[1] * y1,
+                center[2] + right[2] * x1 + up[2] * y1,
+                center[0] + right[0] * x2 + up[0] * y2,
+                center[1] + right[1] * x2 + up[1] * y2,
+                center[2] + right[2] * x2 + up[2] * y2,
+                center[0] + right[0] * x3 + up[0] * y3,
+                center[1] + right[1] * x3 + up[1] * y3,
+                center[2] + right[2] * x3 + up[2] * y3,
+                center[0] + right[0] * x4 + up[0] * y4,
+                center[1] + right[1] * x4 + up[1] * y4,
+                center[2] + right[2] * x4 + up[2] * y4,
+                r, g, b, a);
+    }
+
+    /**
+     * 外太空视角的原创行星：暗蓝球面 + 向阳面亮带 + 经纬弦 + 陆块 + 大气层。
+     * 参考 NASA 地球照片的色彩与光照方向（左上受光），不使用任何外部图片素材。
+     */
+    private static void renderOrbitalPlanet(PoseStack pose, VertexConsumer lines, VertexConsumer quads,
+                                            Matrix4f matrix, double[] center,
+                                            double[] right, double[] up,
+                                            double radius, float alpha, double time) {
+        if (alpha <= 0.01F) {
+            return;
+        }
+        // 球面填充：16 圈同心环带，越靠左上越亮（太阳方向）。
+        int rings = 16;
+        for (int i = 0; i < rings; i++) {
+            double r0 = radius * i / rings;
+            double r1 = radius * (i + 1) / rings;
+            float t = (float) (i / (double) rings);
+            for (int seg = 0; seg < 24; seg++) {
+                double a1 = seg * Math.PI * 2.0D / 24.0D;
+                double a2 = (seg + 1) * Math.PI * 2.0D / 24.0D;
+                double c1 = Math.cos(a1);
+                double s1 = Math.sin(a1);
+                double c2 = Math.cos(a2);
+                double s2 = Math.sin(a2);
+                // 朝向光源（屏幕左上 = up 正、right 负）的一段更亮
+                double light = 0.55D + 0.45D * Math.max(0.0D, (-c1 + s1) * 0.5D);
+                float shade = (float) (0.18D + 0.55D * t);
+                float rr = (float) (0.035D + 0.06D * light) * (0.7F + 0.3F * shade);
+                float gg = (float) (0.12D + 0.20D * light) * (0.7F + 0.3F * shade);
+                float bb = (float) (0.24D + 0.34D * light) * (0.7F + 0.3F * shade);
+                planeQuad4(quads, matrix, center, right, up,
+                        r0 * c1, r0 * s1, r0 * c2, r0 * s2,
+                        r1 * c2, r1 * s2, r1 * c1, r1 * s1,
+                        rr, gg, bb, alpha * 0.34F);
+            }
+        }
+        // 经纬弦：纬线（水平）+ 经线（竖直）— 疏而淡，像球面网格而不是靶心。
+        for (int i = -3; i <= 3; i++) {
+            if (i == 0) {
+                continue;
+            }
+            double y = radius * i / 4.0D;
+            double half = Math.sqrt(Math.max(0.0D, radius * radius - y * y)) * 0.98D;
+            double[] a = new double[]{center[0] + up[0] * y, center[1] + up[1] * y, center[2] + up[2] * y};
+            line(pose, lines,
+                    a[0] - right[0] * half, a[1] - right[1] * half, a[2] - right[2] * half,
+                    a[0] + right[0] * half, a[1] + right[1] * half, a[2] + right[2] * half,
+                    CYAN_R, CYAN_G, CYAN_B, alpha * 0.16F, 0, 0, 1);
+            double x = radius * i / 4.0D;
+            double halfV = Math.sqrt(Math.max(0.0D, radius * radius - x * x)) * 0.98D;
+            double[] b = new double[]{center[0] + right[0] * x, center[1] + right[1] * x, center[2] + right[2] * x};
+            line(pose, lines,
+                    b[0] - up[0] * halfV, b[1] - up[1] * halfV, b[2] - up[2] * halfV,
+                    b[0] + up[0] * halfV, b[1] + up[1] * halfV, b[2] + up[2] * halfV,
+                    CYAN_R, CYAN_G, CYAN_B, alpha * 0.13F, 0, 0, 1);
+        }
+        // 陆块：固定种子，每次同一击同一形状；缓慢自转（绕 up 轴近似平移）会破坏
+        // 球面投影，这里保持静止，用光照呼吸代替自转。
+        RandomSource land = RandomSource.create(0x4E415341L);
+        for (int c = 0; c < 6; c++) {
+            double cx = (land.nextDouble() - 0.5D) * radius * 1.2D;
+            double cy = (land.nextDouble() - 0.5D) * radius * 1.2D;
+            double r = radius * (0.10D + land.nextDouble() * 0.12D);
+            if (cx * cx + cy * cy > (radius * 0.72D) * (radius * 0.72D)) {
+                continue;
+            }
+            for (int k = 0; k < 3; k++) {
+                double ox = (land.nextDouble() - 0.5D) * r * 0.9D;
+                double oy = (land.nextDouble() - 0.5D) * r * 0.9D;
+                double rr = r * (0.45D + land.nextDouble() * 0.35D);
+                planeQuad(quads, matrix, center, right, up,
+                        cx + ox - rr, cy + oy - rr * 0.7D,
+                        cx + ox + rr, cy + oy + rr * 0.7D,
+                        0.30F, 0.62F, 0.40F, alpha * 0.55F);
+            }
+        }
+        // 大气层：两圈外晕（线），加一条左上弧光。
+        planeRing(pose, lines, center, right, up, radius * 1.015D,
+                0.40F, 0.76F, 1.0F, alpha * 0.50F);
+        planeRing(pose, lines, center, right, up, radius * 1.06D,
+                0.30F, 0.60F, 0.95F, alpha * 0.20F);
+        // 极冠：顶部一小段亮弧
+        int segs = 14;
+        for (int i = 0; i < segs; i++) {
+            double a1 = Math.PI * (0.30D + 0.40D * i / segs);
+            double a2 = Math.PI * (0.30D + 0.40D * (i + 1) / segs);
+            double rr = radius * 0.96D;
+            line(pose, lines,
+                    center[0] + right[0] * Math.cos(a1) * rr + up[0] * Math.sin(a1) * rr,
+                    center[1] + right[1] * Math.cos(a1) * rr + up[1] * Math.sin(a1) * rr,
+                    center[2] + right[2] * Math.cos(a1) * rr + up[2] * Math.sin(a1) * rr,
+                    center[0] + right[0] * Math.cos(a2) * rr + up[0] * Math.sin(a2) * rr,
+                    center[1] + right[1] * Math.cos(a2) * rr + up[1] * Math.sin(a2) * rr,
+                    center[2] + right[2] * Math.cos(a2) * rr + up[2] * Math.sin(a2) * rr,
+                    0.90F, 0.97F, 1.0F, alpha * 0.55F, 0, 0, 1);
+        }
+    }
+
     private static void renderSkyFracture(PoseStack pose, VertexConsumer buffer,
                                           double cx, double cz, long gameTime, float partial, int strikeRadius) {
         double skyY = BEAM_TOP_Y + 10.0D;
