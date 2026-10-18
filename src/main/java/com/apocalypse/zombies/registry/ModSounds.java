@@ -93,6 +93,13 @@ public final class ModSounds {
      */
     public static final RegistryObject<SoundEvent> MUSIC_FRIENDS_WINE = sound("music_friends_wine");
 
+    /**
+     * 主菜单曲（The Last Known Meridian）—— 只在标题界面循环，见
+     * {@code client/music/MainMenuMusic}。流式 OGG（2 分 37 秒），进世界后让位给「朋友的酒」。
+     */
+    public static final RegistryObject<SoundEvent> MUSIC_THE_LAST_KNOWN_MERIDIAN =
+            sound("music_the_last_known_meridian");
+
     private ModSounds() {
     }
 

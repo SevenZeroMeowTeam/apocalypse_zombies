@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `2.8.0` |
+| **当前版本** | `2.9.0` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -270,7 +270,7 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 | `orbital_strike` | **轨道打击遥控器**（1.2.5 起；2.0.0 起四种弹种）：`enabled`（总开关）、`radius`（基础选区半边长 1~96，各模式再乘倍率）、`damage`（中心伤害，半心单位）、`kill_chance`（每次命中秒杀几率 %）、`damage_mobs`、`destroy_blocks`、`destroy_mode`（`cube` / `column`）、`fall_ticks`、`cooldown`（冷却秒，按模式缩放）、`lock_ticks`（**前摇 tick，默认 140 = 7 s**）、`max_hardness`、`protected`、`cinematic_camera`、`break_bedrock`（**能否挖穿基岩，默认开**）、`default_mode`（`cannon` / `lance` / `gravity` / `storm` / `laser`）、`allow_mode_switch` |
 
 > **图形界面**：`模组列表 → 选中 Apocalypse Zombies → 配置`（1.1.79 起真能用了）——
-> 列出**全部 171 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
+> 列出**全部 196 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
 > 也就是说：界面和手改是**同一份配置**，不存在两套。
 
 > `specials.elite_spawn_weight` 改完要**重进世界**才生效 —— biome modifier 在加载时烘焙。
@@ -278,6 +278,21 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 2.9.0 — 2026-10-18
+
+**主菜单曲《The Last Known Meridian》：标题界面专属 BGM，进世界后让位给「朋友的酒」。**
+
+- `The_Last_Known_Meridian.mp3` → `sounds/music/the_last_known_meridian.ogg`（ffmpeg libvorbis
+  q6 / 44.1 kHz，2 分 37 秒，流式 OGG；Minecraft 不支持 MP3，必须转码）；
+- 新 sound event `music_the_last_known_meridian`（`"stream": true`）+ `ModSounds` 注册；
+- 新 `client/music/MainMenuMusic`：`level == null`（标题/载入/连接中）时循环播放，一进世界立刻停；
+  循环走与「朋友的酒」同一套「`looping=false` + 每 tick 查 `isActive`」的流式方案；
+  播放期间让原版主菜单曲 `MusicManager#stopPlaying()`（是否压原版沿用
+  `friends_wine_music.suppress_vanilla`）；
+- `FriendsWineMusic` 在菜单里让位（`level == null` 即停）—— 两个界面各有一首，互不打架；
+- 新配置段 `[main_menu_music] enabled / volume`；F10 与 `friends_wine_music.enabled` 仍是
+  总开关（关掉 = 自研音乐全静音）。
 
 ### 2.8.0 — 2026-10-17
 

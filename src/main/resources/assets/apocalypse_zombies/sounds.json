@@ -8,7 +8,6 @@
       }
     ]
   },
-
   "awm_shoot": {
     "category": "player",
     "sounds": [
@@ -64,7 +63,6 @@
       }
     ]
   },
-
   "awm_rechamber_out": {
     "category": "player",
     "sounds": [
@@ -97,7 +95,6 @@
       }
     ]
   },
-
   "awm_reload_raise": {
     "category": "player",
     "sounds": [
@@ -162,7 +159,6 @@
       }
     ]
   },
-
   "awm_reload_empty_raise": {
     "category": "player",
     "sounds": [
@@ -227,12 +223,20 @@
       }
     ]
   },
-
   "ammo_clip_pop": {
     "category": "player",
     "sounds": [
       {
         "name": "apocalypse_zombies:guns/akm_bolt_1"
+      }
+    ]
+  },
+  "music_the_last_known_meridian": {
+    "category": "music",
+    "sounds": [
+      {
+        "name": "apocalypse_zombies:music/the_last_known_meridian",
+        "stream": true
       }
     ]
   }

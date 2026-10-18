@@ -452,6 +452,11 @@ public final class Config {
     /** 是否在原版背景音乐要开播时把它压下去（不压就会两首歌重叠）。 */
     public static final ForgeConfigSpec.BooleanValue FRIENDS_WINE_SUPPRESS_VANILLA;
 
+    /** 主菜单曲（The Last Known Meridian）开关。只影响标题界面，进世界后切回「朋友的酒」。 */
+    public static final ForgeConfigSpec.BooleanValue MAIN_MENU_MUSIC;
+    /** 主菜单曲音量乘子（0~1），与玩家自己的「音乐」滑块相乘。 */
+    public static final ForgeConfigSpec.DoubleValue MAIN_MENU_MUSIC_VOLUME;
+
     // ===== 轨道打击遥控器 =====
     /** 全局开关。关掉 = 物品右键 use 立刻 noop，描边也不再画。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_ENABLED;
@@ -1065,6 +1070,17 @@ public final class Config {
         FRIENDS_WINE_SUPPRESS_VANILLA = b.comment("Keep vanilla background music from starting underneath it.",
                         "Off means you may hear both at once.")
                 .define("suppress_vanilla", true);
+        b.pop();
+
+        b.comment("Main-menu track (\"The Last Known Meridian\"). Plays on the title screen only;",
+                        "the in-world track is friends_wine_music. Client-side only.",
+                        "主菜单专属曲：只在标题界面循环，进世界后换回「朋友的酒」。",
+                        "总开关 F10（friends_wine_music.enabled）关掉时它也会静音。")
+                .push("main_menu_music");
+        MAIN_MENU_MUSIC = b.comment("Play the menu track on the title screen.")
+                .define("enabled", true);
+        MAIN_MENU_MUSIC_VOLUME = b.comment("Volume multiplier (0~1). Multiplied with your own Music slider.")
+                .defineInRange("volume", 1.0D, 0.0D, 1.0D);
         b.pop();
 
         // 「轨道打击」总开关。锁定阶段、Y=320 下落、方块摧毁、伤害生物全在这一个段里。

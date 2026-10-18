@@ -62,6 +62,11 @@ public final class FriendsWineMusic {
         while (KeyBindings.MUSIC.consumeClick()) {
             toggle(minecraft);
         }
+        // 主菜单由 MainMenuMusic（The Last Known Meridian）接管，进世界后才轮到这首
+        if (minecraft.level == null) {
+            stop(minecraft);
+            return;
+        }
         if (!Config.FRIENDS_WINE_MUSIC.get()) {
             stop(minecraft);
             return;
