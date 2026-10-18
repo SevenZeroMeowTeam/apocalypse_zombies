@@ -116,87 +116,233 @@ public final class OrbitalSpaceStage {
 
     // ------------------------------------------------------------------ 背景
 
-    /** 深空：包围相机的暗蓝盒子 + 星点 + 极淡的星云色块。 */
+    /**
+     * 宇宙全景：相机中心的全天球，而不是几个大面片。
+     *
+     * <p>由远到近叠五层：暗蓝渐变穹顶（18×36 小面片，避免任何巨大单面）→ 银河带星群 →
+     * 三团彩色星云 → 一个遥远旋涡星系 → 约 900 颗分色恒星，最后加两粒偶发流星。
+     * 全部程序化生成（固定种子，每次播放同一片星空），不使用外部贴图。</p>
+     */
     private static void drawBackdrop(PoseStack pose, VertexConsumer lines, VertexConsumer quads,
                                      Matrix4f matrix, double[] eye,
                                      double[] fwd, double[] right, double[] up,
                                      double time, float alpha) {
-        double boxDist = BACKDROP_FAR * sceneScale;
-        boxFace(quads, matrix, eye, fwd, right, up, boxDist, alpha);
-        boxFace(quads, matrix, eye, fwd, right, up, -boxDist, alpha);
-        boxSide(quads, matrix, eye, fwd, right, up, boxDist, alpha);
-        boxSide(quads, matrix, eye, fwd, right, up, -boxDist, alpha);
-        boxTop(quads, matrix, eye, fwd, right, up, boxDist, alpha);
-        boxTop(quads, matrix, eye, fwd, right, up, -boxDist, alpha);
+        double radius = 150.0D * sceneScale;
+        drawDome(quads, matrix, eye, fwd, right, up, radius, alpha);
+        drawMilkyWay(pose, lines, eye, fwd, right, up, radius * 0.97D, alpha, time);
+        drawNebulae(quads, matrix, eye, fwd, right, up, radius * 0.95D, alpha, time);
+        drawGalaxy(pose, lines, eye, fwd, right, up, radius * 0.93D, alpha, time);
+        drawStars(pose, lines, eye, fwd, right, up, radius * 0.99D, alpha, time);
+        drawShootingStars(pose, lines, eye, fwd, right, up, radius * 0.98D, alpha, time);
+    }
 
-        // 星云：三块极低透明度的冷色面，给纯黑底一点纵深。
-        double[] nebula = offset(eye, fwd, right, up, 168.0D, -40.0D, 30.0D);
-        planeQuad(quads, matrix, nebula, right, up, -70.0D * sceneScale, -34.0D * sceneScale, 44.0D * sceneScale, 30.0D * sceneScale,
-                0.10F, 0.16F, 0.34F, alpha * 0.10F);
-        double[] nebula2 = offset(eye, fwd, right, up, 166.0D, 52.0D, -26.0D);
-        planeQuad(quads, matrix, nebula2, right, up, -38.0D * sceneScale, -30.0D * sceneScale, 62.0D * sceneScale, 26.0D * sceneScale,
-                0.18F, 0.12F, 0.30F, alpha * 0.08F);
-
-        RandomSource stars = RandomSource.create(0x53504143454CL);
-        for (int i = 0; i < 110; i++) {
-            double theta = stars.nextDouble() * Math.PI * 2.0D;
-            double cosPhi = stars.nextDouble() * 2.0D - 1.0D;
-            double sinPhi = Math.sqrt(Math.max(0.0D, 1.0D - cosPhi * cosPhi));
-            double dist = (140.0D + stars.nextDouble() * 22.0D) * sceneScale;
-            double dx = Math.cos(theta) * sinPhi;
-            double dy = cosPhi;
-            double dz = Math.sin(theta) * sinPhi;
-            double x = eye[0] + (fwd[0] * dx + right[0] * dz + up[0] * dy) * dist;
-            double y = eye[1] + (fwd[1] * dx + right[1] * dz + up[1] * dy) * dist;
-            double z = eye[2] + (fwd[2] * dx + right[2] * dz + up[2] * dy) * dist;
-            float pulse = 0.32F + 0.68F * (0.5F + 0.5F * (float) Math.sin(time * 0.05D + i * 1.7D));
-            float a = alpha * pulse * 0.72F;
-            double s = i % 11 == 0 ? 0.40D : 0.18D;
-            line(pose, lines, x - s, y, z, x + s, y, z, 0.78F, 0.90F, 1.0F, a, 0, 0, 1);
-            line(pose, lines, x, y - s, z, x, y + s, z, 0.78F, 0.90F, 1.0F, a, 0, 0, 1);
+    /** 暗蓝渐变穹顶：越朝天顶越黑，越朝地平线越偏蓝（大气散射的错觉）。 */
+    private static void drawDome(VertexConsumer quads, Matrix4f matrix, double[] eye,
+                                 double[] fwd, double[] right, double[] up, double radius, float alpha) {
+        final int rings = 18;
+        final int segs = 36;
+        for (int ri = 0; ri < rings; ri++) {
+            double t0 = Math.PI * ri / rings;
+            double t1 = Math.PI * (ri + 1) / rings;
+            for (int si = 0; si < segs; si++) {
+                double p0 = Math.PI * 2.0D * si / segs;
+                double p1 = Math.PI * 2.0D * (si + 1) / segs;
+                double[] a = spherePoint(eye, fwd, right, up, radius, t0, p0);
+                double[] b = spherePoint(eye, fwd, right, up, radius, t0, p1);
+                double[] c = spherePoint(eye, fwd, right, up, radius, t1, p1);
+                double[] d = spherePoint(eye, fwd, right, up, radius, t1, p0);
+                // 中点朝向的「世界向上」分量：+1 天顶，-1 天底
+                double midT = (t0 + t1) * 0.5D;
+                double midP = (p0 + p1) * 0.5D;
+                double[] mid = sphereDir(fwd, right, up, midT, midP);
+                double upDot = mid[0] * up[0] + mid[1] * up[1] + mid[2] * up[2];
+                float f = (float) ((upDot + 1.0D) * 0.5D);
+                float r = Mth.lerp(f, 0.012F, 0.003F);
+                float g = Mth.lerp(f, 0.024F, 0.006F);
+                float bl = Mth.lerp(f, 0.048F, 0.016F);
+                // 极轻微的面片抖动，避免大面积色带
+                double n = Math.sin(ri * 12.9898D + si * 78.233D) * 43758.5453D;
+                n -= Math.floor(n);
+                float jitter = (float) n * 0.0020F;
+                quad(quads, matrix,
+                        a[0], a[1], a[2], b[0], b[1], b[2],
+                        c[0], c[1], c[2], d[0], d[1], d[2],
+                        r + jitter, g + jitter, bl + jitter, alpha * 0.995F);
+            }
         }
     }
 
-    private static void boxFace(VertexConsumer quads, Matrix4f matrix, double[] eye,
-                                double[] fwd, double[] right, double[] up, double dist, float alpha) {
-        double e = BACKDROP_EXTENT * sceneScale;
-        double cx = eye[0] + fwd[0] * dist;
-        double cy = eye[1] + fwd[1] * dist;
-        double cz = eye[2] + fwd[2] * dist;
-        quad(quads, matrix,
-                cx - right[0] * e - up[0] * e, cy - right[1] * e - up[1] * e, cz - right[2] * e - up[2] * e,
-                cx + right[0] * e - up[0] * e, cy + right[1] * e - up[1] * e, cz + right[2] * e - up[2] * e,
-                cx + right[0] * e + up[0] * e, cy + right[1] * e + up[1] * e, cz + right[2] * e + up[2] * e,
-                cx - right[0] * e + up[0] * e, cy - right[1] * e + up[1] * e, cz - right[2] * e + up[2] * e,
-                0.004F, 0.012F, 0.030F, alpha * 0.97F);
+    /** 银河：沿一个倾斜大圆聚集的星群 + 两条很淡的辉光带。 */
+    private static void drawMilkyWay(PoseStack pose, VertexConsumer lines, double[] eye,
+                                     double[] fwd, double[] right, double[] up,
+                                     double radius, float alpha, double time) {
+        double[] normal = norm(add(add(mul(right, 0.32D), mul(up, 0.58D)), mul(fwd, 0.75D)));
+        RandomSource random = RandomSource.create(0x4D494C4B59574159L);
+        for (int i = 0; i < 620; i++) {
+            double[] dir = randomDirection(random);
+            double dist = dir[0] * normal[0] + dir[1] * normal[1] + dir[2] * normal[2];
+            double w = Math.exp(-(dist * dist) / (2.0D * 0.16D * 0.16D));
+            if (random.nextDouble() > w * 0.95D) {
+                continue;
+            }
+            double[] p = add(eye, mul(dir, radius));
+            float a = alpha * (0.10F + 0.22F * (float) w)
+                    * (0.6F + 0.4F * (0.5F + 0.5F * (float) Math.sin(time * 0.04D + i * 2.1D)));
+            double s = 0.10D + 0.22D * random.nextDouble();
+            line(pose, lines, p[0] - s, p[1], p[2], p[0] + s, p[1], p[2],
+                    0.78F, 0.84F, 1.0F, a, 0, 0, 1);
+            line(pose, lines, p[0], p[1] - s, p[2], p[0], p[1] + s, p[2],
+                    0.78F, 0.84F, 1.0F, a, 0, 0, 1);
+        }
     }
 
-    private static void boxSide(VertexConsumer quads, Matrix4f matrix, double[] eye,
-                                double[] fwd, double[] right, double[] up, double dist, float alpha) {
-        double e = BACKDROP_EXTENT * sceneScale;
-        double cx = eye[0] + right[0] * dist;
-        double cy = eye[1] + right[1] * dist;
-        double cz = eye[2] + right[2] * dist;
-        quad(quads, matrix,
-                cx - fwd[0] * e - up[0] * e, cy - fwd[1] * e - up[1] * e, cz - fwd[2] * e - up[2] * e,
-                cx + fwd[0] * e - up[0] * e, cy + fwd[1] * e - up[1] * e, cz + fwd[2] * e - up[2] * e,
-                cx + fwd[0] * e + up[0] * e, cy + fwd[1] * e + up[1] * e, cz + fwd[2] * e + up[2] * e,
-                cx - fwd[0] * e + up[0] * e, cy - fwd[1] * e + up[1] * e, cz - fwd[2] * e + up[2] * e,
-                0.004F, 0.012F, 0.030F, alpha * 0.97F);
+    /** 三团彩色星云：几十个小而淡的色块，叠出有层次的紫/青雾。 */
+    private static void drawNebulae(VertexConsumer quads, Matrix4f matrix, double[] eye,
+                                    double[] fwd, double[] right, double[] up,
+                                    double radius, float alpha, double time) {
+        RandomSource random = RandomSource.create(0x4E4542554C4145L);
+        double[][] centers = {
+                {-0.55D, 0.35D, 0.76D},
+                {0.62D, -0.18D, 0.76D},
+                {-0.10D, -0.62D, 0.78D}};
+        float[][] palette = {
+                {0.14F, 0.22F, 0.52F},
+                {0.34F, 0.12F, 0.46F},
+                {0.10F, 0.34F, 0.44F}};
+        for (int c = 0; c < centers.length; c++) {
+            double[] center = norm(centers[c]);
+            for (int i = 0; i < 34; i++) {
+                double[] dir = norm(add(center, new double[]{
+                        (random.nextDouble() - 0.5D) * 0.55D,
+                        (random.nextDouble() - 0.5D) * 0.55D,
+                        (random.nextDouble() - 0.5D) * 0.55D}));
+                double[] p = add(eye, mul(dir, radius * (0.96D + random.nextDouble() * 0.06D)));
+                double size = (2.5D + random.nextDouble() * 6.5D) * sceneScale;
+                float breathe = 0.75F + 0.25F * (0.5F + 0.5F * (float) Math.sin(time * 0.03D + c * 2.0D + i));
+                float[] col = palette[c];
+                planeQuad(quads, matrix, p, right, up,
+                        -size, -size * 0.62D, size, size * 0.62D,
+                        col[0], col[1], col[2], alpha * (0.030F + 0.030F * random.nextFloat()) * breathe);
+            }
+        }
     }
 
-    private static void boxTop(VertexConsumer quads, Matrix4f matrix, double[] eye,
-                               double[] fwd, double[] right, double[] up, double dist, float alpha) {
-        double e = BACKDROP_EXTENT * sceneScale;
-        double cx = eye[0] + up[0] * dist;
-        double cy = eye[1] + up[1] * dist;
-        double cz = eye[2] + up[2] * dist;
-        quad(quads, matrix,
-                cx - fwd[0] * e - right[0] * e, cy - fwd[1] * e - right[1] * e, cz - fwd[2] * e - right[2] * e,
-                cx + fwd[0] * e - right[0] * e, cy + fwd[1] * e - right[1] * e, cz + fwd[2] * e - right[2] * e,
-                cx + fwd[0] * e + right[0] * e, cy + fwd[1] * e + right[1] * e, cz + fwd[2] * e + right[2] * e,
-                cx - fwd[0] * e + right[0] * e, cy - fwd[1] * e + right[1] * e, cz - fwd[2] * e + right[2] * e,
-                0.004F, 0.012F, 0.030F, alpha * 0.97F);
+    /** 一个很远的旋涡星系：两条椭圆盘 + 四段旋臂。 */
+    private static void drawGalaxy(PoseStack pose, VertexConsumer lines, double[] eye,
+                                   double[] fwd, double[] right, double[] up,
+                                   double radius, float alpha, double time) {
+        double[] dir = norm(new double[]{0.72D, 0.46D, 0.52D});
+        double[] center = add(eye, mul(dir, radius));
+        double tilt = 0.55D;
+        planeEllipse(pose, lines, center, right, up, 4.6D * sceneScale, 1.35D * sceneScale,
+                tilt, 0.82F, 0.90F, 1.0F, alpha * 0.42F);
+        planeEllipse(pose, lines, center, right, up, 3.2D * sceneScale, 0.90D * sceneScale,
+                tilt, 0.74F, 0.84F, 1.0F, alpha * 0.26F);
+        for (int arm = 0; arm < 4; arm++) {
+            double base = arm * Math.PI * 0.5D + time * 0.004D;
+            double prevX = 0.0D;
+            double prevY = 0.0D;
+            for (int k = 1; k <= 7; k++) {
+                double t = k / 7.0D;
+                double rr = 4.2D * t * sceneScale;
+                double ang = base + t * 2.2D;
+                double x = Math.cos(ang) * rr;
+                double y = Math.sin(ang) * rr * 0.32D;
+                if (k > 1) {
+                    line(pose, lines,
+                            center[0] + right[0] * prevX + up[0] * prevY,
+                            center[1] + right[1] * prevX + up[1] * prevY,
+                            center[2] + right[2] * prevX + up[2] * prevY,
+                            center[0] + right[0] * x + up[0] * y,
+                            center[1] + right[1] * x + up[1] * y,
+                            center[2] + right[2] * x + up[2] * y,
+                            0.80F, 0.88F, 1.0F, alpha * 0.30F * (1.0F - (float) t * 0.55F), 0, 0, 1);
+                }
+                prevX = x;
+                prevY = y;
+            }
+        }
+    }
+
+    /** 约 900 颗恒星：分色（蓝白/白/暖黄）、分大小、各自缓慢脉动。 */
+    private static void drawStars(PoseStack pose, VertexConsumer lines, double[] eye,
+                                  double[] fwd, double[] right, double[] up,
+                                  double radius, float alpha, double time) {
+        RandomSource random = RandomSource.create(0x53504143454CL);
+        for (int i = 0; i < 900; i++) {
+            double[] dir = randomDirection(random);
+            double[] p = add(eye, mul(dir, radius * (0.94D + random.nextDouble() * 0.08D)));
+            float tint = random.nextFloat();
+            float r;
+            float g;
+            float b;
+            if (tint < 0.16F) {
+                r = 0.72F;
+                g = 0.82F;
+                b = 1.0F;
+            } else if (tint < 0.28F) {
+                r = 1.0F;
+                g = 0.90F;
+                b = 0.72F;
+            } else {
+                r = 0.88F;
+                g = 0.93F;
+                b = 1.0F;
+            }
+            float pulse = 0.45F + 0.55F * (0.5F + 0.5F * (float) Math.sin(time * 0.045D + i * 1.37D));
+            float a = alpha * pulse * (0.30F + 0.55F * random.nextFloat());
+            double s = (i % 37 == 0 ? 0.42D : 0.14D + random.nextDouble() * 0.14D) * sceneScale;
+            line(pose, lines, p[0] - s, p[1], p[2], p[0] + s, p[1], p[2], r, g, b, a, 0, 0, 1);
+            line(pose, lines, p[0], p[1] - s, p[2], p[0], p[1] + s, p[2], r, g, b, a, 0, 0, 1);
+        }
+    }
+
+    /** 偶发流星：两粒，按周期在天空划过一小段。 */
+    private static void drawShootingStars(PoseStack pose, VertexConsumer lines, double[] eye,
+                                          double[] fwd, double[] right, double[] up,
+                                          double radius, float alpha, double time) {
+        for (int k = 0; k < 2; k++) {
+            double cycle = ((time * 0.012D + k * 0.53D) % 1.0D);
+            if (cycle > 0.09D) {
+                continue;
+            }
+            double progress = cycle / 0.09D;
+            double[] startDir = norm(new double[]{
+                    Math.sin(k * 3.1D + 0.4D), 0.35D + k * 0.18D, 0.62D});
+            double[] endDir = norm(add(startDir, new double[]{0.42D, -0.30D, 0.0D}));
+            double[] p = add(eye, mul(lerp3(startDir, endDir, progress), radius));
+            double[] q = add(eye, mul(lerp3(startDir, endDir, Math.max(0.0D, progress - 0.16D)), radius));
+            float fade = (float) Math.sin(progress * Math.PI);
+            line(pose, lines, q[0], q[1], q[2], p[0], p[1], p[2],
+                    1.0F, 1.0F, 1.0F, alpha * fade * 0.85F, 0, 0, 1);
+            line(pose, lines, q[0], q[1] + 0.5D * sceneScale, q[2], p[0], p[1], p[2],
+                    CYAN_R, CYAN_G, CYAN_B, alpha * fade * 0.40F, 0, 0, 1);
+        }
+    }
+
+    /** 球面方向（以相机前/右/上为基）：theta 自前方起，phi 绕前方旋转。 */
+    private static double[] sphereDir(double[] fwd, double[] right, double[] up,
+                                      double theta, double phi) {
+        double st = Math.sin(theta);
+        double ct = Math.cos(theta);
+        return new double[]{
+                fwd[0] * ct + right[0] * st * Math.cos(phi) + up[0] * st * Math.sin(phi),
+                fwd[1] * ct + right[1] * st * Math.cos(phi) + up[1] * st * Math.sin(phi),
+                fwd[2] * ct + right[2] * st * Math.cos(phi) + up[2] * st * Math.sin(phi)};
+    }
+
+    private static double[] spherePoint(double[] eye, double[] fwd, double[] right, double[] up,
+                                        double radius, double theta, double phi) {
+        double[] dir = sphereDir(fwd, right, up, theta, phi);
+        return new double[]{eye[0] + dir[0] * radius, eye[1] + dir[1] * radius, eye[2] + dir[2] * radius};
+    }
+
+    /** 均匀球面随机方向。 */
+    private static double[] randomDirection(RandomSource random) {
+        double theta = random.nextDouble() * Math.PI * 2.0D;
+        double cosPhi = random.nextDouble() * 2.0D - 1.0D;
+        double sinPhi = Math.sqrt(Math.max(0.0D, 1.0D - cosPhi * cosPhi));
+        return new double[]{Math.cos(theta) * sinPhi, cosPhi, Math.sin(theta) * sinPhi};
     }
 
     // ------------------------------------------------------------------ 地球
