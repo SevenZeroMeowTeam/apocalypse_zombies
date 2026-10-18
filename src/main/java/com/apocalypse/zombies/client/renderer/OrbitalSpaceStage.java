@@ -213,6 +213,9 @@ public final class OrbitalSpaceStage {
         final int segs = 36;
         // 云、灯、晨昏线都比球面更靠近镜头一点：同一深度写两次会 z-fighting。
         double[] surface = add(c, mul(fwd, -0.30D));
+        // 太阳方向极缓慢漂移：晨昏线在几秒里挪一点点，球面才有「在转」的错觉。
+        double sun = SUN_ANGLE + Math.sin(time * 0.012D) * 0.025D;
+        double cloudSpin = time * 0.0018D;
         // 大陆种子（归一化圆盘坐标）
         RandomSource seed = RandomSource.create(0x45415254484CL);
         double[] sx = new double[9];
@@ -241,7 +244,7 @@ public final class OrbitalSpaceStage {
                     land = dx * dx + dy * dy < sr[k] * sr[k];
                 }
                 boolean ice = Math.abs(ny) > 0.83D + 0.035D * Math.sin(midA * 4.0D);
-                double litRaw = 0.5D + 0.5D * Math.cos(midA - SUN_ANGLE);
+                double litRaw = 0.5D + 0.5D * Math.cos(midA - sun);
                 // 晨昏线不要一条硬边：0.15~0.35 之间过渡
                 double day = smooth01((litRaw - 0.18D) / 0.30D);
 
@@ -287,9 +290,12 @@ public final class OrbitalSpaceStage {
                 if (land && day < 0.22D && ((ri * 31 + si * 17) % 23 == 0)) {
                     double px = Math.cos(midA) * radius * midR;
                     double py = Math.sin(midA) * radius * midR;
+                    // 城市灯光按各自相位闪烁（窗口里看着像活的）
+                    float twinkle = 0.45F + 0.55F * (0.5F + 0.5F * (float) Math.sin(
+                            time * 0.22D + (ri * 7 + si) * 1.7D));
                     planeQuad(quads, matrix, surface, right, up,
                             px - 0.22D, py - 0.22D, px + 0.22D, py + 0.22D,
-                            1.0F, 0.86F, 0.55F, alpha * (float) (0.55D * (1.0D - day)));
+                            1.0F, 0.86F, 0.55F, alpha * (float) (0.62D * (1.0D - day)) * twinkle);
                 }
             }
         }
@@ -302,6 +308,8 @@ public final class OrbitalSpaceStage {
             double wobble = cloudSeed.nextDouble() * Math.PI * 2.0D;
             double half = Math.sqrt(Math.max(0.0D, 1.0D - y * y)) * 0.96D;
             int steps = 22;
+            double cs = Math.cos(cloudSpin);
+            double sn = Math.sin(cloudSpin);
             for (int s = 0; s < steps; s++) {
                 double x0 = -half + 2.0D * half * s / steps;
                 double x1 = -half + 2.0D * half * (s + 1) / steps;
@@ -309,23 +317,31 @@ public final class OrbitalSpaceStage {
                 if (x0 * x0 + y * y >= 0.985D) {
                     continue;
                 }
-                planeQuad(quads, matrix, surface, right, up,
-                        x0 * radius, yy * radius,
-                        x1 * radius, (yy + thickness) * radius,
+                // 整层云绕球心缓慢旋转：四角各自转，读起来是「云在飘」。
+                double ax0 = x0 * radius;
+                double ay0 = yy * radius;
+                double ax1 = x1 * radius;
+                double ay1 = (yy + thickness) * radius;
+                planeQuad4(quads, matrix, surface, right, up,
+                        ax0 * cs - ay0 * sn, ax0 * sn + ay0 * cs,
+                        ax1 * cs - ay0 * sn, ax1 * sn + ay0 * cs,
+                        ax1 * cs - ay1 * sn, ax1 * sn + ay1 * cs,
+                        ax0 * cs - ay1 * sn, ax0 * sn + ay1 * cs,
                         1.0F, 1.0F, 1.0F, alpha * (0.07F + 0.05F * (float) cloudSeed.nextDouble()));
             }
         }
 
         // 大气层：三圈外晕，越外越淡（写实照片里那层薄蓝边）
-        planeRing(pose, lines, c, right, up, radius * 1.012D, 0.42F, 0.76F, 1.0F, alpha * 0.55F);
-        planeRing(pose, lines, c, right, up, radius * 1.045D, 0.34F, 0.64F, 0.98F, alpha * 0.22F);
-        planeRing(pose, lines, c, right, up, radius * 1.085D, 0.26F, 0.50F, 0.92F, alpha * 0.09F);
+        float breath = 0.85F + 0.15F * (0.5F + 0.5F * (float) Math.sin(time * 0.07D));
+        planeRing(pose, lines, c, right, up, radius * 1.012D, 0.42F, 0.76F, 1.0F, alpha * 0.55F * breath);
+        planeRing(pose, lines, c, right, up, radius * 1.045D, 0.34F, 0.64F, 0.98F, alpha * 0.22F * breath);
+        planeRing(pose, lines, c, right, up, radius * 1.085D, 0.26F, 0.50F, 0.92F, alpha * 0.09F * breath);
         // 昼夜线：一条很淡的终止符弧（帮助读出球面）
         int term = 20;
         double tr = radius * 1.004D;
         for (int i = 0; i < term; i++) {
-            double a1 = SUN_ANGLE + Math.PI * 0.5D + Math.PI * i / term;
-            double a2 = SUN_ANGLE + Math.PI * 0.5D + Math.PI * (i + 1) / term;
+            double a1 = sun + Math.PI * 0.5D + Math.PI * i / term;
+            double a2 = sun + Math.PI * 0.5D + Math.PI * (i + 1) / term;
             line(pose, lines,
                     surface[0] + right[0] * Math.cos(a1) * tr + up[0] * Math.sin(a1) * tr,
                     surface[1] + right[1] * Math.cos(a1) * tr + up[1] * Math.sin(a1) * tr,
@@ -344,10 +360,15 @@ public final class OrbitalSpaceStage {
                                      Matrix4f matrix, double[] eye, double[] fwd,
                                      double[] right, double[] up, double[] earth, double earthR,
                                      float alpha, double time, double phase) {
-        double[] station = offset(eye, fwd, right, up, 52.0D, 30.0D, 22.0D);
+        double[] stationBase = offset(eye, fwd, right, up, 52.0D, 30.0D, 22.0D);
+        double[] dir = norm(sub(earth, stationBase));
+        // 开火后坐：炮台沿炮管反方向退 1.6 格，8 tick 内回位。
+        double recoil = phase >= 0.999F
+                ? Math.max(0.0D, 1.0D - OrbitalStrikeClientState.impactAge() / 8.0D) * 1.6D * sceneScale
+                : 0.0D;
+        double[] station = add(stationBase, mul(dir, -recoil));
         renderStation(pose, lines, station, right, up, fwd, 1.25D * sceneScale, alpha, time);
 
-        double[] dir = norm(sub(earth, station));
         double[] muzzle = add(station, mul(dir, 9.0D));
         // 炮管：三条平行线（近似厚度）
         for (double k : new double[]{-0.55D, 0.0D, 0.55D}) {
@@ -378,6 +399,17 @@ public final class OrbitalSpaceStage {
             double[] tail = sub(slug, mul(dir, 26.0D));
             line(pose, lines, slug[0], slug[1], slug[2], tail[0], tail[1], tail[2],
                     1.0F, 0.86F, 0.62F, alpha * 0.55F * (float) phase, 0, 0, 1);
+            // 马赫环：弹体尾流里一串交替大小的亮环（高速尾焰的经典特征）
+            for (int d = 1; d <= 5; d++) {
+                double[] p = sub(slug, mul(dir, d * 3.4D));
+                double rr = d % 2 == 0 ? 0.85D : 0.55D;
+                planeRing(pose, lines, p, right, up, rr,
+                        1.0F, 0.92F, 0.74F, alpha * 0.42F * (float) phase * (1.0F - d * 0.15F));
+            }
+        }
+        if (phase >= 0.999F) {
+            muzzleFlash(pose, lines, muzzle, right, up, alpha, time);
+            earthImpact(pose, lines, contact, right, up, alpha, OrbitalStrikeClientState.impactAge());
         }
         if (phase >= 0.999D) {
             // 命中：地球晨昏线附近的白闪 + 扩散环
@@ -396,9 +428,13 @@ public final class OrbitalSpaceStage {
                                     double[] eye, double[] fwd, double[] right, double[] up,
                                     double[] earth, double earthR, float alpha, double time,
                                     double phase) {
-        double[] station = offset(eye, fwd, right, up, 46.0D, 25.0D, 24.0D);
+        double[] stationBase = offset(eye, fwd, right, up, 46.0D, 25.0D, 24.0D);
+        double[] dir = norm(sub(earth, stationBase));
+        double recoil = phase >= 0.999F
+                ? Math.max(0.0D, 1.0D - OrbitalStrikeClientState.impactAge() / 10.0D) * 1.2D * sceneScale
+                : 0.0D;
+        double[] station = add(stationBase, mul(dir, -recoil));
         renderStation(pose, lines, station, right, up, fwd, 0.85D * sceneScale, alpha, time);
-        double[] dir = norm(sub(earth, station));
         double[] contact = sub(earth, mul(dir, earthR * 0.94D));
         double[] tip = lerp3(station, contact, smooth01(phase));
         double reach = len(sub(tip, station));
@@ -417,10 +453,8 @@ public final class OrbitalSpaceStage {
         }
         dot3(pose, lines, tip, 1.4D, 1.0F, 1.0F, 1.0F, alpha * 0.9F);
         if (reach > 1.0D && phase > 0.98D) {
-            planeRing(pose, lines, contact, right, up, 2.2D + 0.5D * Math.sin(time * 0.5D),
-                    1.0F, 1.0F, 1.0F, alpha * 0.7F);
-            planeRing(pose, lines, contact, right, up, 5.5D,
-                    CYAN_R, CYAN_G, CYAN_B, alpha * 0.25F);
+            muzzleFlash(pose, lines, station, right, up, alpha, time);
+            earthImpact(pose, lines, contact, right, up, alpha, OrbitalStrikeClientState.impactAge());
         }
     }
 
@@ -450,6 +484,10 @@ public final class OrbitalSpaceStage {
             }
         }
         planeRing(pose, lines, core, right, up, coreR * 1.03D, 0.72F, 0.92F, 1.0F, alpha * 0.85F);
+        // 爱因斯坦环：紧贴视界的一圈细亮环 + 外层暗环（引力透镜的读法）
+        planeRing(pose, lines, core, right, up, coreR * 1.14D, 1.0F, 1.0F, 1.0F, alpha * 0.45F);
+        planeRing(pose, lines, core, right, up, coreR * 1.75D,
+                0.66F, 0.86F, 1.0F, alpha * 0.16F);
         // 吸积盘：三条椭圆，时间驱动的倾角
         for (int i = 0; i < 3; i++) {
             double rx = (11.0D - i * 1.6D) * (1.0D - 0.35D * phase);
@@ -489,11 +527,8 @@ public final class OrbitalSpaceStage {
         if (phase >= 0.999D) {
             double[] dir = norm(sub(earth, core));
             double[] contact = sub(earth, mul(dir, earthR * 0.92D));
-            double pulse = 0.6D + 0.4D * Math.sin(time * 0.7D);
-            planeRing(pose, lines, contact, right, up, 3.0D + 2.6D * pulse,
-                    CYAN_R, CYAN_G, CYAN_B, alpha * 0.55F);
-            planeRing(pose, lines, contact, right, up, 7.0D + 4.0D * pulse,
-                    0.62F, 0.86F, 1.0F, alpha * 0.22F);
+            muzzleFlash(pose, lines, core, right, up, alpha, time);
+            earthImpact(pose, lines, contact, right, up, alpha, OrbitalStrikeClientState.impactAge());
         }
     }
 
@@ -528,10 +563,17 @@ public final class OrbitalSpaceStage {
                 float life = Mth.clamp(1.0F - (float) age / 14.0F, 0.0F, 1.0F);
                 if (life > 0.01F) {
                     jaggedBolt(pose, lines, pod, contact, right, up, yawJitter(i, time), alpha * life);
-                    planeRing(pose, lines, contact, right, up, 1.4D + 0.12D * (float) age,
-                            1.0F, 1.0F, 1.0F, alpha * life * 0.85F);
-                    planeRing(pose, lines, contact, right, up, 3.0D + 0.35D * (float) age,
-                            CYAN_R, CYAN_G, CYAN_B, alpha * life * 0.30F);
+                    // 两条分叉：从主闪电中段甩出去（等离子放电的经典形态）
+                    double[] mid = lerp3(pod, contact, 0.52D);
+                    for (int b = 0; b < 2; b++) {
+                        double side = b == 0 ? -1.0D : 1.0D;
+                        double[] branchEnd = add(mid, add(
+                                mul(right, side * (3.0D + 1.2D * Math.sin(time * 0.7D + i)) * sceneScale),
+                                mul(up, (2.0D + 1.0D * Math.cos(time * 0.9D + b)) * sceneScale)));
+                        jaggedBolt(pose, lines, mid, branchEnd, right, up,
+                                yawJitter(i * 3 + b, time), alpha * life * 0.50F);
+                    }
+                    earthImpact(pose, lines, contact, right, up, alpha, (long) age);
                 }
             }
         }
@@ -590,14 +632,19 @@ public final class OrbitalSpaceStage {
         double[] contact = sub(earth, mul(dir, earthR * 0.92D));
         double t = smooth01(fall);
         double[] pos = lerp3(start, contact, t);
-        // 岩质本体：几块大小不一的小方体拼出不规则轮廓
+        // 岩质本体：几块大小不一的小方体拼出不规则轮廓；整块岩石缓慢翻滚
         double r = 3.2D * sceneScale;
-        camBox(pose, lines, pos, right, up, fwd, r, r * 0.85D, r, 0.55F, 0.42F, 0.34F, alpha * 0.95F);
-        double[] chunkA = add(pos, add(mul(right, r * 0.9D), mul(up, r * 0.5D)));
-        camBox(pose, lines, chunkA, right, up, fwd, r * 0.45D, r * 0.40D, r * 0.45D,
+        double spin = time * 0.055D;
+        double cspin = Math.cos(spin);
+        double sspin = Math.sin(spin);
+        double[] spinR = add(mul(right, cspin), mul(up, sspin));
+        double[] spinU = add(mul(up, cspin), mul(right, -sspin));
+        camBox(pose, lines, pos, spinR, spinU, fwd, r, r * 0.85D, r, 0.55F, 0.42F, 0.34F, alpha * 0.95F);
+        double[] chunkA = add(pos, add(mul(spinR, r * 0.9D), mul(spinU, r * 0.5D)));
+        camBox(pose, lines, chunkA, spinR, spinU, fwd, r * 0.45D, r * 0.40D, r * 0.45D,
                 0.48F, 0.36F, 0.30F, alpha * 0.90F);
-        double[] chunkB = add(pos, add(mul(right, -r * 0.8D), mul(up, -r * 0.55D)));
-        camBox(pose, lines, chunkB, right, up, fwd, r * 0.35D, r * 0.32D, r * 0.35D,
+        double[] chunkB = add(pos, add(mul(spinR, -r * 0.8D), mul(spinU, -r * 0.55D)));
+        camBox(pose, lines, chunkB, spinR, spinU, fwd, r * 0.35D, r * 0.32D, r * 0.35D,
                 0.42F, 0.32F, 0.27F, alpha * 0.85F);
         // 尾焰：一串向后的火环 + 一条火线，越靠近地球越亮
         double heat = 0.55D + 0.45D * t;
@@ -611,11 +658,24 @@ public final class OrbitalSpaceStage {
         line(pose, lines, pos[0], pos[1], pos[2],
                 trailEnd[0], trailEnd[1], trailEnd[2], 1.0F, 0.70F, 0.42F, alpha * 0.7F, 0, 0, 1);
         if (fall >= 0.999F) {
-            double pulse = 0.6D + 0.4D * Math.sin(time * 0.8D);
-            planeRing(pose, lines, contact, right, up, 3.2D + 2.0D * pulse,
-                    1.0F, 0.86F, 0.62F, alpha * 0.75F);
-            planeRing(pose, lines, contact, right, up, 7.5D + 4.0D * pulse,
-                    1.0F, 0.52F, 0.26F, alpha * 0.30F);
+            long age = OrbitalStrikeClientState.impactAge();
+            earthImpact(pose, lines, contact, right, up, alpha, age);
+            // 碎裂：岩块炸成几片，沿撞击点向外飞散
+            if (age >= 0 && age < 26) {
+                float fade = 1.0F - age / 26.0F;
+                for (int i = 0; i < 6; i++) {
+                    double ang = i * Math.PI * 2.0D / 6.0D + 0.4D;
+                    double dist = (2.5D + age * 0.9D) * sceneScale;
+                    double[] frag = add(contact, add(mul(right, Math.cos(ang) * dist),
+                            mul(up, Math.sin(ang) * dist)));
+                    double size = (0.8D - age * 0.022D) * sceneScale;
+                    if (size <= 0.05D) {
+                        continue;
+                    }
+                    camBox(pose, lines, frag, right, up, fwd, size, size * 0.8D, size,
+                            0.62F, 0.34F, 0.22F, alpha * fade * 0.85F);
+                }
+            }
         }
     }
 
@@ -635,13 +695,15 @@ public final class OrbitalSpaceStage {
 
         if (phase > 0.01D) {
             float p = (float) phase;
+            float flicker = 0.88F + 0.12F * (0.5F + 0.5F * (float) Math.sin(time * 2.4D));
             for (double k : new double[]{-0.45D, 0.0D, 0.45D}) {
                 double[] off = mul(right, k);
                 line(pose, lines,
                         muzzle[0] + off[0], muzzle[1] + off[1], muzzle[2] + off[2],
                         contact[0] + off[0], contact[1] + off[1], contact[2] + off[2],
-                        1.0F, 1.0F, 1.0F, alpha * (k == 0.0D ? 0.95F : 0.35F) * p, 0, 0, 1);
+                        1.0F, 1.0F, 1.0F, alpha * (k == 0.0D ? 0.95F : 0.35F) * p * flicker, 0, 0, 1);
             }
+            earthImpact(pose, lines, contact, right, up, alpha, OrbitalStrikeClientState.impactAge());
             planeRing(pose, lines, contact, right, up, 1.6D + 1.8D * p,
                     1.0F, 1.0F, 1.0F, alpha * 0.80F * p);
             planeRing(pose, lines, contact, right, up, 4.0D + 4.0D * p,
@@ -682,6 +744,77 @@ public final class OrbitalSpaceStage {
         float blink = 0.35F + 0.65F * (0.5F + 0.5F * (float) Math.sin(time * 0.20D));
         planeRing(pose, lines, add(center, mul(up, 1.5D * s)), right, up, 0.34D * s,
                 1.0F, 1.0F, 1.0F, alpha * blink);
+    }
+
+    /** 炮口激波：白热环 + 青环 + 五道火花（发射瞬间的「枪口焰」）。 */
+    private static void muzzleFlash(PoseStack pose, VertexConsumer lines, double[] at,
+                                    double[] right, double[] up, float alpha, double time) {
+        float pulse = 0.55F + 0.45F * (0.5F + 0.5F * (float) Math.sin(time * 1.9D));
+        planeRing(pose, lines, at, right, up, 4.5D * sceneScale * pulse,
+                1.0F, 1.0F, 1.0F, alpha * 0.80F);
+        planeRing(pose, lines, at, right, up, 8.0D * sceneScale * pulse,
+                CYAN_R, CYAN_G, CYAN_B, alpha * 0.30F);
+        for (int i = 0; i < 5; i++) {
+            double ang = i * Math.PI * 2.0D / 5.0D + time * 0.35D;
+            double r0 = 2.0D * sceneScale;
+            double r1 = (5.0D + 2.0D * Math.sin(time * 1.3D + i)) * sceneScale;
+            double c = Math.cos(ang);
+            double s = Math.sin(ang);
+            line(pose, lines,
+                    at[0] + right[0] * c * r0 + up[0] * s * r0,
+                    at[1] + right[1] * c * r0 + up[1] * s * r0,
+                    at[2] + right[2] * c * r0 + up[2] * s * r0,
+                    at[0] + right[0] * c * r1 + up[0] * s * r1,
+                    at[1] + right[1] * c * r1 + up[1] * s * r1,
+                    at[2] + right[2] * c * r1 + up[2] * s * r1,
+                    1.0F, 0.92F, 0.70F, alpha * 0.55F, 0, 0, 1);
+        }
+    }
+
+    /**
+     * 地球上的命中：白热闪光 + 三层扩散环 + 十二道碎片射线 + 中心余辉。
+     * {@code impactAge} 取客户端状态的「命中后 tick」（小于 0 表示还没命中）。
+     */
+    private static void earthImpact(PoseStack pose, VertexConsumer lines, double[] at,
+                                    double[] right, double[] up, float alpha, long impactAge) {
+        if (impactAge < 0L) {
+            return;
+        }
+        float fade = 1.0F - Mth.clamp(impactAge / 70.0F, 0.0F, 1.0F);
+        if (fade <= 0.01F) {
+            return;
+        }
+        float t = Mth.clamp(impactAge / 20.0F, 0.0F, 1.0F);
+        float t2 = Mth.clamp(impactAge / 55.0F, 0.0F, 1.0F);
+        // 白热闪环
+        planeRing(pose, lines, at, right, up, (1.2D + 8.0D * t) * sceneScale,
+                1.0F, 1.0F, 1.0F, alpha * 0.85F * fade);
+        // 主扩散环
+        planeRing(pose, lines, at, right, up, (2.0D + 17.0D * t) * sceneScale,
+                CYAN_R, CYAN_G, CYAN_B, alpha * 0.55F * fade);
+        // 慢一圈的余波
+        planeRing(pose, lines, at, right, up, (2.0D + 26.0D * t2) * sceneScale,
+                0.72F, 0.92F, 1.0F, alpha * 0.22F * (1.0F - t2));
+        // 碎片射线：从接触点向外甩出的短划
+        for (int i = 0; i < 12; i++) {
+            double ang = i * Math.PI * 2.0D / 12.0D + 0.23D;
+            double c = Math.cos(ang);
+            double s = Math.sin(ang);
+            double r0 = (1.6D + 11.0D * t) * sceneScale;
+            double r1 = r0 + (2.2D + 1.6D * (1.0F - t)) * sceneScale;
+            line(pose, lines,
+                    at[0] + right[0] * c * r0 + up[0] * s * r0,
+                    at[1] + right[1] * c * r0 + up[1] * s * r0,
+                    at[2] + right[2] * c * r0 + up[2] * s * r0,
+                    at[0] + right[0] * c * r1 + up[0] * s * r1,
+                    at[1] + right[1] * c * r1 + up[1] * s * r1,
+                    at[2] + right[2] * c * r1 + up[2] * s * r1,
+                    1.0F, 0.88F, 0.66F, alpha * 0.50F * fade, 0, 0, 1);
+        }
+        if (impactAge < 22L) {
+            planeRing(pose, lines, at, right, up, 1.8D * sceneScale,
+                    1.0F, 1.0F, 1.0F, alpha * 0.55F * (1.0F - impactAge / 22.0F));
+        }
     }
 
     // ------------------------------------------------------------------ 图元

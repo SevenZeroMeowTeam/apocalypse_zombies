@@ -896,6 +896,34 @@ public final class OrbitalStrikeHighlighter {
                     strikeRadius * 0.93D * pulse, strikeRadius * 1.02D * pulse,
                     CYAN_R, CYAN_G, CYAN_B, 0.30F * glowAlpha, RING_SEGMENTS);
         }
+        // —— 上升冲击柱：三层圆柱壳先后鼓起（空气被整片顶起来），越高越淡
+        float rise = Mth.clamp(age / 32.0F, 0.0F, 1.0F);
+        if (rise < 1.0F) {
+            for (int i = 0; i < 3; i++) {
+                double rr = strikeRadius * (0.20D + 0.26D * i) * (0.55D + 0.55D * rise);
+                double h = (10.0D + 30.0D * rise) * (1.0D - i * 0.18D);
+                cylinderWall(buffer, matrix, cx, gy, cz, rr, h,
+                        CYAN_R, CYAN_G, CYAN_B,
+                        (0.20F - i * 0.045F) * (1.0F - rise), 22);
+            }
+        }
+        // —— 焦黑环：贴地一圈被烧黑的冷却带（叠在发光环下面）
+        if (glowAlpha > 0.01F) {
+            groundRing(buffer, matrix, cx, gy + 0.02D, cz,
+                    strikeRadius * 0.90D, strikeRadius * 1.26D,
+                    0.018F, 0.022F, 0.028F, 0.42F * glowAlpha, RING_SEGMENTS);
+        }
+        // —— 热浪：两圈细环交替呼吸，表现地面还在散热
+        if (age < 90.0F) {
+            float heat = 1.0F - age / 90.0F;
+            for (int i = 0; i < 2; i++) {
+                double breathe = 1.0D + 0.06D * Math.sin(age * 0.18D + i * Math.PI);
+                double r0 = strikeRadius * (0.55D + i * 0.22D) * breathe;
+                groundRing(buffer, matrix, cx, gy + 0.07D + i * 0.02D, cz,
+                        r0, r0 + 0.55D,
+                        0.85F, 0.95F, 1.0F, 0.18F * heat * (1.0F - i * 0.3F), RING_SEGMENTS);
+            }
+        }
     }
 
     // ---------------------------------------------------------------- 裂纹
