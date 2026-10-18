@@ -26,6 +26,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.texture.OverlayTexture;
@@ -122,11 +123,13 @@ public final class ClientEvents {
 
     // ------------------------------------------------------------------ title
 
-    /** 原版标题界面 → 末日风自定义界面（只换 TitleScreen，其它界面不动）。 */
+    /** 原版标题界面 → 末日风自定义界面；暂停界面 → 末日风自定义暂停界面（无 Game Menu 文字）。 */
     @SubscribeEvent
     public static void onScreenOpening(ScreenEvent.Opening event) {
         if (event.getNewScreen() instanceof TitleScreen) {
-            event.setNewScreen(new ApocalypseTitleScreen());
+            event.setNewScreen(new com.apocalypse.zombies.client.gui.ApocalypseTitleScreen());
+        } else if (event.getNewScreen() instanceof PauseScreen) {
+            event.setNewScreen(new com.apocalypse.zombies.client.gui.ApocalypsePauseScreen());
         }
     }
 

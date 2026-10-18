@@ -938,19 +938,23 @@ public final class OrbitalStrikeManager {
      */
     private static void enqueueDestroy(ServerLevel level, BlockPos center, int radius, boolean forceColumn) {
         String mode = Config.ORBITAL_STRIKE_DESTROY_MODE.get();
-        boolean column = forceColumn || (mode != null && "column".equalsIgnoreCase(mode.trim()));
+        String normalized = mode == null ? "" : mode.trim().toLowerCase(java.util.Locale.ROOT);
+        boolean column = forceColumn || "column".equals(normalized);
         if (column) {
             // 整列挖穿（参考 the-shooting-star 的招牌观感）：从建筑上限一路挖到虚空。
             // 这一模式不预计算列表 —— 半径 32 就有 160 万个位置，游标式推进省内存。
             DESTROY_QUEUE.add(new ColumnJob(level, center.getX(), center.getZ(), radius,
                     level.getMinBuildHeight(), level.getMaxBuildHeight() - 1));
-        } else {
+        } else if ("cube".equals(normalized)) {
             AABB box = new AABB(center).inflate(radius);
             // 游标推进，不预计算列表：半径 96 的立方体是 193³ ≈ 720 万格，
             // 一个 BlockPos 列表能吃掉一百多 MB 堆内存。
             DESTROY_QUEUE.add(new BoxJob(level,
                     Mth.floor(box.minX), Mth.floor(box.minY), Mth.floor(box.minZ),
                     Mth.floor(box.maxX), Mth.floor(box.maxY), Mth.floor(box.maxZ)));
+        } else {
+            // 默认 'layers'：一层一层往下削（地表 → 半径深），层间停顿可配置。
+            DESTROY_QUEUE.add(new LayerJob(level, center, radius));
         }
     }
 
@@ -1070,6 +1074,92 @@ public final class OrbitalStrikeManager {
         @Override
         public boolean done() {
             return y < minY;
+        }
+    }
+
+    /**
+     * 逐层下削模式（默认）：以落点为圆心、半径 {@code r} 的方形区域，<b>一层（同高度的一整片）
+     * 挖完之后停 {@code layer_ticks} tick，再往下一层</b> —— 激光不是一炮到底，而是看得见地
+     * 一层一层把弹坑磨深。深度与立方体模式一致（半径格）。
+     *
+     * <p>每层选区的格子数 (2r+1)² 超过每 tick 预算时，这一层会跨多个 tick 慢慢挖完，
+     * 但绝不在本层没挖净时先动下一层 —— 「层」是原子单位。</p>
+     */
+    private static final class LayerJob implements DestroyJob {
+        private final ServerLevel level;
+        private final int cx;
+        private final int cz;
+        private final int radius;
+        private final int topY;
+        private final int bottomY;
+        private final int layerTicks;
+        private int y;
+        private int xi;
+        private int zi;
+        /** 距下一层开始的剩余停顿 tick。 */
+        private int pause;
+
+        LayerJob(ServerLevel level, BlockPos center, int radius) {
+            this.level = level;
+            this.cx = center.getX();
+            this.cz = center.getZ();
+            this.radius = radius;
+            // 从地表上一层开始（那一层几乎全是空气，扫过去很快），一直削到半径深度。
+            this.topY = Math.min(level.getMaxBuildHeight() - 1, center.getY() + 1);
+            this.bottomY = Math.max(level.getMinBuildHeight(), center.getY() - radius);
+            this.layerTicks = Math.max(1, Config.ORBITAL_STRIKE_LAYER_TICKS.get());
+            this.y = topY;
+            this.xi = -radius;
+            this.zi = -radius;
+        }
+
+        @Override
+        public int step(int budget) {
+            if (pause > 0) {
+                pause--;
+                return 0;
+            }
+            int processed = 0;
+            while (processed < budget && !done()) {
+                destroyOne(level, new BlockPos(cx + xi, y, cz + zi));
+                processed++;
+                zi++;
+                if (zi > radius) {
+                    zi = -radius;
+                    xi++;
+                }
+                if (xi > radius) {
+                    // 这一层挖净了：火花 + 闷响，然后停 layerTicks 再下一层
+                    layerFinished();
+                    xi = -radius;
+                    zi = -radius;
+                    y--;
+                    pause = layerTicks;
+                    break;
+                }
+            }
+            return processed;
+        }
+
+        /** 每层收尾：中心一撮星火；每三层一声石头闷响，让「削下去」有节奏。 */
+        private void layerFinished() {
+            double gx = cx + 0.5D;
+            double gz = cz + 0.5D;
+            int sparks = Math.min(20, 6 + radius / 3);
+            level.sendParticles(ModParticles.ORBITAL_SPARK.get(),
+                    gx, y + 1.2D, gz, sparks,
+                    radius * 0.35D, 0.15D, radius * 0.35D, 0.03D);
+            int depth = topY - y;
+            if (depth > 0 && depth % 3 == 0) {
+                BlockPos at = new BlockPos(cx, y, cz);
+                level.playSound(null, at, SoundEvents.STONE_BREAK, SoundSource.BLOCKS, 1.6F, 0.55F);
+                level.playSound(null, at, SoundEvents.LAVA_EXTINGUISH, SoundSource.BLOCKS, 0.35F, 0.5F);
+            }
+        }
+
+        @Override
+        public boolean done() {
+            return y < bottomY;
         }
     }
 

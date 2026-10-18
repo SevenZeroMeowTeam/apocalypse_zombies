@@ -98,9 +98,10 @@ public final class DoomMenuTheme {
             return false;                                   // 原版标题（正常会被换成 ApocalypseTitleScreen）
         }
         if (screen instanceof ApocalypseTitleScreen
+                || screen instanceof ApocalypsePauseScreen
                 || screen instanceof ApocalypseConfigScreen
                 || screen instanceof CatGirlTradeScreen) {
-            return false;                                   // 本模组自绘界面
+            return false;                                   // 本模组自绘界面（自己铺背景/按钮）
         }
         if (screen instanceof AbstractContainerScreen) {
             return false;                                   // 背包/箱子/合成台等容器
