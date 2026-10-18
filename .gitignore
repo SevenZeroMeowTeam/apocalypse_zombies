@@ -54,3 +54,8 @@ __pycache__/
 /朋友的酒.ogg
 
 # 注意：gradle/wrapper/gradle-wrapper.jar 必须进仓库 —— CI 靠它启动 Gradle。
+
+# ===== 本机参考图（用户截图/参考素材，不进仓库）=====
+/*.png
+/*.jfif
+/*.jpg

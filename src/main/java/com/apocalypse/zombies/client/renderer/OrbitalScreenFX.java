@@ -392,6 +392,55 @@ public final class OrbitalScreenFX {
     }
 
     /**
+     * 穿大气层转场：升空时屏幕边缘泛蓝 + 竖直速度线；返回时一层暖蓝闪光。
+     * 画在所有 HUD/黑边之前（最底层），不抢火控读数。
+     */
+    public static void renderSpaceTransition(GuiGraphics graphics, Minecraft minecraft, float partialTick) {
+        if (!Config.ORBITAL_STRIKE_CINEMATIC.get() || !OrbitalStrikeClientState.isActive()) {
+            return;
+        }
+        if (minecraft.options.hideGui || minecraft.player == null) {
+            return;
+        }
+        long elapsed = OrbitalStrikeClientState.elapsed();
+        int lock = OrbitalStrikeClientState.lockTicks();
+        int fall = OrbitalStrikeClientState.fallTicks();
+        double start = lock - OrbitalCinematic.pullLeadTicks();
+        double impact = lock + fall;
+        int w = graphics.guiWidth();
+        int h = graphics.guiHeight();
+        // —— 升空：蓝色大气边缘 + 速度线，强度先增后减
+        if (elapsed >= start && elapsed <= lock + 4L) {
+            float p = Mth.clamp((float) ((elapsed - start) / Math.max(1.0D, lock - start)), 0.0F, 1.0F);
+            float a = (float) Math.sin(p * Math.PI) * 0.34F;
+            int edge = ((int) (a * 255.0F) << 24) | 0x6FC7FF;
+            int band = (int) (h * 0.20F);
+            graphics.fill(0, 0, w, band, edge);
+            graphics.fill(0, h - band, w, h, edge);
+            graphics.fill(0, 0, w, h, ((int) (a * 0.30F * 255.0F) << 24) | 0x3A7FBF);
+            long t = minecraft.level == null ? 0L : minecraft.level.getGameTime();
+            int streak = ((int) (a * 150.0F) << 24) | 0xCFEFFF;
+            for (int i = 0; i < 36; i++) {
+                int x = (int) ((i * 97L + t * 3L) % Math.max(1, w));
+                int len = 24 + (i * 13) % 56;
+                int y = (int) ((i * 211L + t * 7L) % (h + len)) - len;
+                graphics.fill(x, y, x + 1, y + len, streak);
+            }
+        }
+        // —— 返回：进入大气层的暖色闪光，快速衰减
+        double entry = impact + OrbitalCinematic.spaceHoldTicks();
+        if (elapsed >= entry - 4.0D && elapsed <= entry + 22.0D) {
+            float q = Mth.clamp((float) ((elapsed - (entry - 4.0D)) / 26.0F), 0.0F, 1.0F);
+            float a = (1.0F - q) * 0.42F;
+            graphics.fill(0, 0, w, h, ((int) (a * 255.0F) << 24) | 0xFFB36B);
+            int edge = ((int) (a * 0.8F * 255.0F) << 24) | 0xFFD9A8;
+            int band = (int) (h * 0.16F);
+            graphics.fill(0, 0, w, band, edge);
+            graphics.fill(0, h - band, w, h, edge);
+        }
+    }
+
+    /**
      * 演出黑边：随「见证机位」权重升起的上下黑条（宽银幕）。参考 mod 的过场感来源 ——
      * 画面被压成一条横幅，观众的注意力自动聚焦到中间那一击。
      *

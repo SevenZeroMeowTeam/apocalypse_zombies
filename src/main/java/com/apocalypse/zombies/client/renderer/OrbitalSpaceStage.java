@@ -131,7 +131,8 @@ public final class OrbitalSpaceStage {
         drawDome(quads, matrix, eye, fwd, right, up, radius, alpha);
         drawMilkyWay(pose, lines, eye, fwd, right, up, radius * 0.97D, alpha, time);
         drawNebulae(quads, matrix, eye, fwd, right, up, radius * 0.95D, alpha, time);
-        drawGalaxy(pose, lines, eye, fwd, right, up, radius * 0.93D, alpha, time);
+        drawGalaxy(pose, lines, quads, matrix, eye, fwd, right, up, radius * 0.93D, alpha, time);
+        drawDistantGalaxies(pose, lines, eye, fwd, right, up, radius * 0.94D, alpha);
         drawStars(pose, lines, eye, fwd, right, up, radius * 0.99D, alpha, time);
         drawShootingStars(pose, lines, eye, fwd, right, up, radius * 0.98D, alpha, time);
     }
@@ -196,70 +197,147 @@ public final class OrbitalSpaceStage {
         }
     }
 
-    /** 三团彩色星云：几十个小而淡的色块，叠出有层次的紫/青雾。 */
+    /**
+     * 彩色星云（按参考图）：四团 — 品红/橙金/冰蓝/青绿，每团由几十个小色块 +
+     * 几颗亮结叠成，位置固定在画面左侧与下方，和右侧的大星系形成冷暖对比。
+     */
     private static void drawNebulae(VertexConsumer quads, Matrix4f matrix, double[] eye,
                                     double[] fwd, double[] right, double[] up,
                                     double radius, float alpha, double time) {
         RandomSource random = RandomSource.create(0x4E4542554C4145L);
         double[][] centers = {
-                {-0.55D, 0.35D, 0.76D},
-                {0.62D, -0.18D, 0.76D},
-                {-0.10D, -0.62D, 0.78D}};
+                {0.30D, 0.55D, 0.62D},     // 左上：品红
+                {-0.55D, 0.30D, 0.55D},    // 左中：橙金
+                {-0.35D, -0.55D, 0.60D},   // 左下：冰蓝
+                {0.45D, -0.45D, 0.62D}};   // 右下：青绿
         float[][] palette = {
-                {0.14F, 0.22F, 0.52F},
-                {0.34F, 0.12F, 0.46F},
-                {0.10F, 0.34F, 0.44F}};
+                {0.62F, 0.16F, 0.46F},
+                {0.62F, 0.30F, 0.10F},
+                {0.16F, 0.34F, 0.62F},
+                {0.10F, 0.44F, 0.40F}};
         for (int c = 0; c < centers.length; c++) {
-            double[] center = norm(centers[c]);
-            for (int i = 0; i < 34; i++) {
+            double[] center = cameraDir(fwd, right, up, centers[c][0], centers[c][1], centers[c][2]);
+            for (int i = 0; i < 78; i++) {
                 double[] dir = norm(add(center, new double[]{
-                        (random.nextDouble() - 0.5D) * 0.55D,
-                        (random.nextDouble() - 0.5D) * 0.55D,
-                        (random.nextDouble() - 0.5D) * 0.55D}));
-                double[] p = add(eye, mul(dir, radius * (0.96D + random.nextDouble() * 0.06D)));
-                double size = (2.5D + random.nextDouble() * 6.5D) * sceneScale;
-                float breathe = 0.75F + 0.25F * (0.5F + 0.5F * (float) Math.sin(time * 0.03D + c * 2.0D + i));
+                        (random.nextDouble() - 0.5D) * 0.62D,
+                        (random.nextDouble() - 0.5D) * 0.62D,
+                        (random.nextDouble() - 0.5D) * 0.62D}));
+                double[] p = add(eye, mul(dir, radius * (0.94D + random.nextDouble() * 0.08D)));
+                double size = (2.0D + random.nextDouble() * 8.0D) * sceneScale;
+                float breathe = 0.70F + 0.30F * (0.5F + 0.5F * (float) Math.sin(time * 0.03D + c * 2.0D + i));
                 float[] col = palette[c];
+                // 少量更亮的核心色块
+                float boost = i % 17 == 0 ? 1.6F : 1.0F;
                 planeQuad(quads, matrix, p, right, up,
-                        -size, -size * 0.62D, size, size * 0.62D,
-                        col[0], col[1], col[2], alpha * (0.030F + 0.030F * random.nextFloat()) * breathe);
+                        -size, -size * 0.60D, size, size * 0.60D,
+                        col[0] * boost, col[1] * boost, col[2] * boost,
+                        alpha * (0.035F + 0.035F * random.nextFloat()) * breathe);
+            }
+            // 星云里的亮结（年轻星团）
+            for (int k = 0; k < 4; k++) {
+                double[] dir = norm(add(center, new double[]{
+                        (random.nextDouble() - 0.5D) * 0.30D,
+                        (random.nextDouble() - 0.5D) * 0.30D,
+                        (random.nextDouble() - 0.5D) * 0.30D}));
+                double[] p = add(eye, mul(dir, radius * 0.96D));
+                solidDisc(quads, matrix, p, right, up, (0.35D + random.nextDouble() * 0.75D) * sceneScale,
+                        1.0F, 0.95F, 1.0F, alpha * 0.55F);
             }
         }
     }
 
-    /** 一个很远的旋涡星系：两条椭圆盘 + 四段旋臂。 */
-    private static void drawGalaxy(PoseStack pose, VertexConsumer lines, double[] eye,
+    /**
+     * 大螺旋星系（按参考图）：暖白核心 + 四条对数螺旋臂 + 臂间星点 + 倾斜盘面，
+     * 固定在画面右上方；色温从核心的暖金过渡到外缘的冷白。
+     */
+    private static void drawGalaxy(PoseStack pose, VertexConsumer lines, VertexConsumer quads,
+                                   Matrix4f matrix, double[] eye,
                                    double[] fwd, double[] right, double[] up,
                                    double radius, float alpha, double time) {
-        double[] dir = norm(new double[]{0.72D, 0.46D, 0.52D});
-        double[] center = add(eye, mul(dir, radius));
-        double tilt = 0.55D;
-        planeEllipse(pose, lines, center, right, up, 4.6D * sceneScale, 1.35D * sceneScale,
-                tilt, 0.82F, 0.90F, 1.0F, alpha * 0.42F);
-        planeEllipse(pose, lines, center, right, up, 3.2D * sceneScale, 0.90D * sceneScale,
-                tilt, 0.74F, 0.84F, 1.0F, alpha * 0.26F);
+        double[] center = add(eye, mul(cameraDir(fwd, right, up, 0.72D, 0.52D, 0.16D), radius));
+        // 倾斜盘面的基：把 right/up 旋一下并压扁
+        double rot = 0.55D;
+        double[] gr = add(mul(right, Math.cos(rot)), mul(up, Math.sin(rot)));
+        double[] gu = mul(add(mul(up, Math.cos(rot)), mul(right, -Math.sin(rot))), 0.52D);
+        // 外层柔光
+        for (int i = 8; i >= 1; i--) {
+            double rr = 34.0D * i / 8.0D * sceneScale;
+            planeRingDirect(quads, matrix, center, gr, gu, rr,
+                    1.0F, 0.92F, 0.78F, alpha * 0.020F);
+            planeRingDirect(quads, matrix, center, gr, gu, rr * 0.98D,
+                    0.90F, 0.94F, 1.0F, alpha * 0.012F);
+        }
+        // 核心：暖白到金黄
+        solidDisc(quads, matrix, center, gr, gu, 5.2D * sceneScale,
+                1.0F, 0.94F, 0.80F, alpha * 0.85F);
+        solidDisc(quads, matrix, center, gr, gu, 3.0D * sceneScale,
+                1.0F, 0.98F, 0.90F, alpha * 0.95F);
+        planeRing(pose, lines, center, gr, gu, 5.4D * sceneScale,
+                1.0F, 0.90F, 0.70F, alpha * 0.35F);
+        // 四条对数螺旋臂
+        RandomSource random = RandomSource.create(0x47414C415859L);
         for (int arm = 0; arm < 4; arm++) {
-            double base = arm * Math.PI * 0.5D + time * 0.004D;
+            double base = arm * Math.PI * 0.5D + 0.35D;
             double prevX = 0.0D;
             double prevY = 0.0D;
-            for (int k = 1; k <= 7; k++) {
-                double t = k / 7.0D;
-                double rr = 4.2D * t * sceneScale;
-                double ang = base + t * 2.2D;
+            for (int k = 1; k <= 26; k++) {
+                double t = k / 26.0D;
+                double rr = (3.0D + 30.0D * t) * sceneScale;
+                double ang = base + t * 3.4D;
                 double x = Math.cos(ang) * rr;
-                double y = Math.sin(ang) * rr * 0.32D;
+                double y = Math.sin(ang) * rr * 0.55D;
                 if (k > 1) {
                     line(pose, lines,
-                            center[0] + right[0] * prevX + up[0] * prevY,
-                            center[1] + right[1] * prevX + up[1] * prevY,
-                            center[2] + right[2] * prevX + up[2] * prevY,
-                            center[0] + right[0] * x + up[0] * y,
-                            center[1] + right[1] * x + up[1] * y,
-                            center[2] + right[2] * x + up[2] * y,
-                            0.80F, 0.88F, 1.0F, alpha * 0.30F * (1.0F - (float) t * 0.55F), 0, 0, 1);
+                            center[0] + gr[0] * prevX + gu[0] * prevY,
+                            center[1] + gr[1] * prevX + gu[1] * prevY,
+                            center[2] + gr[2] * prevX + gu[2] * prevY,
+                            center[0] + gr[0] * x + gu[0] * y,
+                            center[1] + gr[1] * x + gu[1] * y,
+                            center[2] + gr[2] * x + gu[2] * y,
+                            0.92F, 0.92F, 1.0F, alpha * 0.16F * (1.0F - (float) t * 0.6F), 0, 0, 1);
+                }
+                // 臂上的星点：越往外越蓝
+                for (int dot = 0; dot < 3; dot++) {
+                    double jx = (random.nextDouble() - 0.5D) * 2.2D * sceneScale;
+                    double jy = (random.nextDouble() - 0.5D) * 1.4D * sceneScale;
+                    double sx = center[0] + gr[0] * (x + jx) + gu[0] * (y + jy);
+                    double sy = center[1] + gr[1] * (x + jx) + gu[1] * (y + jy);
+                    double sz = center[2] + gr[2] * (x + jx) + gu[2] * (y + jy);
+                    float warm = 1.0F - (float) t;
+                    float cr = 0.80F + 0.20F * warm;
+                    float cg = 0.86F + 0.10F * warm;
+                    float cb = 1.0F;
+                    float ca = alpha * (0.20F + 0.40F * random.nextFloat()) * (0.4F + 0.6F * warm);
+                    double ss = (0.18D + random.nextDouble() * 0.28D) * sceneScale;
+                    line(pose, lines, sx - ss, sy, sz, sx + ss, sy, sz, cr, cg, cb, ca, 0, 0, 1);
+                    line(pose, lines, sx, sy - ss, sz, sx, sy + ss, sz, cr, cg, cb, ca, 0, 0, 1);
                 }
                 prevX = x;
                 prevY = y;
+            }
+        }
+    }
+
+    /** 十几个遥远的星系：小椭圆盘 + 少数带旋臂，冷/暖色混杂。 */
+    private static void drawDistantGalaxies(PoseStack pose, VertexConsumer lines, double[] eye,
+                                            double[] fwd, double[] right, double[] up,
+                                            double radius, float alpha) {
+        RandomSource random = RandomSource.create(0x44495354414EL);
+        for (int i = 0; i < 14; i++) {
+            double[] dir = randomDirection(random);
+            double[] center = add(eye, mul(dir, radius));
+            double size = (1.0D + random.nextDouble() * 3.0D) * sceneScale;
+            double tilt = random.nextDouble() * Math.PI;
+            double flat = 0.35D + random.nextDouble() * 0.55D;
+            boolean warm = random.nextBoolean();
+            float r = warm ? 1.0F : 0.78F;
+            float g = warm ? 0.86F : 0.88F;
+            float b = warm ? 0.66F : 1.0F;
+            planeEllipse(pose, lines, center, right, up, size, size * flat, tilt,
+                    r, g, b, alpha * (0.14F + random.nextFloat() * 0.16F));
+            if (i % 4 == 0) {
+                planeEllipse(pose, lines, center, right, up, size * 0.55D, size * 0.30D, tilt + 0.6D,
+                        1.0F, 1.0F, 1.0F, alpha * 0.20F);
             }
         }
     }
@@ -294,6 +372,14 @@ public final class OrbitalSpaceStage {
             double s = (i % 37 == 0 ? 0.42D : 0.14D + random.nextDouble() * 0.14D) * sceneScale;
             line(pose, lines, p[0] - s, p[1], p[2], p[0] + s, p[1], p[2], r, g, b, a, 0, 0, 1);
             line(pose, lines, p[0], p[1] - s, p[2], p[0], p[1] + s, p[2], r, g, b, a, 0, 0, 1);
+            // 最亮的一批带四芒星（参考图里亮星的十字星芒）
+            if (i % 37 == 0) {
+                double spike = s * 6.0D;
+                line(pose, lines, p[0] - spike, p[1], p[2], p[0] + spike, p[1], p[2],
+                        r, g, b, a * 0.35F, 0, 0, 1);
+                line(pose, lines, p[0], p[1] - spike, p[2], p[0], p[1] + spike, p[2],
+                        r, g, b, a * 0.35F, 0, 0, 1);
+            }
         }
     }
 
@@ -317,6 +403,128 @@ public final class OrbitalSpaceStage {
                     1.0F, 1.0F, 1.0F, alpha * fade * 0.85F, 0, 0, 1);
             line(pose, lines, q[0], q[1] + 0.5D * sceneScale, q[2], p[0], p[1], p[2],
                     CYAN_R, CYAN_G, CYAN_B, alpha * fade * 0.40F, 0, 0, 1);
+        }
+    }
+
+    /** 实心圆环带（大气泛光用）：内径到外径之间整圈填色。 */
+    private static void glowRing(VertexConsumer quads, Matrix4f matrix, double[] c,
+                                 double[] right, double[] up,
+                                 double inner, double outer,
+                                 float r, float g, float b, float a) {
+        int segments = 56;
+        for (int i = 0; i < segments; i++) {
+            double a1 = i * Math.PI * 2.0D / segments;
+            double a2 = (i + 1) * Math.PI * 2.0D / segments;
+            double c1 = Math.cos(a1);
+            double s1 = Math.sin(a1);
+            double c2 = Math.cos(a2);
+            double s2 = Math.sin(a2);
+            quad(quads, matrix,
+                    c[0] + right[0] * c1 * inner + up[0] * s1 * inner,
+                    c[1] + right[1] * c1 * inner + up[1] * s1 * inner,
+                    c[2] + right[2] * c1 * inner + up[2] * s1 * inner,
+                    c[0] + right[0] * c2 * inner + up[0] * s2 * inner,
+                    c[1] + right[1] * c2 * inner + up[1] * s2 * inner,
+                    c[2] + right[2] * c2 * inner + up[2] * s2 * inner,
+                    c[0] + right[0] * c2 * outer + up[0] * s2 * outer,
+                    c[1] + right[1] * c2 * outer + up[1] * s2 * outer,
+                    c[2] + right[2] * c2 * outer + up[2] * s2 * outer,
+                    c[0] + right[0] * c1 * outer + up[0] * s1 * outer,
+                    c[1] + right[1] * c1 * outer + up[1] * s1 * outer,
+                    c[2] + right[2] * c1 * outer + up[2] * s1 * outer,
+                    r, g, b, a);
+        }
+    }
+
+    /**
+     * 不规则岩质天体：外轮廓按角度做噪声起伏，表面分面带明暗，上面压几个深色陨石坑。
+     * 旋转由 {@code spin} 驱动（轮廓噪声与明暗一起转，看起来是整块石头在翻滚）。
+     */
+    private static void renderRock(PoseStack pose, VertexConsumer quads, VertexConsumer lines, Matrix4f matrix,
+                                   double[] c, double[] right, double[] up,
+                                   double radius, double spin, float alpha) {
+        final int rings = 9;
+        final int segs = 24;
+        for (int ri = 0; ri < rings; ri++) {
+            double f0 = (double) ri / rings;
+            double f1 = (double) (ri + 1) / rings;
+            for (int si = 0; si < segs; si++) {
+                double a1 = Math.PI * 2.0D * si / segs;
+                double a2 = Math.PI * 2.0D * (si + 1) / segs;
+                double r1 = radius * noiseRadius(a1, spin);
+                double r2 = radius * noiseRadius(a2, spin);
+                // 明暗：光从左上来（参考图的高光在左上，右下是暗面）
+                double midA = (a1 + a2) * 0.5D;
+                double lit = Math.max(0.0D, Math.cos(midA - Math.PI * 0.78D));
+                float shade = (float) (0.22D + 0.78D * lit) * (0.80F + 0.20F * (float) f0);
+                float cr = 0.40F * shade;
+                float cg = 0.37F * shade;
+                float cb = 0.33F * shade;
+                // 表面凹凸：按格给一点点色差
+                double n = Math.sin(ri * 12.9898D + si * 78.233D + spin) * 43758.5453D;
+                n -= Math.floor(n);
+                float jitter = (float) n * 0.09F - 0.045F;
+                planeQuad4(quads, matrix, c, right, up,
+                        r1 * f0 * Math.cos(a1), r1 * f0 * Math.sin(a1),
+                        r1 * f0 * Math.cos(a2), r1 * f0 * Math.sin(a2),
+                        r2 * f1 * Math.cos(a2), r2 * f1 * Math.sin(a2),
+                        r2 * f1 * Math.cos(a1), r2 * f1 * Math.sin(a1),
+                        Math.max(0.02F, cr + jitter), Math.max(0.02F, cg + jitter), Math.max(0.02F, cb + jitter),
+                        alpha);
+            }
+        }
+        // 陨石坑：深色实心盘 + 亮边（位置固定在岩石坐标里，随旋转移动）
+        double[][] craters = {{-0.35D, 0.35D, 0.28D}, {0.30D, 0.12D, 0.20D},
+                {0.05D, -0.38D, 0.23D}, {-0.15D, 0.02D, 0.12D}};
+        for (double[] ck : craters) {
+            double ca = spin + 0.4D;
+            double x = (ck[0] * Math.cos(ca) - ck[1] * Math.sin(ca)) * radius;
+            double y = (ck[0] * Math.sin(ca) + ck[1] * Math.cos(ca)) * radius;
+            double[] cc = add(c, add(mul(right, x), mul(up, y)));
+            double crr = ck[2] * radius;
+            solidDisc(quads, matrix, cc, right, up, crr, 0.13F, 0.12F, 0.11F, alpha * 0.85F);
+            planeRing(pose, lines, cc, right, up, crr, 0.55F, 0.52F, 0.48F, alpha * 0.30F);
+        }
+    }
+
+    /** 岩石外轮廓噪声：低频 + 高频两层，保证是「圆但不规则」的岩块。 */
+    private static double noiseRadius(double a, double spin) {
+        return 0.84D + 0.12D * Math.sin(3.0D * a + spin) + 0.06D * Math.sin(7.0D * a - spin * 1.7D);
+    }
+
+    /** 相机基里的方向：w 为三个权重（前 / 右 / 上），归一化后返回世界方向。 */
+    private static double[] cameraDir(double[] fwd, double[] right, double[] up,
+                                      double wFwd, double wRight, double wUp) {
+        return norm(add(add(mul(fwd, wFwd), mul(right, wRight)), mul(up, wUp)));
+    }
+
+    /** 用实心四边形拼出的圆环（给星系柔光/星云亮结；不需要法线）。 */
+    private static void planeRingDirect(VertexConsumer quads, Matrix4f matrix, double[] c,
+                                        double[] right, double[] up, double radius,
+                                        float r, float g, float b, float a) {
+        int segments = 40;
+        for (int i = 0; i < segments; i++) {
+            double a1 = i * Math.PI * 2.0D / segments;
+            double a2 = (i + 1) * Math.PI * 2.0D / segments;
+            double r0 = Math.max(0.0D, radius - 0.55D * sceneScale);
+            double c1 = Math.cos(a1);
+            double s1 = Math.sin(a1);
+            double c2 = Math.cos(a2);
+            double s2 = Math.sin(a2);
+            quad(quads, matrix,
+                    c[0] + right[0] * c1 * r0 + up[0] * s1 * r0,
+                    c[1] + right[1] * c1 * r0 + up[1] * s1 * r0,
+                    c[2] + right[2] * c1 * r0 + up[2] * s1 * r0,
+                    c[0] + right[0] * c2 * r0 + up[0] * s2 * r0,
+                    c[1] + right[1] * c2 * r0 + up[1] * s2 * r0,
+                    c[2] + right[2] * c2 * r0 + up[2] * s2 * r0,
+                    c[0] + right[0] * c2 * radius + up[0] * s2 * radius,
+                    c[1] + right[1] * c2 * radius + up[1] * s2 * radius,
+                    c[2] + right[2] * c2 * radius + up[2] * s2 * radius,
+                    c[0] + right[0] * c1 * radius + up[0] * s1 * radius,
+                    c[1] + right[1] * c1 * radius + up[1] * s1 * radius,
+                    c[2] + right[2] * c1 * radius + up[2] * s1 * radius,
+                    r, g, b, a);
         }
     }
 
@@ -355,8 +563,8 @@ public final class OrbitalSpaceStage {
                                     Matrix4f matrix, double[] c, double[] fwd,
                                     double[] right, double[] up,
                                     double radius, float alpha, double time) {
-        final int rings = 22;
-        final int segs = 36;
+        final int rings = 30;
+        final int segs = 48;
         // 云、灯、晨昏线都比球面更靠近镜头一点：同一深度写两次会 z-fighting。
         double[] surface = add(c, mul(fwd, -0.30D));
         // 太阳方向极缓慢漂移：晨昏线在几秒里挪一点点，球面才有「在转」的错觉。
@@ -425,6 +633,14 @@ public final class OrbitalSpaceStage {
                 float cr = (float) Mth.lerp(day, nr, dr);
                 float cg = (float) Mth.lerp(day, ng, dg);
                 float cb = (float) Mth.lerp(day, nb, db);
+                // 海面镜面高光：太阳一侧的窄亮斑（参考图里那块发白的海面反光）
+                if (!ice && !land) {
+                    double sd = Math.max(0.0D, Math.cos(midA - sun - 0.28D));
+                    float spec = (float) Math.pow(sd, 22.0D) * 0.55F * (float) day;
+                    cr = Math.min(1.0F, cr + spec);
+                    cg = Math.min(1.0F, cg + spec);
+                    cb = Math.min(1.0F, cb + spec);
+                }
                 planeQuad4(quads, matrix, c, right, up,
                         r0 * Math.cos(a1), r0 * Math.sin(a1),
                         r0 * Math.cos(a2), r0 * Math.sin(a2),
@@ -448,7 +664,7 @@ public final class OrbitalSpaceStage {
 
         // 云带：几条贯穿圆盘的白色薄带（略带波动，避免像直尺画出来的）
         RandomSource cloudSeed = RandomSource.create(0x434C4F554453L);
-        for (int band = 0; band < 7; band++) {
+        for (int band = 0; band < 10; band++) {
             double y = (cloudSeed.nextDouble() * 2.0D - 1.0D) * 0.80D;
             double thickness = 0.035D + cloudSeed.nextDouble() * 0.045D;
             double wobble = cloudSeed.nextDouble() * Math.PI * 2.0D;
@@ -459,7 +675,8 @@ public final class OrbitalSpaceStage {
             for (int s = 0; s < steps; s++) {
                 double x0 = -half + 2.0D * half * s / steps;
                 double x1 = -half + 2.0D * half * (s + 1) / steps;
-                double yy = y + Math.sin(x0 * 3.0D + wobble) * 0.018D;
+                double yy = y + Math.sin(x0 * 3.0D + wobble) * 0.018D
+                        + Math.sin(x0 * 7.0D + wobble * 1.7D) * 0.010D;
                 if (x0 * x0 + y * y >= 0.985D) {
                     continue;
                 }
@@ -479,9 +696,15 @@ public final class OrbitalSpaceStage {
 
         // 大气层：三圈外晕，越外越淡（写实照片里那层薄蓝边）
         float breath = 0.85F + 0.15F * (0.5F + 0.5F * (float) Math.sin(time * 0.07D));
-        planeRing(pose, lines, c, right, up, radius * 1.012D, 0.42F, 0.76F, 1.0F, alpha * 0.55F * breath);
-        planeRing(pose, lines, c, right, up, radius * 1.045D, 0.34F, 0.64F, 0.98F, alpha * 0.22F * breath);
-        planeRing(pose, lines, c, right, up, radius * 1.085D, 0.26F, 0.50F, 0.92F, alpha * 0.09F * breath);
+        // 大气不是一条线，而是一圈从亮到淡的蓝色泛光（参考图最显眼的特征）
+        glowRing(quads, matrix, c, right, up, radius * 1.005D, radius * 1.030D,
+                0.42F, 0.76F, 1.0F, alpha * 0.30F * breath);
+        glowRing(quads, matrix, c, right, up, radius * 1.030D, radius * 1.060D,
+                0.32F, 0.62F, 0.98F, alpha * 0.16F * breath);
+        glowRing(quads, matrix, c, right, up, radius * 1.060D, radius * 1.105D,
+                0.24F, 0.48F, 0.92F, alpha * 0.075F * breath);
+        planeRing(pose, lines, c, right, up, radius * 1.006D,
+                0.55F, 0.82F, 1.0F, alpha * 0.55F * breath);
         // 昼夜线：一条很淡的终止符弧（帮助读出球面）
         int term = 20;
         double tr = radius * 1.004D;
@@ -513,7 +736,7 @@ public final class OrbitalSpaceStage {
                 ? Math.max(0.0D, 1.0D - OrbitalStrikeClientState.impactAge() / 8.0D) * 1.6D * sceneScale
                 : 0.0D;
         double[] station = add(stationBase, mul(dir, -recoil));
-        renderStation(pose, quads, lines, station, right, up, fwd, 1.25D * sceneScale, alpha, time);
+        renderDreadnought(pose, quads, lines, station, right, up, fwd, 1.15D * sceneScale, alpha, time);
 
         double[] muzzle = add(station, mul(dir, 9.0D));
         // 炮管：三条平行线（近似厚度）
@@ -529,22 +752,30 @@ public final class OrbitalSpaceStage {
         solidBox(quads, matrix, brake, right, up, fwd,
                 1.4D * sceneScale, 1.4D * sceneScale, 1.6D * sceneScale,
                 0.44F, 0.50F, 0.56F, alpha);
-        planeRing(pose, lines, muzzle, right, up, 2.6D, CYAN_R, CYAN_G, CYAN_B, alpha * 0.45F);
+        planeRing(pose, lines, muzzle, right, up, 2.9D, 1.0F, 0.62F, 0.22F, alpha * 0.55F);
+        planeRing(pose, lines, brake, right, up, 2.2D, 1.0F, 0.82F, 0.45F, alpha * 0.30F);
         float charge = Mth.clamp((float) OrbitalStrikeClientState.lockProgress(), 0.0F, 1.0F);
         if (phase < 0.999D) {
-            planeRing(pose, lines, muzzle, right, up, 3.4D - 1.2D * charge,
-                    1.0F, 1.0F, 1.0F, alpha * (0.16F + 0.34F * charge));
+            planeRing(pose, lines, muzzle, right, up, 3.8D - 1.4D * charge,
+                    1.0F, 0.55F, 0.18F, alpha * (0.18F + 0.38F * charge));
         }
 
         double[] contact = sub(earth, mul(dir, earthR * 0.94D));
         double[] slug = lerp3(muzzle, contact, smooth01(phase));
         if (phase > 0.01D) {
             // 弹体 + 尾焰
-            dot3(pose, lines, slug, 0.55D, 1.0F, 1.0F, 1.0F, alpha * 0.95F);
+            dot3(pose, lines, slug, 0.65D, 1.0F, 0.92F, 0.75F, alpha * 0.98F);
+            // 橙白高热弹芯：一条粗光束从炮口连到弹体（参考图里的橙色能量束）
+            line(pose, lines, muzzle[0], muzzle[1], muzzle[2], slug[0], slug[1], slug[2],
+                    1.0F, 0.58F, 0.18F, alpha * 0.75F * (float) phase, 0, 0, 1);
+            line(pose, lines,
+                    muzzle[0] - right[0] * 0.5D, muzzle[1] - right[1] * 0.5D, muzzle[2] - right[2] * 0.5D,
+                    slug[0] - right[0] * 0.5D, slug[1] - right[1] * 0.5D, slug[2] - right[2] * 0.5D,
+                    1.0F, 0.86F, 0.55F, alpha * 0.55F * (float) phase, 0, 0, 1);
             for (int i = 1; i <= 9; i++) {
                 double[] t = sub(slug, mul(dir, i * 2.4D));
                 double rr = Math.max(0.10D, 1.0D - i * 0.10D);
-                planeRing(pose, lines, t, right, up, rr, CYAN_R, CYAN_G, CYAN_B,
+                planeRing(pose, lines, t, right, up, rr, 1.0F, 0.58F, 0.20F,
                         alpha * (0.55F - i * 0.05F) * (float) phase);
             }
             double[] tail = sub(slug, mul(dir, 26.0D));
@@ -555,7 +786,7 @@ public final class OrbitalSpaceStage {
                 double[] p = sub(slug, mul(dir, d * 3.4D));
                 double rr = d % 2 == 0 ? 0.85D : 0.55D;
                 planeRing(pose, lines, p, right, up, rr,
-                        1.0F, 0.92F, 0.74F, alpha * 0.42F * (float) phase * (1.0F - d * 0.15F));
+                        1.0F, 0.70F, 0.32F, alpha * 0.50F * (float) phase * (1.0F - d * 0.15F));
             }
         }
         if (phase >= 0.999F) {
@@ -791,20 +1022,9 @@ public final class OrbitalSpaceStage {
         double[] contact = sub(earth, mul(dir, earthR * 0.92D));
         double t = smooth01(fall);
         double[] pos = lerp3(start, contact, t);
-        // 岩质本体：几块大小不一的小方体拼出不规则轮廓；整块岩石缓慢翻滚
-        double r = 3.2D * sceneScale;
-        double spin = time * 0.055D;
-        double cspin = Math.cos(spin);
-        double sspin = Math.sin(spin);
-        double[] spinR = add(mul(right, cspin), mul(up, sspin));
-        double[] spinU = add(mul(up, cspin), mul(right, -sspin));
-        camBox(pose, lines, pos, spinR, spinU, fwd, r, r * 0.85D, r, 0.55F, 0.42F, 0.34F, alpha * 0.95F);
-        double[] chunkA = add(pos, add(mul(spinR, r * 0.9D), mul(spinU, r * 0.5D)));
-        camBox(pose, lines, chunkA, spinR, spinU, fwd, r * 0.45D, r * 0.40D, r * 0.45D,
-                0.48F, 0.36F, 0.30F, alpha * 0.90F);
-        double[] chunkB = add(pos, add(mul(spinR, -r * 0.8D), mul(spinU, -r * 0.55D)));
-        camBox(pose, lines, chunkB, spinR, spinU, fwd, r * 0.35D, r * 0.32D, r * 0.35D,
-                0.42F, 0.32F, 0.27F, alpha * 0.85F);
+        // 岩质本体：不规则多面体 + 陨石坑，缓慢翻滚（按参考图的灰色石质小行星）
+        double r = 5.2D * sceneScale;
+        renderRock(pose, quads, lines, matrix, pos, right, up, r, time * 0.30D, alpha);
         // 尾焰：一串向后的火环 + 一条火线，越靠近地球越亮
         double heat = 0.55D + 0.45D * t;
         for (int i = 1; i <= 11; i++) {
@@ -875,70 +1095,145 @@ public final class OrbitalSpaceStage {
     // ------------------------------------------------------------------ 轨道站
 
     /**
-     * 实体卫星：金色多层隔热膜舱体 + 设备平台 + 两侧桁架 + 深蓝太阳能电池翼
-     * （带电池片网格）+ 白色抛物面天线 + 天线杆 + 导航灯。
+     * 实体卫星（按参考图重做）：金色隔热膜舱体 + 朝镜头的大白色抛物面天线 +
+     * 两侧各三片深蓝太阳能翼（金色边框、电池片网格）+ 顶部仪器 + 底部推进器。
      *
-     * <p>全部由实心小方体（六面填充、分面向光）与实心圆盘拼成 —— 不再是一圈线框。
-     * 只有电池片网格与灯是线。</p>
+     * <p>参考图里的比例：天线几乎和舱体一样大、太阳翼展开宽度约舱体的 6 倍、
+     * 舱体表面是起皱的金色隔热膜。这里用实心方体拼出这些体块，网格与灯走线。</p>
      */
     private static void renderStation(PoseStack pose, VertexConsumer quads, VertexConsumer lines,
                                       double[] center, double[] right, double[] up, double[] fwd,
                                       double scale, float alpha, double time) {
         double s = scale;
-        double[] top = add(center, mul(up, 1.25D * s));
-        // 舱体：金色隔热膜（微暖的金黄）
+        // —— 金色隔热膜舱体
         solidBox(quads, matrixOf(pose), center, right, up, fwd,
-                1.5D * s, 1.1D * s, 1.2D * s, 0.58F, 0.50F, 0.34F, alpha);
-        // 顶部设备平台（浅灰）
-        solidBox(quads, matrixOf(pose), top, right, up, fwd,
-                1.05D * s, 0.16D * s, 0.85D * s, 0.70F, 0.74F, 0.78F, alpha);
+                1.45D * s, 1.55D * s, 1.15D * s, 0.66F, 0.54F, 0.26F, alpha);
+        // 朝镜头的白色仪器面板
+        solidBox(quads, matrixOf(pose), add(center, mul(fwd, -1.20D * s)), right, up, fwd,
+                1.05D * s, 1.15D * s, 0.10D * s, 0.82F, 0.84F, 0.86F, alpha);
+        // 顶部仪器：三个圆柱状组件（小方体 + 顶盖）
+        for (int i = -1; i <= 1; i++) {
+            double[] inst = add(center, add(mul(up, 1.85D * s), mul(right, i * 0.55D * s)));
+            solidBox(quads, matrixOf(pose), inst, right, up, fwd,
+                    0.26D * s, 0.36D * s, 0.26D * s, 0.62F, 0.64F, 0.66F, alpha);
+            solidBox(quads, matrixOf(pose), add(inst, mul(up, 0.40D * s)), right, up, fwd,
+                    0.30D * s, 0.05D * s, 0.30D * s, 0.76F, 0.78F, 0.80F, alpha);
+        }
+        // 底部推进器：两个黑喷口 + 橙色余晖
         for (int side = -1; side <= 1; side += 2) {
-            // 桁架
-            double[] arm = add(center, mul(right, side * 3.4D * s));
+            double[] nozzle = add(center, add(mul(up, -1.95D * s), mul(right, side * 0.65D * s)));
+            solidBox(quads, matrixOf(pose), nozzle, right, up, fwd,
+                    0.30D * s, 0.38D * s, 0.30D * s, 0.12F, 0.13F, 0.15F, alpha);
+            planeRing(pose, lines, add(nozzle, mul(up, -0.42D * s)), right, up, 0.22D * s,
+                    1.0F, 0.60F, 0.20F, alpha * 0.55F);
+        }
+        // —— 两侧太阳能翼：每侧三片，向外展开
+        for (int side = -1; side <= 1; side += 2) {
+            double[] arm = add(center, mul(right, side * 3.10D * s));
             solidBox(quads, matrixOf(pose), arm, right, up, fwd,
-                    1.9D * s, 0.15D * s, 0.28D * s, 0.55F, 0.59F, 0.63F, alpha);
-            // 太阳能翼：先铺浅灰边框，再压深蓝电池片（电池片略厚，边缘露出框）
-            double[] panel = add(center, mul(right, side * 6.8D * s));
-            solidBox(quads, matrixOf(pose), panel, right, up, fwd,
-                    1.78D * s, 0.085D * s, 2.48D * s, 0.60F, 0.65F, 0.70F, alpha);
-            solidBox(quads, matrixOf(pose), panel, right, up, fwd,
-                    1.60D * s, 0.115D * s, 2.30D * s, 0.055F, 0.11F, 0.26F, alpha);
-            // 电池片网格（贴在翼面上方一点点，避免与面共面）
-            double[] gridBase = add(panel, mul(up, 0.125D * s));
-            for (int g = -1; g <= 1; g++) {
-                double off = g * 0.80D * s;
-                double[] a = add(gridBase, mul(right, off));
-                line(pose, lines,
-                        a[0] - fwd[0] * 2.25D * s, a[1] - fwd[1] * 2.25D * s, a[2] - fwd[2] * 2.25D * s,
-                        a[0] + fwd[0] * 2.25D * s, a[1] + fwd[1] * 2.25D * s, a[2] + fwd[2] * 2.25D * s,
-                        0.42F, 0.62F, 0.82F, alpha * 0.55F, 0, 0, 1);
-            }
-            for (int g = -1; g <= 1; g++) {
-                double off = g * 1.10D * s;
-                double[] a = add(gridBase, mul(fwd, off));
-                line(pose, lines,
-                        a[0] - right[0] * 1.55D * s, a[1] - right[1] * 1.55D * s, a[2] - right[2] * 1.55D * s,
-                        a[0] + right[0] * 1.55D * s, a[1] + right[1] * 1.55D * s, a[2] + right[2] * 1.55D * s,
-                        0.42F, 0.62F, 0.82F, alpha * 0.45F, 0, 0, 1);
+                    1.55D * s, 0.12D * s, 0.24D * s, 0.55F, 0.48F, 0.28F, alpha);
+            for (int k = 0; k < 3; k++) {
+                double[] panel = add(center, mul(right, side * (4.85D + k * 2.95D) * s));
+                // 金色边框
+                solidBox(quads, matrixOf(pose), panel, right, up, fwd,
+                        1.42D * s, 0.075D * s, 2.12D * s, 0.58F, 0.45F, 0.18F, alpha);
+                // 深蓝电池片
+                solidBox(quads, matrixOf(pose), panel, right, up, fwd,
+                        1.28D * s, 0.105D * s, 1.98D * s, 0.045F, 0.085F, 0.22F, alpha);
+                // 电池片网格（贴着翼面）
+                double[] gridBase = add(panel, mul(up, 0.115D * s));
+                for (int g = -1; g <= 1; g++) {
+                    double off = g * 0.62D * s;
+                    double[] a = add(gridBase, mul(right, off));
+                    line(pose, lines,
+                            a[0] - fwd[0] * 1.92D * s, a[1] - fwd[1] * 1.92D * s, a[2] - fwd[2] * 1.92D * s,
+                            a[0] + fwd[0] * 1.92D * s, a[1] + fwd[1] * 1.92D * s, a[2] + fwd[2] * 1.92D * s,
+                            0.36F, 0.55F, 0.80F, alpha * 0.60F, 0, 0, 1);
+                }
+                for (int g = -1; g <= 1; g++) {
+                    double off = g * 0.88D * s;
+                    double[] a = add(gridBase, mul(fwd, off));
+                    line(pose, lines,
+                            a[0] - right[0] * 1.22D * s, a[1] - right[1] * 1.22D * s, a[2] - right[2] * 1.22D * s,
+                            a[0] + right[0] * 1.22D * s, a[1] + right[1] * 1.22D * s, a[2] + right[2] * 1.22D * s,
+                            0.36F, 0.55F, 0.80F, alpha * 0.45F, 0, 0, 1);
+                }
             }
         }
-        // 抛物面天线：实心圆盘 + 亮边 + 馈源杆
-        double[] dish = add(center, mul(up, -1.85D * s));
-        solidDisc(quads, matrixOf(pose), dish, right, up, 1.05D * s,
-                0.80F, 0.84F, 0.88F, alpha);
-        planeRing(pose, lines, dish, right, up, 1.05D * s,
-                0.92F, 0.96F, 1.0F, alpha * 0.65F);
-        double[] feed = add(dish, mul(up, -0.55D * s));
+        // —— 大抛物面天线：朝镜头，几乎与舱体同高
+        double[] dish = add(center, add(mul(right, 2.55D * s), mul(fwd, 0.10D * s)));
+        solidDisc(quads, matrixOf(pose), dish, right, up, 2.00D * s,
+                0.84F, 0.86F, 0.88F, alpha);
+        planeRing(pose, lines, dish, right, up, 2.00D * s,
+                0.94F, 0.96F, 1.0F, alpha * 0.55F);
+        // 馈源：盘心伸出的支杆 + 小圆柱
+        double[] feed = add(dish, mul(fwd, -1.15D * s));
         line(pose, lines, dish[0], dish[1], dish[2], feed[0], feed[1], feed[2],
-                0.80F, 0.84F, 0.88F, alpha * 0.70F, 0, 0, 1);
-        planeRing(pose, lines, feed, right, up, 0.18D * s,
-                1.0F, 1.0F, 1.0F, alpha * 0.80F);
+                0.72F, 0.74F, 0.76F, alpha * 0.75F, 0, 0, 1);
+        solidBox(quads, matrixOf(pose), feed, right, up, fwd,
+                0.30D * s, 0.30D * s, 0.34D * s, 0.55F, 0.56F, 0.58F, alpha);
+        // 天线与舱体之间的两根支撑
+        double[] dishLeft = add(dish, mul(right, -1.6D * s));
+        double[] dishRight = add(dish, mul(right, 1.6D * s));
+        double[] hull = add(center, mul(right, 1.2D * s));
+        line(pose, lines, dishLeft[0], dishLeft[1], dishLeft[2], hull[0], hull[1], hull[2],
+                0.55F, 0.52F, 0.40F, alpha * 0.55F, 0, 0, 1);
+        line(pose, lines, dishRight[0], dishRight[1], dishRight[2], hull[0], hull[1], hull[2],
+                0.55F, 0.52F, 0.40F, alpha * 0.55F, 0, 0, 1);
         // 导航灯
         float blink = 0.35F + 0.65F * (0.5F + 0.5F * (float) Math.sin(time * 0.20D));
-        planeRing(pose, lines, add(top, mul(up, 0.22D * s)), right, up, 0.24D * s,
+        planeRing(pose, lines, add(center, mul(up, 2.32D * s)), right, up, 0.22D * s,
                 1.0F, 1.0F, 1.0F, alpha * blink);
-        planeRing(pose, lines, add(center, mul(right, -1.55D * s)), right, up, 0.16D * s,
+        planeRing(pose, lines, add(center, mul(right, -1.62D * s)), right, up, 0.16D * s,
                 1.0F, 0.35F, 0.28F, alpha * blink);
+    }
+
+    /**
+     * 天基炮（按参考图重做）：多模块战舰式炮台 —— 金属灰主舰体、橙色发光核心环、
+     * 侧面武器舱、背部散热板、尾部橙色推进焰。炮口朝地球方向。
+     */
+    private static void renderDreadnought(PoseStack pose, VertexConsumer quads, VertexConsumer lines,
+                                          double[] center, double[] right, double[] up, double[] fwd,
+                                          double scale, float alpha, double time) {
+        double s = scale;
+        // 主舰体
+        solidBox(quads, matrixOf(pose), center, right, up, fwd,
+                4.2D * s, 1.15D * s, 1.45D * s, 0.42F, 0.44F, 0.47F, alpha);
+        // 背部脊梁 + 散热板
+        solidBox(quads, matrixOf(pose), add(center, mul(up, 1.35D * s)), right, up, fwd,
+                3.2D * s, 0.32D * s, 1.0D * s, 0.50F, 0.52F, 0.55F, alpha);
+        for (int side = -1; side <= 1; side += 2) {
+            solidBox(quads, matrixOf(pose), add(center, add(mul(up, 1.75D * s), mul(right, side * 2.0D * s))),
+                    right, up, fwd, 1.0D * s, 0.08D * s, 1.6D * s, 0.66F, 0.68F, 0.70F, alpha);
+            // 侧面武器舱
+            solidBox(quads, matrixOf(pose), add(center, add(mul(right, side * 3.4D * s), mul(up, -0.25D * s))),
+                    right, up, fwd, 0.75D * s, 0.55D * s, 1.25D * s, 0.36F, 0.38F, 0.41F, alpha);
+            // 橙色能量条
+            line(pose, lines,
+                    center[0] + right[0] * side * 4.15D * s + up[0] * 0.55D * s,
+                    center[1] + right[1] * side * 4.15D * s + up[1] * 0.55D * s,
+                    center[2] + right[2] * side * 4.15D * s + up[2] * 0.55D * s,
+                    center[0] + right[0] * side * 4.15D * s - up[0] * 0.75D * s,
+                    center[1] + right[1] * side * 4.15D * s - up[1] * 0.75D * s,
+                    center[2] + right[2] * side * 4.15D * s - up[2] * 0.75D * s,
+                    1.0F, 0.56F, 0.18F, alpha * 0.65F, 0, 0, 1);
+        }
+        // 中央发光核心：橙色实心环 + 两圈环 + 脉动
+        float pulse = 0.6F + 0.4F * (0.5F + 0.5F * (float) Math.sin(time * 0.9D));
+        double[] core = add(center, mul(fwd, -1.55D * s));
+        solidDisc(quads, matrixOf(pose), core, right, up, 1.35D * s,
+                1.0F, 0.50F, 0.12F, alpha * 0.95F);
+        planeRing(pose, lines, core, right, up, 1.35D * s, 1.0F, 0.78F, 0.40F, alpha * 0.80F);
+        planeRing(pose, lines, core, right, up, (1.8D + 0.15D * pulse) * s, 1.0F, 0.55F, 0.16F, alpha * 0.45F);
+        planeRing(pose, lines, core, right, up, (2.5D + 0.25D * pulse) * s, 1.0F, 0.42F, 0.10F, alpha * 0.22F);
+        // 尾部推进焰（朝向镜头一侧的反方向）
+        for (int side = -1; side <= 1; side += 2) {
+            double[] thr = add(center, add(mul(fwd, 1.55D * s), mul(right, side * 1.5D * s)));
+            planeRing(pose, lines, thr, right, up, 0.45D * s, 1.0F, 0.55F, 0.16F, alpha * 0.50F);
+            double[] tail = add(thr, mul(fwd, 2.2D * s));
+            line(pose, lines, thr[0], thr[1], thr[2], tail[0], tail[1], tail[2],
+                    1.0F, 0.62F, 0.24F, alpha * 0.35F, 0, 0, 1);
+        }
     }
 
     /** 实心长方体：六个面都填色，按朝向给不同亮度，读出体积。 */

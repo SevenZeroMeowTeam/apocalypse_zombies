@@ -94,6 +94,11 @@ public final class OrbitalCinematic {
         return isSpaceShot() ? SOUL_OUT_TICKS : OUT_TICKS;
     }
 
+    /** 轨道展示段的长度（供屏幕转场计算「返回大气层」的时刻）。 */
+    public static int spaceHoldTicks() {
+        return holdTicks();
+    }
+
     // ------------------------------------------------------------------ 状态
 
     /** 演出期间记录玩家原本的视角模式，结束时原样还回去。null = 没在演出。 */

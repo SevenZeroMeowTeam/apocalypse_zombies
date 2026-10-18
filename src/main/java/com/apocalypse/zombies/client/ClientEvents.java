@@ -514,8 +514,10 @@ public final class ClientEvents {
     public static void onRenderGui(RenderGuiEvent.Post event) {
         Minecraft minecraft = Minecraft.getInstance();
 
-        // 轨道打击的屏幕级特效：演出黑边 → 能量泛光 → 落地白闪 → 火控 HUD。
-        // 黑边最先画（后面的角框/白闪都叠在黑边之上），泛光次之（更暗的一层），白闪最后（最亮）。
+        // 轨道打击的屏幕级特效：穿大气层转场 → 演出黑边 → 能量泛光 → 落地白闪 → 火控 HUD。
+        // 转场画在最底层（黑边/HUD 都压在上面），黑边最先画（后面的角框/白闪都叠在黑边之上），
+        // 泛光次之（更暗的一层），白闪最后（最亮）。
+        OrbitalScreenFX.renderSpaceTransition(event.getGuiGraphics(), minecraft, event.getPartialTick());
         OrbitalScreenFX.renderCinematicBars(event.getGuiGraphics(), minecraft);
         OrbitalScreenFX.renderImpactGlow(event.getGuiGraphics(), minecraft);
         OrbitalScreenFX.renderImpactFlash(event.getGuiGraphics(), minecraft);
