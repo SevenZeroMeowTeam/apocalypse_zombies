@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `3.10.2` |
+| **当前版本** | `3.11.0` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -278,6 +278,22 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 3.11.0 — 2026-10-19
+
+**P4 收尾：五张天基载体电影板全部重绘为原创程序化 2.5D 美术，参考照片不再进包。**
+
+- `carrier_cannon` / `carrier_lance` / `carrier_singularity` / `carrier_plasma` /
+  `carrier_asteroid` / `carrier_asteroid_cutout` 六张全部由 `tools/carrier_art.py` 生成：
+  块面化 Minecraft 科幻风（模块船体 / 桁架 / 太阳能板 / 炮管 / 加速环 / 引擎吊舱 / 不规则小行星），
+  背景为深空星野 + 方块化地球弧面。
+- 构图锚点对齐 `OrbitalCarrierPlates.spec()` 的炮口 / 焦点 / 引擎归一化坐标（±0.05），
+  充能、炮口、命中特效不会跑位；小行星 plate 与抠图使用同一不规则轮廓。
+- 新增 `tools/check_carrier_art.py`：尺寸 / 格式 / alpha 校验 + 每张与对应参考图的 dHash 距离门禁
+  （阈值 18，**实测最小 23**）+ cutout 不规则轮廓门禁（32 方向半径 max/min ≥ 1.10）。
+- 至此太空舞台 `earth` / `nebula` / 卫星三件套（3.10.0）与五张载体板（本版）全部原创；
+  参考照片只留在仓库根作设计对照，不随 jar 分发。
+- 贴图由程序化脚本可复现生成（无随机熵），两轮未改文件 sha256 一致。
 
 ### 3.10.2 — 2026-10-19
 
