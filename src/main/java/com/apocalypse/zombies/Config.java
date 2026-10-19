@@ -505,6 +505,10 @@ public final class Config {
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ORBITAL_STRIKE_PROTECTED;
     /** 演出机位：锁定末段把镜头拉远看完整一击（关掉就全程跟在玩家眼里）。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_CINEMATIC;
+    /** 4.0.1：太空段是否退回 3.11.0 的静态 2.5D 电影板（false = 程序化 3D 动态舞台）。 */
+    public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_STATIC_CARRIERS;
+    /** 4.0.2：屏幕级演出强度（速度线/冲击帧/色差/光晕/调色），0~100，0 = 全关。 */
+    public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_SCREEN_FX;
     /** 打击是否能把基岩一起抹掉（整列模式会一直挖到世界底层，注意可能出现虚空）。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_BREAK_BEDROCK;
     /** 新造/未选择的遥控器默认用哪种打击模式（cannon / lance / gravity / storm）。 */
@@ -1231,6 +1235,15 @@ public final class Config {
                         "collapsing crater (with a slow pan), then ease it back. Set false to keep",
                         "the camera on the player the whole time.")
                 .define("cinematic_camera", true);
+        ORBITAL_STRIKE_STATIC_CARRIERS = b.comment("[4.0.1] Use the old static 2.5D carrier plates instead of the",
+                        "procedural 3D stage. False (default) = all six strikes use the animated 3D",
+                        "ships (charging barrels, spinning radar, recoil, unfolding wings, flying",
+                        "projectiles). Set true only on very weak clients or to bring the plates back.")
+                .define("static_carrier_plates", false);
+        ORBITAL_STRIKE_SCREEN_FX = b.comment("[4.0.2] Screen-space cinematic layer strength, in percent (0~100).",
+                        "Drives radial speed lines, impact ink frames, chromatic edge split, lens flare",
+                        "and colour grading; 0 disables the whole layer (useful for motion sickness).")
+                .defineInRange("screen_fx", 100, 0, 100);
         ORBITAL_STRIKE_BREAK_BEDROCK = b.comment("Allow the strike to destroy bedrock (and only bedrock --",
                         "barriers, command blocks and block entities stay protected).",
                         "In column mode the beam digs all the way to the world floor, so this can",

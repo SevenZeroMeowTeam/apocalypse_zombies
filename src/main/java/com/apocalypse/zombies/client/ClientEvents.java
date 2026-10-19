@@ -583,9 +583,14 @@ public final class ClientEvents {
         // 转场画在最底层（黑边/HUD 都压在上面），黑边最先画（后面的角框/白闪都叠在黑边之上），
         // 泛光次之（更暗的一层），白闪最后（最亮）。
         OrbitalScreenFX.renderSpaceTransition(event.getGuiGraphics(), minecraft, event.getPartialTick());
+        OrbitalScreenFX.renderColorGrade(event.getGuiGraphics(), minecraft, event.getPartialTick());
+        OrbitalScreenFX.renderSpeedLines(event.getGuiGraphics(), minecraft, event.getPartialTick());
+        OrbitalScreenFX.renderLensFlare(event.getGuiGraphics(), minecraft, event.getPartialTick());
         OrbitalScreenFX.renderCinematicBars(event.getGuiGraphics(), minecraft);
         OrbitalScreenFX.renderImpactGlow(event.getGuiGraphics(), minecraft);
         OrbitalScreenFX.renderImpactFlash(event.getGuiGraphics(), minecraft);
+        OrbitalScreenFX.renderImpactFrame(event.getGuiGraphics(), minecraft);
+        OrbitalScreenFX.renderChromaticEdges(event.getGuiGraphics(), minecraft);
         OrbitalScreenFX.renderBlackRain(event.getGuiGraphics(), minecraft);
         OrbitalScreenFX.renderHud(event.getGuiGraphics(), minecraft, event.getPartialTick());
         OrbitalScreenFX.renderTargetingHud(event.getGuiGraphics(), minecraft, event.getPartialTick());

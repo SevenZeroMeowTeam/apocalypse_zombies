@@ -8,12 +8,15 @@ import com.apocalypse.zombies.orbital.engine.StrikeProtocol;
 import com.apocalypse.zombies.orbital.engine.StrikeProtocols;
 import com.apocalypse.zombies.item.OrbitalStrikeRemoteItem;
 import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
@@ -75,6 +78,21 @@ public final class OrbitalScreenFX {
     private static final int HUD_CYAN = 0x9BF7FF;
     /** 白热芯：所有「正在烧」的东西都用它提亮。 */
     private static final int CORE_WHITE = 0xEAFEFF;
+
+    // ---- v4.0.2 屏幕电影层贴图（程序化原创，见 tools/fx_art.py） ----
+    private static final ResourceLocation FX_SPEEDLINES = fxTex("fx_speedlines");
+    private static final ResourceLocation FX_FLARE = fxTex("fx_flare");
+    private static final ResourceLocation FX_INK = fxTex("fx_ink");
+
+    private static ResourceLocation fxTex(String name) {
+        return new ResourceLocation(com.apocalypse.zombies.ApocalypseZombies.MOD_ID,
+                "textures/environment/" + name + ".png");
+    }
+
+    /** 屏幕演出强度（0~1），配置 `[orbital_strike] screen_fx`。 */
+    private static float screenFx() {
+        return Mth.clamp(Config.ORBITAL_STRIKE_SCREEN_FX.get() / 100.0F, 0.0F, 1.0F);
+    }
 
     private OrbitalScreenFX() {
     }
@@ -484,6 +502,184 @@ public final class OrbitalScreenFX {
      * bloom 替代 —— 屏幕边缘叠亮色，观感是画面在发光）。与 {@link #renderImpactFlash}
      * 一起挂在 {@code RenderGuiEvent.Post}，泛光先画（更暗的一层），白闪后画（最亮）。
      */
+    // ------------------------------------------------------------------ v4.0.2 屏幕电影层
+
+    /**
+     * 径向速度线：锁定后段到弹体下落期间，四周向中心拉的白色细线（参考包“骑弹头”段的标志）。
+     *
+     * <p>贴图是一张程序化生成的 1024² RGBA（{@code tools/fx_art.py}），用旋转 + 缩放叠上去；
+     * 不用 shader / FBO，仍然是纯 GuiGraphics。</p>
+     */
+    public static void renderSpeedLines(GuiGraphics graphics, Minecraft minecraft, float partialTick) {
+        float fx = screenFx();
+        if (fx <= 0.0F || minecraft.player == null || minecraft.options.hideGui
+                || !OrbitalStrikeClientState.isActive()) {
+            return;
+        }
+        long elapsed = OrbitalStrikeClientState.elapsed();
+        int lock = OrbitalStrikeClientState.lockTicks();
+        int fall = OrbitalStrikeClientState.fallTicks();
+        double start = lock * 0.55D;
+        double end = lock + fall;
+        if (elapsed < start || elapsed > end) {
+            return;
+        }
+        float falloff = distanceFalloff(minecraft);
+        if (falloff <= 0.0F) {
+            return;
+        }
+        float in = Mth.clamp((float) ((elapsed - start) / Math.max(1.0D, lock * 0.45D)), 0.0F, 1.0F);
+        float out = Mth.clamp((float) ((end - elapsed) / Math.max(1.0D, fall * 0.6D)), 0.0F, 1.0F);
+        float a = 0.55F * in * out * falloff * fx;
+        if (a <= 0.01F) {
+            return;
+        }
+        int w = graphics.guiWidth();
+        int h = graphics.guiHeight();
+        int size = (int) (Math.max(w, h) * 1.45F);
+        float angle = (float) ((elapsed * 0.9D + partialTick) % 360.0D);
+        graphics.pose().pushPose();
+        graphics.pose().translate(w / 2.0F, h / 2.0F, 0.0F);
+        graphics.pose().mulPose(Axis.ZP.rotationDegrees(angle));
+        RenderSystem.setShaderColor(0.82F, 0.92F, 1.0F, a);
+        graphics.blit(FX_SPEEDLINES, -size / 2, -size / 2, 0, 0, size, size, size, size);
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        graphics.pose().popPose();
+    }
+
+    /** 镜头光晕：装置充能到开火前，在画面上方留一团横向 flare。 */
+    public static void renderLensFlare(GuiGraphics graphics, Minecraft minecraft, float partialTick) {
+        float fx = screenFx();
+        if (fx <= 0.0F || minecraft.player == null || minecraft.options.hideGui
+                || !OrbitalStrikeClientState.isActive()) {
+            return;
+        }
+        long elapsed = OrbitalStrikeClientState.elapsed();
+        int lock = OrbitalStrikeClientState.lockTicks();
+        int fall = OrbitalStrikeClientState.fallTicks();
+        if (elapsed > lock + fall + 16L) {
+            return;
+        }
+        float falloff = distanceFalloff(minecraft);
+        if (falloff <= 0.0F) {
+            return;
+        }
+        float charge = Mth.clamp((float) elapsed / Math.max(1, lock), 0.0F, 1.0F);
+        float a = 0.30F * charge * falloff * fx;
+        if (a <= 0.01F) {
+            return;
+        }
+        int w = graphics.guiWidth();
+        int h = graphics.guiHeight();
+        int size = (int) (Math.min(w, h) * 0.62F);
+        int x = (int) (w * 0.72D + Math.sin((elapsed + partialTick) * 0.04D) * 10.0D);
+        int y = (int) (h * 0.26D + Math.cos((elapsed + partialTick) * 0.03D) * 6.0D);
+        RenderSystem.setShaderColor(1.0F, 0.92F, 0.74F, a);
+        graphics.blit(FX_FLARE, x - size / 2, y - size / 2, 0, 0, size, size, size, size);
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+    }
+
+    /**
+     * 调色 + 暗角：太空段给整个画面压一层冷紫，屏幕四边再压暗（不用 shader，用多层 fill 近似）。
+     */
+    public static void renderColorGrade(GuiGraphics graphics, Minecraft minecraft, float partialTick) {
+        float fx = screenFx();
+        if (fx <= 0.0F || minecraft.player == null || minecraft.options.hideGui
+                || !OrbitalStrikeClientState.isActive()) {
+            return;
+        }
+        long elapsed = OrbitalStrikeClientState.elapsed();
+        if (elapsed < OrbitalCinematic.ascentStartTicks()) {
+            return;
+        }
+        float falloff = distanceFalloff(minecraft);
+        if (falloff <= 0.0F) {
+            return;
+        }
+        int w = graphics.guiWidth();
+        int h = graphics.guiHeight();
+        int tint = (int) (0.10F * falloff * fx * 255.0F);
+        if (tint > 0) {
+            graphics.fill(0, 0, w, h, (tint << 24) | 0x1A0A2A);
+        }
+        // 暗角：四边各叠 6 条渐隐带（fill 只能矩形，只能这么近似径向渐变）。
+        int bands = 6;
+        int bandH = Math.max(8, h / 14);
+        int bandW = Math.max(8, w / 16);
+        for (int i = 0; i < bands; i++) {
+            float k = (1.0F - i / (float) bands);
+            int a = (int) (0.09F * k * falloff * fx * 255.0F);
+            if (a <= 0) {
+                continue;
+            }
+            int c = (a << 24);
+            int inset = i * Math.max(4, h / 90);
+            graphics.fill(0, inset, w, inset + bandH / 2, c);
+            graphics.fill(0, h - inset - bandH / 2, w, h - inset, c);
+            graphics.fill(inset, 0, inset + bandW / 2, h, c);
+            graphics.fill(w - inset - bandW / 2, 0, w - inset, h, c);
+        }
+    }
+
+    /**
+     * 冲击帧：命中最初 4 tick 叠一张程序化墨迹框（四周放射状墨条 + 白裂纹），
+     * 配合白闪与震动，做出参考包那种“动画冲击帧”的停顿感。
+     */
+    public static void renderImpactFrame(GuiGraphics graphics, Minecraft minecraft) {
+        float fx = screenFx();
+        if (fx <= 0.0F || minecraft.player == null || minecraft.options.hideGui
+                || !OrbitalStrikeClientState.isActive()) {
+            return;
+        }
+        long age = OrbitalStrikeClientState.impactAge();
+        if (age < 0L || age >= 4L) {
+            return;
+        }
+        float falloff = distanceFalloff(minecraft);
+        if (falloff <= 0.0F) {
+            return;
+        }
+        float k = 1.0F - age / 4.0F;
+        float a = 0.92F * k * falloff * fx;
+        int w = graphics.guiWidth();
+        int h = graphics.guiHeight();
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, a);
+        graphics.blit(FX_INK, 0, 0, w, h, 0, 0, 1024, 1024, 1024, 1024);
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+    }
+
+    /**
+     * 色差边缘：命中后 10 tick 内，左右边缘红/蓝分离（参考包 chromatic aberration 的近似）。
+     */
+    public static void renderChromaticEdges(GuiGraphics graphics, Minecraft minecraft) {
+        float fx = screenFx();
+        if (fx <= 0.0F || minecraft.player == null || minecraft.options.hideGui
+                || !OrbitalStrikeClientState.isActive()) {
+            return;
+        }
+        long age = OrbitalStrikeClientState.impactAge();
+        if (age < 0L || age >= 10L) {
+            return;
+        }
+        float falloff = distanceFalloff(minecraft);
+        if (falloff <= 0.0F) {
+            return;
+        }
+        float k = 1.0F - age / 10.0F;
+        int w = graphics.guiWidth();
+        int h = graphics.guiHeight();
+        int alpha = (int) (0.22F * k * falloff * fx * 255.0F);
+        if (alpha <= 0) {
+            return;
+        }
+        int band = Math.max(6, (int) (w * 0.028F));
+        graphics.fill(0, 0, band, h, (alpha << 24) | 0xFF2030);
+        graphics.fill(w - band, 0, w, h, (alpha << 24) | 0x2040FF);
+        int bandV = Math.max(4, (int) (h * 0.018F));
+        int alphaV = alpha / 2;
+        graphics.fill(0, 0, w, bandV, (alphaV << 24) | 0x30FF60);
+    }
+
     public static void renderImpactGlow(GuiGraphics graphics, Minecraft minecraft) {
         if (!OrbitalStrikeClientState.isActive()) {
             return;

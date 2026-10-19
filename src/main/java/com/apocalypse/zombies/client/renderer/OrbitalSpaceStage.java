@@ -117,8 +117,10 @@ public final class OrbitalSpaceStage {
         }
 
         OrbitalStrikeMode mode = OrbitalStrikeClientState.mode();
-        // 五种打击：写实电影板（载体特写 → 发射 → 命中拉镜）。LASER 保留程序化卫星舞台。
-        if (OrbitalCarrierPlates.has(mode)) {
+        // 4.0.1 起默认走**程序化 3D 动态舞台**：舰体按 gameTime/相位充能、旋转、后坐、展开、发射；
+        // 旧 2.5D 静态电影板只在配置 static_carrier_plates=true 时作为回退。
+        if (com.apocalypse.zombies.Config.ORBITAL_STRIKE_STATIC_CARRIERS.get()
+                && OrbitalCarrierPlates.has(mode)) {
             OrbitalCarrierPlates.render(pose, lines, buffers, matrix, eye, fwd, right, up,
                     fade, time, mode, sceneScale);
             return;

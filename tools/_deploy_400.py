@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""4.0.0 出货脚本：构建 → 总门禁 → 探锁部署 → 回滚备份 → 事后校验。
+"""出货脚本：构建 → 总门禁 → 探锁部署 → 回滚备份 → 事后校验。
 
-沿用 `docs/wiki/07-出货与版本管理.md` 的出货约定（一版一脚本、判据看退出码）：
+版本号从 `gradle.properties` 读取（脚本不绑死某一版）：
 
     python tools/_deploy_400.py --build      # 先构建（build + cleanJar），再出货
     python tools/_deploy_400.py              # 用 build/libs 里已构建好的包
@@ -32,9 +32,16 @@ import time
 import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-VER = '4.0.0'
-PREV = '3.11.0'
-ACCEPT = (PREV, VER)
+
+
+def project_version():
+    with open(os.path.join(ROOT, 'gradle.properties'), encoding='utf-8') as fh:
+        m = re.search(r'^mod_version\s*=\s*([0-9][^\s#]*)', fh.read(), re.M)
+    return m.group(1) if m else '?'
+
+
+VER = project_version()
+ACCEPT = (VER,)
 PREFIX = 'apocalypse_zombies-'
 KEEP_BACKUPS = 3
 DEFAULT_DEV = r'F:\.minecraft\versions\1.20.1-Forge_47.4.27'
@@ -199,7 +206,7 @@ def main():
     report(len(existing) <= 1, 'mods/ 里至多一个本模组包', existing)
     if existing:
         cur = jar_version_from_name(existing[0])
-        report(cur in ACCEPT, '现有包是上一版或本版', cur)
+        report(bool(cur and cur != '?'), '现有包版本可识别（任意历史版本都允许覆盖）', cur)
     subdirs = [f for f in os.listdir(mods) if os.path.isdir(os.path.join(mods, f))]
     report(not subdirs, 'mods/ 无子目录', subdirs)
 
