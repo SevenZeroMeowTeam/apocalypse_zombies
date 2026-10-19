@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `4.1.3` |
+| **当前版本** | `5.0.0` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -278,6 +278,27 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 5.0.0 — 2026-10-20
+
+**参考 The Shooting Star 重做演出层：程序化天幕升级 + 合成器移植（含 6 种冲击帧）。**
+
+- **天幕 v5**（`shaders/core/orbit_sky`）：移植参考包 `star.glsl` 的三层星场（星等幂分布 +
+  各自频率闪烁 + 蓝白到橙金色温）、`blackbody`/`pointGlow` 太阳、深场星系螺旋、银河尘带 fbm；
+  新增**月球**（月海/环形山/自发光夜面轮廓）、地球加**海面镜面高光 + 冰盖**。
+- **修一个真 bug**：`GameTime` 之前 json 未声明、Java 未 set —— 星空/星云/云其实是**静止的**；
+  现在按秒驱动，星星闪烁、云与星云流动。
+- **合成器 v5**（`shaders/program/orbital` + 新增共享 `orbit_grade.glsl`）：移植参考包
+  `composite.fsh` 的 10 tap 径向变焦模糊、r² 增长色差、soft-screen bloom、自动曝光、
+  去饱和/对比分级、胶片颗粒，以及 **6 种冲击帧**（墨线/反相/绯红/墨线+青饰/半调网点/余烬线稿）。
+  冲击帧用**局部自适应阈值**（与周围 8 点亮度比较），白闪时形状依然成立；冲击帧中心落在
+  屏幕上真实落点，强度/变焦按协议分配。
+- 新增 `/orbitpost on|off` 运行时开关：画面异常时不必退出游戏即可切回纯 GUI 近似层。
+- 后处理仍默认关闭（`post_shader_experimental=false`，4.0.7 起的黑屏防线），
+  `/orbitpost on` 或配置打开即可体验。
+- 门禁新增：天幕/合成器 uniform 完整性、include 引用、冲击帧调用检查。
+- 设计文档：[`docs/skyfall-v5-reference-port.md`](docs/skyfall-v5-reference-port.md)
+  （参考包架构分析、移植清单、跳过项与回滚路径）。
 
 ### 4.1.3 — 2026-10-19
 

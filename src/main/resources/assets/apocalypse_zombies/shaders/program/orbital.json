@@ -16,6 +16,16 @@
     { "name": "Impact", "type": "float", "count": 1, "values": [ 0.0 ] },
     { "name": "Flash", "type": "float", "count": 1, "values": [ 0.0 ] },
     { "name": "Vignette", "type": "float", "count": 1, "values": [ 0.0 ] },
-    { "name": "Grade", "type": "float", "count": 3, "values": [ 0.0, 0.0, 0.0 ] }
+    { "name": "Grade", "type": "float", "count": 3, "values": [ 0.0, 0.0, 0.0 ] },
+    { "name": "ZoomBlur", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "Bloom", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "Desaturate", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "Contrast", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "Grain", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "ImpactMode", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "ImpactStrength", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "ImpactCenter", "type": "float", "count": 2, "values": [ 0.5, 0.5 ] },
+    { "name": "Exposure", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "Accent", "type": "float", "count": 3, "values": [ 1.0, 0.33, 0.06 ] }
   ]
 }

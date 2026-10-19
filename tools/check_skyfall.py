@@ -186,6 +186,16 @@ def main():
         report(path in names, '后处理程序文件存在 ' + shader)
     for shader in ('orbit_sky.json', 'orbit_sky.vsh', 'orbit_sky.fsh'):
         report(A + 'shaders/core/' + shader in names, '天幕 shader 存在 ' + shader)
+    report(A + 'shaders/program/orbit_grade.glsl' in names, '合成器共享 include 存在')
+    sky_json_path = A + 'shaders/core/orbit_sky.json'
+    if sky_json_path in names:
+        with zipfile.ZipFile(jar) as z:
+            sky = json.loads(z.read(sky_json_path))
+        sky_uniforms = {u.get('name') for u in sky.get('uniforms', [])}
+        sky_required = {'CamForward', 'CamRight', 'CamUp', 'TanHalf', 'Aspect', 'Alpha', 'GameTime'}
+        missing_sky = sorted(sky_required - sky_uniforms)
+        report(not missing_sky, '天幕声明全部 uniform（含 GameTime 动画驱动）',
+               missing_sky if missing_sky else 'ok')
     # v4.1.0：轨道卫星 GeckoLib 模型（生成器 tools/facility_model.py）
     report(A + 'geo/satellite.geo.json' in names, '卫星 geo 存在')
     report(A + 'textures/entity/facility/satellite.png' in names, '卫星贴图存在')
@@ -211,10 +221,18 @@ def main():
             shader_json = json.loads(z.read(program))
         declared = {u.get('name') for u in shader_json.get('uniforms', [])}
         required = {'Strength', 'Radial', 'Chroma', 'Impact', 'Flash', 'Vignette', 'Grade',
-                    'ProjMat', 'InSize', 'OutSize', 'Time'}
+                    'ProjMat', 'InSize', 'OutSize', 'Time',
+                    'ZoomBlur', 'Bloom', 'Desaturate', 'Contrast', 'Grain',
+                    'ImpactMode', 'ImpactStrength', 'ImpactCenter', 'Exposure', 'Accent'}
         missing_u = sorted(required - declared)
         report(not missing_u, 'orbital 程序声明全部 uniform', missing_u[:4] if missing_u else 'ok')
         report(shader_json.get('attributes') == ['Position'], 'orbital 程序声明 Position 属性')
+        fsh_path = A + 'shaders/program/orbital.fsh'
+        if fsh_path in names:
+            with zipfile.ZipFile(jar) as z:
+                fsh = z.read(fsh_path).decode('utf-8', 'replace')
+            report('#include "orbit_grade.glsl"' in fsh, 'orbital.fsh include 共享 include')
+            report('impactFrame' in fsh, 'orbital.fsh 调用冲击帧')
     config_java = os.path.join(ROOT, 'src', 'main', 'java', 'com', 'apocalypse', 'zombies', 'Config.java')
     with open(config_java, encoding='utf-8') as fh:
         source = fh.read()

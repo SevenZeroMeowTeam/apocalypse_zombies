@@ -8,11 +8,14 @@ import com.apocalypse.zombies.orbital.engine.StrikeProtocols;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EffectInstance;
 import net.minecraft.client.renderer.PostPass;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.joml.Matrix4f;
@@ -43,13 +46,30 @@ public final class OrbitalPostFx {
     private static int height = -1;
     private static boolean failed;
     private static boolean announced;
+    private static boolean runtimeOff;
 
     private OrbitalPostFx() {
     }
 
-    /** 后处理链是否可用（配置开且没失败）。GUI 近似层据此决定要不要让位。 */
+    /** 后处理链是否可用（配置开、没失败、没被运行时关掉）。GUI 近似层据此决定要不要让位。 */
     public static boolean active() {
-        return !failed && Config.ORBITAL_STRIKE_POST_FX.get();
+        return !failed && !runtimeOff && Config.ORBITAL_STRIKE_POST_FX.get();
+    }
+
+    /**
+     * 运行时开关（{@code /orbitpost on|off}）：v5.0 加，用来在「配置开但画面异常」时
+     * 不必退出游戏或改文件就能立刻切回 GUI 近似层。
+     */
+    public static void setRuntimeEnabled(boolean enabled) {
+        runtimeOff = !enabled;
+        if (runtimeOff) {
+            // 立刻回收 FBO，避免关掉之后还占一份显存
+            close();
+        }
+    }
+
+    public static boolean runtimeEnabled() {
+        return !runtimeOff;
     }
 
     /** 每帧在 GUI 之前调用：把当前主画面做一次后处理再画回去。 */
@@ -105,6 +125,69 @@ public final class OrbitalPostFx {
         float gradeR = ((rgb >> 16) & 0xFF) / 255.0F * 0.16F;
         float gradeG = ((rgb >> 8) & 0xFF) / 255.0F * 0.16F;
         float gradeB = (rgb & 0xFF) / 255.0F * 0.16F;
+        float accentR = ((rgb >> 16) & 0xFF) / 255.0F;
+        float accentG = ((rgb >> 8) & 0xFF) / 255.0F;
+        float accentB = (rgb & 0xFF) / 255.0F;
+
+        // v5.0：冲击帧样式按协议分配（6 种，见 orbit_grade.glsl 的 impactFrame）
+        float impactMode = switch (mode) {
+            case CANNON -> 0.0F;   // 墨线：动能弹的硬直
+            case LANCE -> 3.0F;    // 墨线 + 青饰：贯穿
+            case GRAVITY -> 5.0F;  // 余烬线稿：奇点灼烧
+            case STORM -> 4.0F;    // 半调网点：多点击碎的噪点
+            case LASER -> 1.0F;    // 反相：过曝
+            case PLANET -> 2.0F;   // 绯红：陨石
+        };
+        // 冲击帧强度：命中后 12 tick 从 1 衰减到 0
+        float frameStrength = impactAge >= 0L && impactAge < 12L
+                ? (1.0F - impactAge / 12.0F) * 0.95F : 0.0F;
+        // 变焦模糊：命中后同样 12 tick，制造「撞过来」的推镜
+        float zoomBlur = impactAge >= 0L && impactAge < 12L
+                ? (1.0F - impactAge / 12.0F) * 0.75F : 0.0F;
+        float desaturate = space * 0.35F + impact * 0.5F;
+        float contrast = impact * 0.55F;
+        float grain = 0.35F * Math.max(space, impact);
+        float exposure = 1.0F;
+        // 冲击帧中心：优先落在屏幕上的落点，取不到就居中
+        float centerX = 0.5F;
+        float centerY = 0.5F;
+        try {
+            BlockPos target = OrbitalStrikeClientState.target();
+            Camera camera = minecraft.gameRenderer.getMainCamera();
+            if (target != null) {
+                Vec3 to = Vec3.atCenterOf(target).subtract(camera.getPosition());
+                double dist = to.length();
+                if (dist > 0.01D) {
+                    double yaw = Math.toRadians(camera.getYRot());
+                    double pitch = Math.toRadians(camera.getXRot());
+                    // 相机三轴（Minecraft yaw：0 = 朝 +Z；右侧 = -X）
+                    double sx = -Math.sin(yaw) * Math.cos(pitch);
+                    double sy = -Math.sin(pitch);
+                    double sz = Math.cos(yaw) * Math.cos(pitch);
+                    double rx = -Math.cos(yaw);
+                    double rz = -Math.sin(yaw);
+                    double ux = -Math.sin(yaw) * Math.sin(pitch);
+                    double uy = Math.cos(pitch);
+                    double uz = Math.cos(yaw) * Math.sin(pitch);
+                    double nx = to.x / dist;
+                    double ny = to.y / dist;
+                    double nz = to.z / dist;
+                    double z = nx * sx + ny * sy + nz * sz;
+                    if (z > 0.05D) {
+                        double tanHalf = Math.tan(
+                                Math.toRadians(minecraft.options.fov().get()) * 0.5D);
+                        double aspect = (double) minecraft.getWindow().getWidth()
+                                / Math.max(1.0D, (double) minecraft.getWindow().getHeight());
+                        double px = (nx * rx + nz * rz) / (z * tanHalf * aspect);
+                        double py = (nx * ux + ny * uy + nz * uz) / (z * tanHalf);
+                        centerX = (float) Mth.clamp(0.5D + px * 0.5D, 0.0D, 1.0D);
+                        centerY = (float) Mth.clamp(0.5D - py * 0.5D, 0.0D, 1.0D);
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+            // 落点取不到就用屏幕中心，冲击帧照常
+        }
 
         try {
             EffectInstance fx = effectPass.getEffect();
@@ -115,6 +198,16 @@ public final class OrbitalPostFx {
             fx.safeGetUniform("Flash").set(flash);
             fx.safeGetUniform("Vignette").set(vignette);
             fx.safeGetUniform("Grade").set(gradeR, gradeG, gradeB);
+            fx.safeGetUniform("ZoomBlur").set(zoomBlur);
+            fx.safeGetUniform("Bloom").set(0.65F);
+            fx.safeGetUniform("Desaturate").set(desaturate);
+            fx.safeGetUniform("Contrast").set(contrast);
+            fx.safeGetUniform("Grain").set(grain);
+            fx.safeGetUniform("ImpactMode").set(impactMode);
+            fx.safeGetUniform("ImpactStrength").set(frameStrength);
+            fx.safeGetUniform("ImpactCenter").set(centerX, centerY);
+            fx.safeGetUniform("Exposure").set(exposure);
+            fx.safeGetUniform("Accent").set(accentR, accentG, accentB);
 
             // 关键：PostPass 画的是一个全屏四边形，默认的背面剔除会把整个画面剔掉
             // （GUI 前这个状态还留着世界渲染的 cull = on），结果是主目标被 clear 成黑。

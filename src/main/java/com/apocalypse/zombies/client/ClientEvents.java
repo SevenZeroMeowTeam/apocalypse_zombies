@@ -587,6 +587,28 @@ public final class ClientEvents {
      */
     @SubscribeEvent
     public static void onRegisterClientCommands(RegisterClientCommandsEvent event) {
+        // v5.0：后处理运行时开关。画面异常（黑屏/花屏）时不用退出游戏：
+        // /orbitpost off 立刻切回纯 GUI 近似层，/orbitpost on 再打开。
+        event.getDispatcher().register(Commands.literal("orbitpost")
+                .then(Commands.literal("on").executes(context -> {
+                    com.apocalypse.zombies.client.renderer.OrbitalPostFx.setRuntimeEnabled(true);
+                    context.getSource().sendSuccess(
+                            () -> Component.literal("轨道后处理：开"), false);
+                    return 1;
+                }))
+                .then(Commands.literal("off").executes(context -> {
+                    com.apocalypse.zombies.client.renderer.OrbitalPostFx.setRuntimeEnabled(false);
+                    context.getSource().sendSuccess(
+                            () -> Component.literal("轨道后处理：关（回退到 GUI 近似层）"), false);
+                    return 1;
+                }))
+                .executes(context -> {
+                    boolean on = com.apocalypse.zombies.client.renderer.OrbitalPostFx.runtimeEnabled();
+                    context.getSource().sendSuccess(() -> Component.literal(
+                            "轨道后处理当前：" + (on ? "开" : "关") + "（/orbitpost on|off）"), false);
+                    return 1;
+                }));
+
         event.getDispatcher().register(Commands.literal("orbitpreview")
                 .then(Commands.argument("mode", StringArgumentType.word())
                         .suggests((context, builder) -> {

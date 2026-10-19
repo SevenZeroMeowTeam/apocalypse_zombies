@@ -87,6 +87,10 @@ public final class OrbitSkyShader {
         shader.safeGetUniform("TanHalf").set(tanHalf);
         shader.safeGetUniform("Aspect").set(aspect);
         shader.safeGetUniform("Alpha").set(1.0F);
+        // v5.0：把真实世界时间喂进 shader（此前 json 未声明该 uniform、Java 也未 set，
+        // 星空/星云/云一直是静止的）。用秒，闪烁/流动的速率都按秒调。
+        float seconds = (minecraft.level.getGameTime() + event.getPartialTick()) / 20.0F;
+        shader.safeGetUniform("GameTime").set(seconds);
 
         RenderSystem.setShader(() -> shader);
         RenderSystem.disableDepthTest();
