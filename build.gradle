@@ -248,6 +248,11 @@ def cleanMeta = tasks.register('cleanMeta') {
     // 依赖 processResources：它才产出占位符已展开的 mods.toml；
     // 不写死 inputs.file，否则 clean 之后配置期就会因为文件不存在而失败。
     dependsOn 'processResources'
+    // 但**必须声明输入**：expandedToml 与版本号变了 cleanMeta 就得重跑。否则
+    // 升级版号后它会一直 UP-TO-DATE，cleanJar 里装的是上一次（甚至几个月前）的
+    // mods.toml —— 4.0.0 出货时实撞：clean 包版本停留在 1.1.103。
+    inputs.files(expandedToml)
+    inputs.property('modVersion', mod_version)
     outputs.dir(outDir)
     doLast {
         def dir = outDir.get().asFile
