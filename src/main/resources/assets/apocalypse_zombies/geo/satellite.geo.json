@@ -22,7 +22,6 @@
             0.0,
             0.0
           ],
-          "parent": null,
           "cubes": []
         },
         {
@@ -32,7 +31,6 @@
             0.0,
             0.0
           ],
-          "parent": "body",
           "cubes": [
             {
               "origin": [
@@ -552,7 +550,8 @@
                 }
               }
             }
-          ]
+          ],
+          "parent": "body"
         },
         {
           "name": "panel_front",
@@ -561,7 +560,6 @@
             16.0,
             -44.0
           ],
-          "parent": "body",
           "cubes": [
             {
               "origin": [
@@ -711,7 +709,8 @@
                 }
               }
             }
-          ]
+          ],
+          "parent": "body"
         },
         {
           "name": "dish_arm",
@@ -720,7 +719,6 @@
             14.0,
             -52.0
           ],
-          "parent": "body",
           "cubes": [
             {
               "origin": [
@@ -796,7 +794,8 @@
                 }
               }
             }
-          ]
+          ],
+          "parent": "body"
         },
         {
           "name": "dish",
@@ -805,7 +804,6 @@
             14.0,
             -60.0
           ],
-          "parent": "dish_arm",
           "cubes": [
             {
               "origin": [
@@ -1103,7 +1101,8 @@
                 }
               }
             }
-          ]
+          ],
+          "parent": "dish_arm"
         },
         {
           "name": "antenna",
@@ -1112,7 +1111,6 @@
             44.0,
             0.0
           ],
-          "parent": "body",
           "cubes": [
             {
               "origin": [
@@ -1262,7 +1260,8 @@
                 }
               }
             }
-          ]
+          ],
+          "parent": "body"
         },
         {
           "name": "engine",
@@ -1271,7 +1270,6 @@
             -14.0,
             34.0
           ],
-          "parent": "body",
           "cubes": [
             {
               "origin": [
@@ -1643,7 +1641,8 @@
                 }
               }
             }
-          ]
+          ],
+          "parent": "body"
         },
         {
           "name": "wing_l",
@@ -1652,7 +1651,6 @@
             14.0,
             0.0
           ],
-          "parent": "body",
           "cubes": [
             {
               "origin": [
@@ -2394,7 +2392,8 @@
                 }
               }
             }
-          ]
+          ],
+          "parent": "body"
         },
         {
           "name": "wing_r",
@@ -2403,7 +2402,6 @@
             14.0,
             0.0
           ],
-          "parent": "body",
           "cubes": [
             {
               "origin": [
@@ -3145,7 +3143,8 @@
                 }
               }
             }
-          ]
+          ],
+          "parent": "body"
         }
       ]
     }

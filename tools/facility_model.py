@@ -147,8 +147,12 @@ _ORDER = []
 
 def bone(name, pivot, parent=None):
     if name not in BONES:
-        BONES[name] = {'name': name, 'pivot': [float(v) for v in pivot],
-                       'parent': parent, 'cubes': []}
+        entry = {'name': name, 'pivot': [float(v) for v in pivot], 'cubes': []}
+        # Bedrock 格式：根骨骼不带 parent 键；带 parent: null 会让 GeckoLib 报
+        # "Expected parent to be a string, was null"（见 4.1.0 首版崩溃）
+        if parent is not None:
+            entry['parent'] = parent
+        BONES[name] = entry
         _ORDER.append(name)
     return name
 

@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `4.1.0` |
+| **当前版本** | `4.1.1` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -278,6 +278,18 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 4.1.1 — 2026-10-19
+
+**修复 4.1.0 启动崩溃（卫星模型根骨骼 parent=null）。**
+
+- 症状：标题界面文字全部变「□□□」豆腐块 / FATAL「Rendering overlay」。
+- 根因：`tools/facility_model.py` 给根骨骼 `body` 输出了 `"parent": null`，
+  Bedrock 格式要求根骨骼**不带 parent 键**；GeckoLib `Bone.deserializer` 读到
+  `null` 抛 `Expected parent to be a string, was null`，GeckoLib 启动时预加载
+  全部模型 → 异常打断标题渲染。
+- 修复：生成器改为「parent 非空才写该键」，重新生成 geo（根骨骼已无 parent 键，
+  0 个 null 残留）；`facility_model.py --check` PASS。
 
 ### 4.1.0 — 2026-10-19
 
