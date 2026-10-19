@@ -511,6 +511,8 @@ public final class Config {
     public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_SCREEN_FX;
     /** 4.0.3：是否启用轻量后处理 shader（径向模糊/色差/廉价 bloom/白闪/调色）。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_POST_FX;
+    /** v5.1：是否启用实体光柱 shader（移植参考包 star_beam 的四段体积渐变）。 */
+    public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_BEAM_ENABLED;
     /** 打击是否能把基岩一起抹掉（整列模式会一直挖到世界底层，注意可能出现虚空）。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_BREAK_BEDROCK;
     /** 新造/未选择的遥控器默认用哪种打击模式（cannon / lance / gravity / storm）。 */
@@ -1251,6 +1253,11 @@ public final class Config {
                         "关着时走 4.0.2 的纯 GUI 近似层（速度线/光晕/墨迹冲击帧），不会黑屏。",
                         "只有你愿意帮忙测 GLSL 时才打开；打开后若黑屏，改回 false 即可恢复。")
                 .define("post_shader_experimental", false);
+        ORBITAL_STRIKE_BEAM_ENABLED = b.comment("[5.1] Entity beam shader: the strike column drawn as a world-space",
+                        "cylinder with the reference pack's four-band volumetric gradient (heart / hot / body /",
+                        "deep), energy streaks, skin and haze. Applies to cinder / quarantine / black_rain.",
+                        "Falls back to the old line-and-ring beam automatically if the driver cannot compile it.")
+                .define("beam_shader", true);
         ORBITAL_STRIKE_BREAK_BEDROCK = b.comment("Allow the strike to destroy bedrock (and only bedrock --",
                         "barriers, command blocks and block entities stay protected).",
                         "In column mode the beam digs all the way to the world floor, so this can",

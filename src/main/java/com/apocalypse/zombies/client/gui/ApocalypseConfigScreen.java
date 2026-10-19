@@ -16,7 +16,7 @@ import net.minecraftforge.common.ForgeConfigSpec;
  * 模组配置界面（「模组列表 → 配置」按钮进来的那张，1.1.79）。
  *
  * <p>Forge 从 1.19 起删掉了内置的配置编辑器，所以这张界面是自己画的：直接读
- * {@link Config#values()}（声明顺序），按顶层段分组列出<b>全部 222 项</b>，
+ * {@link Config#values()}（声明顺序），按顶层段分组列出<b>全部 223 项</b>，
  * 改完点「完成」写回同一份 {@code config/apocalypse_zombies-common.toml}，
  * 也就是说 —— 图形界面和手改 TOML 是同一份配置，不存在两套。</p>
  *

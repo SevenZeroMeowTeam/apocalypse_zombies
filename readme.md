@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `5.0.0` |
+| **当前版本** | `5.1.0` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -278,6 +278,28 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 5.1.0 — 2026-10-20
+
+**实体光柱：移植参考包 {@code star_beam.fsh} 的四段体积渐变（世界空间圆柱版）。**
+
+- 新增 `shaders/core/orbit_beam.{json,vsh,fsh}` + [OrbitalBeam.java](src/main/java/com/apocalypse/zombies/client/renderer/OrbitalBeam.java)：
+  Java 每帧画一根**面向相机的圆柱 quad**（20 段，UV0 = 绕柱角/TAU × 沿柱高度），
+  片元着色器据此重建「面向相机程度」，算出移植自参考包的四段体积渐变
+  （deep → body → hot → heart）、fbm 绕柱能量条纹、边缘 skin、空气雾、上下端淡出。
+- **为什么不用参考包的屏幕空间深度重建**：那需要 `scenePosAt`/`skyAt` 的深度副本与
+  `depth_copy` 专 pass，在 Embeddium 下 FBO 黑屏风险高（4.0.3~4.0.6 的教训）；
+  圆柱 quad 版只用一个 `ShaderInstance`，不建 FBO、不换帧缓冲。
+- 三种协议各有一套柱体性格：
+  - **焚城**：锁定末段（最后 25%）出现细瞄准线，命中后 16 tick 全半径主柱 + 强能量条纹；
+  - **隔离**：锁定段引力柱随进度增强并在柱内升扫描环，落地后 20 tick 衰减；
+  - **黑雨**：只在命中后 14 tick，短而粗的冲击柱（对应「又大又浅的坑」）。
+- 柱体颜色取协议色（cinder 橙白 / quarantine 青 / black_rain 绯红），顶点色只做轻染色，
+  不压体积渐变。
+- 失败自愈：shader 编译失败或 GL 异常时只记一次 warn 并停用该层，退回原有线条/圆环渲染。
+- 新增配置 `[orbital_strike] beam_shader`（默认 true）；断层的矛、蜂群的巢荚、
+  黎明的光速束保持原有形态（它们本来就不是柱体）。
+- 配置总数 222 → 223。
 
 ### 5.0.0 — 2026-10-20
 

@@ -1,0 +1,22 @@
+{
+  "vertex": "apocalypse_zombies:orbit_beam",
+  "fragment": "apocalypse_zombies:orbit_beam",
+  "attributes": [ "Position", "UV0", "Color" ],
+  "samplers": [],
+  "uniforms": [
+    { "name": "ModelViewMat", "type": "matrix4x4", "count": 16,
+      "values": [1.0,0.0,0.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,0.0,0.0,1.0] },
+    { "name": "ProjMat", "type": "matrix4x4", "count": 16,
+      "values": [1.0,0.0,0.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,0.0,0.0,1.0] },
+    { "name": "ColorModulator", "type": "float", "count": 4, "values": [ 1.0, 1.0, 1.0, 1.0 ] },
+    { "name": "GameTime", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "Radius", "type": "float", "count": 1, "values": [ 1.0 ] },
+    { "name": "Strength", "type": "float", "count": 1, "values": [ 1.0 ] },
+    { "name": "Energy", "type": "float", "count": 1, "values": [ 1.0 ] },
+    { "name": "Haze", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "Core", "type": "float", "count": 3, "values": [ 1.0, 0.98, 0.95 ] },
+    { "name": "Body", "type": "float", "count": 3, "values": [ 1.0, 0.2, 0.12 ] },
+    { "name": "Deep", "type": "float", "count": 3, "values": [ 0.62, 0.0, 0.02 ] },
+    { "name": "Scanline", "type": "float", "count": 1, "values": [ 0.0 ] }
+  ]
+}

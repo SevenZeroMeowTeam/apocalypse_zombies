@@ -51,7 +51,7 @@ LANG_KEYS = [
     'skyfall.strike.busy',
 ]
 
-EXPECTED_CONFIGS = 222
+EXPECTED_CONFIGS = 223
 FAILS = []
 
 
@@ -187,6 +187,19 @@ def main():
     for shader in ('orbit_sky.json', 'orbit_sky.vsh', 'orbit_sky.fsh'):
         report(A + 'shaders/core/' + shader in names, '天幕 shader 存在 ' + shader)
     report(A + 'shaders/program/orbit_grade.glsl' in names, '合成器共享 include 存在')
+    for beam in ('orbit_beam.json', 'orbit_beam.vsh', 'orbit_beam.fsh'):
+        report(A + 'shaders/core/' + beam in names, '实体光柱 shader 存在 ' + beam)
+    beam_json_path = A + 'shaders/core/orbit_beam.json'
+    if beam_json_path in names:
+        with zipfile.ZipFile(jar) as z:
+            beam_json = json.loads(z.read(beam_json_path))
+        beam_uniforms = {u.get('name') for u in beam_json.get('uniforms', [])}
+        beam_required = {'ModelViewMat', 'ProjMat', 'ColorModulator', 'GameTime', 'Radius',
+                         'Strength', 'Energy', 'Haze', 'Core', 'Body', 'Deep', 'Scanline'}
+        missing_beam = sorted(beam_required - beam_uniforms)
+        report(not missing_beam, '光柱声明全部 uniform', missing_beam[:4] if missing_beam else 'ok')
+        report('Position' in (beam_json.get('attributes') or []), '光柱声明 Position 属性')
+        report('UV0' in (beam_json.get('attributes') or []), '光柱声明 UV0 属性（径向坐标来源）')
     sky_json_path = A + 'shaders/core/orbit_sky.json'
     if sky_json_path in names:
         with zipfile.ZipFile(jar) as z:

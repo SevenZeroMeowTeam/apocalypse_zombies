@@ -464,6 +464,7 @@ public final class ClientEvents {
         VeinMineHighlighter.render(event);   // 1.1.82：玩家一键挖掘的描边（自己判断 stage / 开关）
         OrbitalStrikeHighlighter.render(event);   // 1.2.5：轨道打击选区立方体描边（自己判断 stage / 开关）
         com.apocalypse.zombies.client.renderer.OrbitSkyShader.render(event); // v4.0.9：轨道维度程序化天幕
+        com.apocalypse.zombies.client.renderer.OrbitalBeam.render(event);    // v5.1：实体光柱（移植 star_beam）
         MoonEvent moon = ClientMoonState.getMoonEvent();
         if (!moon.isActive()) {
             return;
