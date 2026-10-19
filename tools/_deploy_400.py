@@ -138,13 +138,17 @@ def main():
     ap.add_argument('--skip-gates', action='store_true', help='skip check_skyfall.py (debug only)')
     ap.add_argument('--dev', default=DEFAULT_DEV, help='game instance dir')
     ap.add_argument('--online', action='store_true', help='do not pass --offline to gradle')
+    ap.add_argument('--clean', action='store_true',
+                    help='install the -clean distribution jar instead of the dev jar')
     args = ap.parse_args()
 
     dev = os.path.abspath(args.dev)
     mods = os.path.join(dev, 'mods')
     backup = os.path.join(dev, 'mods_backup')
-    src = os.path.join(ROOT, 'build', 'libs', 'apocalypse_zombies-%s.jar' % VER)
+    dev_src = os.path.join(ROOT, 'build', 'libs', 'apocalypse_zombies-%s.jar' % VER)
     clean_src = os.path.join(ROOT, 'build', 'libs', 'apocalypse_zombies-%s-clean.jar' % VER)
+    src = clean_src if args.clean else dev_src
+    say('安装包：%s' % ('clean（分发版）' if args.clean else '开发包'))
 
     if args.build:
         say('=== 0/8 构建（build + cleanJar）===')
@@ -237,7 +241,7 @@ def main():
     if now:
         report(now[0] == os.path.basename(src), '包名正确', now[0])
         report(jar_version(os.path.join(mods, now[0])) == VER, '装机包版本 == %s' % VER)
-        report(sha256(os.path.join(mods, now[0])) == sha256(src), '装机包 sha256 == 开发包')
+        report(sha256(os.path.join(mods, now[0])) == sha256(src), '装机包 sha256 == 安装源')
     changed = []
     for name, digest in others.items():
         path = os.path.join(mods, name)
