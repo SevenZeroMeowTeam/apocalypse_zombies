@@ -48,6 +48,17 @@ public final class ModEntities {
     public static final DeferredRegister<EntityType<?>> ENTITY_TYPES =
             DeferredRegister.create(ForgeRegistries.ENTITY_TYPES, ApocalypseZombies.MOD_ID);
 
+    public static final RegistryObject<EntityType<com.apocalypse.zombies.entity.OrbitSatellite>> ORBIT_SATELLITE =
+            ENTITY_TYPES.register("orbit_satellite", () -> EntityType.Builder
+                    .<com.apocalypse.zombies.entity.OrbitSatellite>of(
+                            com.apocalypse.zombies.entity.OrbitSatellite::new, MobCategory.MISC)
+                    .sized(4.0F, 4.0F)
+                    .clientTrackingRange(16)
+                    .updateInterval(3)
+                    .fireImmune()
+                    .setShouldReceiveVelocityUpdates(false)
+                    .build("orbit_satellite"));
+
     public static final RegistryObject<EntityType<ScreamerZombie>> SCREAMER =
             ENTITY_TYPES.register("screamer_zombie", () -> EntityType.Builder
                     .<ScreamerZombie>of(ScreamerZombie::new, MobCategory.MONSTER)

@@ -97,6 +97,9 @@ public final class ClientModBusEvents {
         event.registerEntityRenderer(ModEntities.MARKSMAN.get(), MarksmanGeoRenderer::new);
         event.registerEntityRenderer(ModEntities.BRIDE.get(), BrideGeoRenderer::new);
         event.registerEntityRenderer(ModEntities.SOLDIER.get(), SoldierGeoRenderer::new);
+        // 轨道卫星展示实体：静态 GeckoLib 模型（无 AI、不可推动），替换 LASER 平台的方块卫星
+        event.registerEntityRenderer(ModEntities.ORBIT_SATELLITE.get(),
+                com.apocalypse.zombies.client.renderer.OrbitSatelliteRenderer::new);
         // 尸潮之主：三阶段 Boss。同样是 GeckoLib 骨骼模型，模型自己 3 格高，不做缩放。
         event.registerEntityRenderer(ModEntities.OVERLORD.get(), OverlordGeoRenderer::new);
         event.registerEntityRenderer(ModEntities.CHARMED.get(), CharmedZombieRenderer::new);

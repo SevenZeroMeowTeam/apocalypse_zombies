@@ -198,43 +198,44 @@ public final class OrbitFacilities {
         }
     }
 
-    /** 卫星：金箔舱体 + 白色仪器板 + 抛物面天线 + 两侧三片太阳翼。 */
+    /** 卫星（v4.1.0 起改由 GeckoLib 实体展示；这里只保留基座与引导灯）。 */
     private static void laser(ServerLevel level, BlockPos c) {
         fill(level, c, -8, 2, -8, 8, 2, 8, hull());
-        // 舱体：金箔 + 深色框架
-        fill(level, c, -4, 4, -3, 4, 11, 3, gold());
-        for (int x : new int[]{-4, 4}) {
-            fill(level, c, x, 4, -3, x, 11, 3, hull());
-        }
-        for (int y : new int[]{4, 11}) {
-            fill(level, c, -4, y, -3, 4, y, 3, dark());
-        }
-        // 白色仪器面板（朝 -Z）
-        fill(level, c, -3, 5, -4, 3, 10, -4, panel());
-        fill(level, c, -2, 7, -5, 2, 8, -5, glowCyan());
-        // 抛物面（XY 平面，-Z 方向）
-        ringXY(level, c, 8, 7, -7, dish());
-        ringXY(level, c, 7, 7, -7, dish());
-        fill(level, c, -2, 7, -7, 2, 7, -7, panel());
-        fill(level, c, 0, 7, -9, 0, 7, -8, dark());
-        set(level, c, 0, 7, -10, glowCyan());
-        // 两侧太阳翼：臂 + 三片电池板
-        for (int side : new int[]{-1, 1}) {
-            fill(level, c, 5, 7, -1, 7, 7, 1, hull());
-            for (int k = 0; k < 3; k++) {
-                int inner = 8 + k * 5;
-                int outer = inner + 4;
-                fill(level, c, inner, 6, -4, outer, 7, 4, solar());
-                fill(level, c, inner, 8, -4, outer, 8, 4, gold());
-                fill(level, c, outer, 6, -4, outer, 7, 4, hull());
+        // 支撑基座：方块卫星已换成 OrbitSatellite 实体，甲板中央留空给模型
+        fill(level, c, -3, 3, -3, 3, 3, 3, dark());
+        fill(level, c, -5, 3, -5, 5, 3, -4, panel());
+        for (int x : new int[]{-5, 5}) {
+            for (int z : new int[]{-5, 5}) {
+                set(level, c, x, 4, z, glowCyan());
             }
         }
-        // 天线与推进器
-        fill(level, c, 0, 12, 0, 0, 15, 0, dark());
-        set(level, c, 0, 16, 0, glowCyan());
-        for (int z : new int[]{-2, 2}) {
-            set(level, c, 0, 3, z, glowOrange());
+        // 服务端只做一次：家里没有卫星实体才生成（OrbitFacilities.ensure 本身去重）
+        spawnSatellite(level, c);
+    }
+
+    /**
+     * 在平台中央生成轨道卫星展示实体（无 AI、不可推动、贴回出生点）。
+     * 重复进入维度不会重复生成：先查附近是否已有。
+     */
+    private static void spawnSatellite(ServerLevel level, BlockPos c) {
+        net.minecraft.world.phys.AABB box = new net.minecraft.world.phys.AABB(
+                c.getX() - 6, c.getY() + 2, c.getZ() - 6,
+                c.getX() + 6, c.getY() + 10, c.getZ() + 6);
+        java.util.List<com.apocalypse.zombies.entity.OrbitSatellite> existing =
+                level.getEntitiesOfClass(com.apocalypse.zombies.entity.OrbitSatellite.class, box);
+        if (!existing.isEmpty()) {
+            return;
         }
+        com.apocalypse.zombies.entity.OrbitSatellite satellite =
+                com.apocalypse.zombies.registry.ModEntities.ORBIT_SATELLITE.get()
+                        .create(level);
+        if (satellite == null) {
+            return;
+        }
+        // 模型约 7 格高，甲板 Y+4 起算，落在基座上方；朝向让天线朝向平台边缘
+        satellite.setup(com.apocalypse.zombies.orbital.OrbitalStrikeMode.LASER,
+                c.getX() + 0.5D, c.getY() + 6.0D, c.getZ() + 0.5D);
+        level.addFreshEntity(satellite);
     }
 
     /** 行星陨落：大颗岩质球体 + 熔岩裂纹 + 双层碎屑环。 */

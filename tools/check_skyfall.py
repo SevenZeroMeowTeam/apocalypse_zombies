@@ -186,6 +186,20 @@ def main():
         report(path in names, '后处理程序文件存在 ' + shader)
     for shader in ('orbit_sky.json', 'orbit_sky.vsh', 'orbit_sky.fsh'):
         report(A + 'shaders/core/' + shader in names, '天幕 shader 存在 ' + shader)
+    # v4.1.0：轨道卫星 GeckoLib 模型（生成器 tools/facility_model.py）
+    report(A + 'geo/satellite.geo.json' in names, '卫星 geo 存在')
+    report(A + 'textures/entity/facility/satellite.png' in names, '卫星贴图存在')
+    report(A + 'animations/satellite.animation.json' in names, '卫星动画存在')
+    if A + 'geo/satellite.geo.json' in names:
+        with zipfile.ZipFile(jar) as z:
+            sat = json.loads(z.read(A + 'geo/satellite.geo.json'))
+        d0 = sat['minecraft:geometry'][0]['description']
+        report(d0.get('texture_width') == 512 and d0.get('texture_height') == 512,
+               '卫星贴图尺寸声明 512²', f"{d0.get('texture_width')}x{d0.get('texture_height')}")
+        bones = sat['minecraft:geometry'][0]['bones']
+        report(len(bones) <= 40, '卫星骨骼数 ≤ 40', len(bones))
+        cubes = sum(len(b.get('cubes', [])) for b in bones)
+        report(cubes <= 600, '卫星方块数 ≤ 600', cubes)
     for facility in ('facility_hull', 'facility_gold', 'facility_panel', 'facility_solar',
                      'facility_dish', 'facility_glow_cyan', 'facility_glow_orange', 'facility_dark'):
         report(A + 'textures/block/' + facility + '.png' in names, '设施贴图存在 ' + facility)
