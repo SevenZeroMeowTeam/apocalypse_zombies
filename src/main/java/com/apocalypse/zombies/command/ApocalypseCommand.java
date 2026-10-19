@@ -10,6 +10,8 @@ import com.apocalypse.zombies.horde.HordeManager;
 import com.apocalypse.zombies.moon.ApocalypseData;
 import com.apocalypse.zombies.moon.MoonEvent;
 import com.apocalypse.zombies.moon.MoonEventManager;
+import com.apocalypse.zombies.orbit.OrbitDimension;
+import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import com.apocalypse.zombies.zombie.EvolutionTier;
 import com.apocalypse.zombies.zombie.ZombieEvolution;
 import com.apocalypse.zombies.ai.LocalAiClient;
@@ -134,6 +136,27 @@ public final class ApocalypseCommand {
                                     + Config.ORBITAL_STRIKE_MAX_CONCURRENT.get()), false);
                     return active;
                 })));
+
+        // v5：可传送的轨道设施维度（六个平台，每个平台一台载体）。
+        root.then(Commands.literal("orbit")
+                .then(Commands.argument("mode", StringArgumentType.word())
+                        .suggests((context, builder) -> {
+                            for (OrbitalStrikeMode mode : OrbitalStrikeMode.values()) {
+                                builder.suggest(mode.id());
+                            }
+                            return builder.buildFuture();
+                        })
+                        .executes(context -> {
+                            ServerPlayer player = context.getSource().getPlayerOrException();
+                            return OrbitDimension.enter(player,
+                                    OrbitalStrikeMode.byId(StringArgumentType.getString(context, "mode"))) ? 1 : 0;
+                        }))
+                .then(Commands.literal("return").executes(context -> {
+                    ServerPlayer player = context.getSource().getPlayerOrException();
+                    return OrbitDimension.leave(player) ? 1 : 0;
+                }))
+                .executes(context -> OrbitDimension.enter(context.getSource().getPlayerOrException(),
+                        OrbitalStrikeMode.CANNON) ? 1 : 0));
 
         root.then(Commands.literal("catgirl")
                 .then(Commands.literal("craft")
