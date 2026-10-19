@@ -57,7 +57,7 @@ public final class OrbitDimension {
         player.teleportTo(level, center.getX() + 0.5D, DECK_Y + 1.0D, center.getZ() + 18.5D,
                 player.getYRot(), 0.0F);
         player.sendSystemMessage(Component.literal(
-                "轨道设施 // " + mode.codename() + " —— 右键平台角的磁石可返回。"));
+                "轨道设施 // " + mode.codename() + " —— 参观区，不能在这里发射打击；右键平台角的磁石返回。"));
         return true;
     }
 

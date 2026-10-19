@@ -4,9 +4,12 @@ import com.apocalypse.zombies.ApocalypseZombies;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.GenericDirtMessageScreen;
+import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
 import net.minecraft.client.gui.screens.OptionsScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.ShareToLanScreen;
+import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.gui.screens.achievement.StatsScreen;
 import net.minecraft.client.gui.screens.advancements.AdvancementsScreen;
 import net.minecraft.network.chat.Component;
@@ -131,23 +134,30 @@ public final class ApocalypsePauseScreen extends Screen {
     }
 
     /**
-     * 回标题：单人先停集成服务器（原版同一路径），多人直接断开连接。
+     * 回标题：严格照原版 {@code PauseScreen#onDisconnect} 的路径。
      *
-     * <p>{@code halt(false)} 会走完整的服务器停止流程（Saving worlds → 三个维度写盘 → 关闭），
-     * 所以「退出」= 先保存再回到标题，不会丢进度；2026-10-19 的实机日志已实测到
-     * {@code Saving worlds / All dimensions are saved} 再 {@code Stopping!}。</p>
+     * <p>关键顺序：{@code level.disconnect()} → 单人 {@code clearLevel(保存中)} / 多人 {@code clearLevel()}
+     * → 单人 {@link TitleScreen} / 多人 {@link JoinMultiplayerScreen}。</p>
+     *
+     * <p><b>4.1.3 修复</b>：旧实现只调 {@code level.disconnect() + halt(false)}，没有
+     * {@code clearLevel} 也没有设置标题界面 —— 连接被关闭后客户端自动落到
+     * {@code DisconnectedScreen}，就出现「连接已丢失 / 返回到服务器列表」，单人存档也像多人服。
+     * 现在补上原版两步，单人会直接回标题，不会再要求点「返回到服务器列表」。</p>
      */
     private void quitToTitle() {
-        boolean local = this.minecraft.hasSingleplayerServer();
-        if (this.minecraft.level != null) {
-            this.minecraft.level.disconnect();
+        if (this.minecraft.level == null) {
+            return;
         }
+        boolean local = this.minecraft.isLocalServer();
+        this.minecraft.level.disconnect();
         if (local) {
-            this.minecraft.getSingleplayerServer().halt(false);
-        } else if (this.minecraft.getConnection() != null) {
-            this.minecraft.getConnection().getConnection()
-                    .disconnect(Component.translatable("menu.disconnect"));
+            this.minecraft.clearLevel(new GenericDirtMessageScreen(
+                    Component.translatable("menu.savingLevel")));
+        } else {
+            this.minecraft.clearLevel();
         }
+        TitleScreen title = new TitleScreen();
+        this.minecraft.setScreen(local ? title : new JoinMultiplayerScreen(title));
     }
 
     @Override

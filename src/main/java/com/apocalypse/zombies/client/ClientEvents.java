@@ -597,7 +597,15 @@ public final class ClientEvents {
                         })
                         .executes(context -> {
                             Minecraft minecraft = Minecraft.getInstance();
-                            if (minecraft.player == null) {
+                            if (minecraft.player == null || minecraft.level == null) {
+                                return 0;
+                            }
+                            // 轨道设施维度里不做预览：那里本来就在太空，平台/卫星会占满镜头，
+                            // 六种模式看起来一个样。预览回主世界做。
+                            if (minecraft.level.dimension().equals(
+                                    com.apocalypse.zombies.orbit.OrbitDimension.LEVEL)) {
+                                context.getSource().sendSuccess(() -> Component.literal(
+                                        "请回主世界再预览 —— 轨道设施维度里背景/平台会盖住载体的差异。"), false);
                                 return 0;
                             }
                             String id = StringArgumentType.getString(context, "mode");

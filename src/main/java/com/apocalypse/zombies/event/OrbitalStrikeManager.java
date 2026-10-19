@@ -199,6 +199,13 @@ public final class OrbitalStrikeManager {
             player.displayClientMessage(Component.translatable("skyfall.strike.busy"), true);
             return null;
         }
+        // 轨道设施维度是“参观区”：里面打任何协议，镜头看到的都是同一片星空 + 同一台卫星，
+        // 会被误判成“六种效果一样”。统一在这里拒绝，让玩家回主世界打。
+        if (player.level().dimension().equals(com.apocalypse.zombies.orbit.OrbitDimension.LEVEL)) {
+            player.displayClientMessage(Component.literal(
+                    "轨道设施维度内不能发射打击 —— 这里是参观区，请回主世界开火。"), true);
+            return null;
+        }
         int finalRadius = radius > 0
                 ? radius
                 : mode.radius(Mth.clamp(Config.ORBITAL_STRIKE_RADIUS.get(), 1, 96));
