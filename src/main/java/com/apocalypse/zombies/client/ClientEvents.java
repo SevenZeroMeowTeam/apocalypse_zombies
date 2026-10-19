@@ -15,6 +15,7 @@ import com.apocalypse.zombies.network.CollectPacket;
 import com.apocalypse.zombies.network.FirePacket;
 import com.apocalypse.zombies.network.NetworkHandler;
 import com.apocalypse.zombies.client.weapon.AmmoWheel;
+import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
@@ -22,7 +23,9 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexSorting;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.math.Axis;
+import net.minecraft.commands.Commands;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -49,6 +52,7 @@ import net.minecraftforge.client.event.RenderGuiEvent;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
 import net.minecraftforge.client.event.RenderHandEvent;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
+import net.minecraftforge.client.event.RegisterClientCommandsEvent;
 import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.client.event.ViewportEvent;
 import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
@@ -573,6 +577,39 @@ public final class ClientEvents {
     }
 
     // ------------------------------------------------------------------ hud
+
+    /**
+     * 客户端调试/展示命令：{@code /orbitpreview <cannon|lance|gravity|storm|laser|planet>}。
+     *
+     * <p>不发包、不伤方块、不伤实体，只在本地把镜头拉到太空段看某种载体的完整演出 ——
+     * 用来回答「卫星/天基炮这些设施到底长什么样」。</p>
+     */
+    @SubscribeEvent
+    public static void onRegisterClientCommands(RegisterClientCommandsEvent event) {
+        event.getDispatcher().register(Commands.literal("orbitpreview")
+                .then(Commands.argument("mode", StringArgumentType.word())
+                        .suggests((context, builder) -> {
+                            for (OrbitalStrikeMode mode : OrbitalStrikeMode.values()) {
+                                builder.suggest(mode.id());
+                            }
+                            return builder.buildFuture();
+                        })
+                        .executes(context -> {
+                            Minecraft minecraft = Minecraft.getInstance();
+                            if (minecraft.player == null) {
+                                return 0;
+                            }
+                            String id = StringArgumentType.getString(context, "mode");
+                            OrbitalStrikeMode mode = OrbitalStrikeMode.byId(id);
+                            if (!OrbitalStrikeClientState.preview(
+                                    minecraft.player.blockPosition(), mode, minecraft.player.getYRot())) {
+                                return 0;
+                            }
+                            context.getSource().sendSuccess(
+                                    () -> Component.literal("轨道预览：" + mode.codename()), false);
+                            return 1;
+                        })));
+    }
 
     /**
      * v4.0.3：轻量后处理链。必须在 GUI 之前跑 —— 此时世界已经画进主目标、HUD 还没画，

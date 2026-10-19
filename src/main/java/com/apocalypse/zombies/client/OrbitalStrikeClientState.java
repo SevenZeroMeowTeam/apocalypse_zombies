@@ -69,6 +69,8 @@ public final class OrbitalStrikeClientState {
     private static long cancelNoticeUntil;
     /** 取消原因（{@link com.apocalypse.zombies.network.StrikeCancelPacket} 的常量），只给提示用。 */
     private static int cancelReason = -1;
+    /** true = 客户端本地预览（/orbitpreview），服务端没有这次打击。 */
+    private static boolean preview;
 
     private OrbitalStrikeClientState() {
     }
@@ -97,7 +99,27 @@ public final class OrbitalStrikeClientState {
         phaseTarget = 0.0D;
         cancelNoticeUntil = 0L;
         cancelReason = -1;
+        preview = false;
         com.apocalypse.zombies.client.renderer.OrbitalCinematic.onNewStrike();
+    }
+
+    /**
+     * 客户端「轨道设施预览」：只走本地时间轴与镜头，不发包、不造成任何伤害/地形改动。
+     *
+     * <p>给 /orbitpreview 用 —— 玩家不必真的打一发，就能看到某种载体的完整太空段。</p>
+     */
+    public static boolean preview(BlockPos pos, OrbitalStrikeMode mode, float yaw) {
+        if (pos == null) {
+            return false;
+        }
+        start(pos, 24, 150, 30, mode, yaw, null, false);
+        preview = true;
+        return true;
+    }
+
+    /** 当前这次是不是本地预览（HUD/日志用；不影响渲染）。 */
+    public static boolean isPreview() {
+        return preview;
     }
 
     /**
@@ -187,6 +209,7 @@ public final class OrbitalStrikeClientState {
         serverPhase = NO_PHASE;
         phaseOffset = 0.0D;
         phaseTarget = 0.0D;
+        preview = false;
     }
 
     /** 本次打击是否有唯一标识（旧路径没有）。 */
