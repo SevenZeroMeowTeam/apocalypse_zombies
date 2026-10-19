@@ -109,7 +109,7 @@ public class SkyfallTerminalBlock extends BaseEntityBlock {
                 }
                 serverPlayer.displayClientMessage(Component.translatable(
                                 "skyfall.terminal.quick_charge", seconds)
-                        .withStyle(ChatFormatting.GREEN), false);
+                        .withStyle(ChatFormatting.GREEN), true);
                 level.playSound(null, pos, SoundEvents.AMETHYST_BLOCK_CHIME,
                         SoundSource.BLOCKS, 0.9F, 1.4F);
             }

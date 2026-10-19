@@ -32,8 +32,8 @@ final class PauseMenuLayout {
     record Spec(String action, String label, String shortLabel, String condition) {
     }
 
-    /** 横向工具栏的尺寸参数（GUI 坐标）。 */
-    record Layout(int buttonHeight, int gap, int margin) {
+    /** 横向/网格工具栏的尺寸参数（GUI 坐标）。{@code columns} = 1 时是一行到底。 */
+    record Layout(int buttonHeight, int gap, int margin, int columns) {
     }
 
     record Loaded(Layout layout, List<Spec> buttons) {
@@ -67,12 +67,14 @@ final class PauseMenuLayout {
             int height = 24;
             int gap = 4;
             int margin = 8;
+            int columns = 2;
             NodeList layouts = root.getElementsByTagName("layout");
             if (layouts.getLength() > 0) {
                 Element layout = (Element) layouts.item(0);
                 height = intAttr(layout, "button-height", height);
                 gap = intAttr(layout, "gap", gap);
                 margin = intAttr(layout, "margin", margin);
+                columns = intAttr(layout, "columns", columns);
             }
             List<Spec> specs = new ArrayList<>();
             NodeList buttons = root.getElementsByTagName("button");
@@ -93,7 +95,8 @@ final class PauseMenuLayout {
             return new Loaded(new Layout(
                     clamp(height, 16, 48),
                     clamp(gap, 0, 16),
-                    clamp(margin, 0, 40)), specs);
+                    clamp(margin, 0, 40),
+                    clamp(columns, 1, 4)), specs);
         } catch (Exception e) {
             ApocalypseZombies.LOGGER.warn("[末日菜单] pause_menu.xml 解析失败，使用内置横向布局。", e);
             return fallback();
@@ -121,6 +124,6 @@ final class PauseMenuLayout {
                 new Spec("options", "options", "选项", ""),
                 new Spec("lan", "menu.shareToLan", "局域网", "lan"),
                 new Spec("quit", "menu.returnToMenu", "退出", ""));
-        return new Loaded(new Layout(24, 4, 8), specs);
+        return new Loaded(new Layout(24, 4, 8, 2), specs);
     }
 }

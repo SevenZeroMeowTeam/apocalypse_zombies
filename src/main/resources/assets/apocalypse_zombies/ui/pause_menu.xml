@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ESC 暂停菜单的横向布局（3.5.0）。
+  ESC 暂停菜单的布局（3.5.0 横向工具栏 / 3.10.1 起默认两列网格）。
 
   Minecraft 的 GUI 本身不读 XML；这里由 PauseMenuLayout 用 JDK 的 DocumentBuilder 解析，
-  再生成 DoomButton。资源包可以覆盖同路径文件来改按钮顺序/短标签/间距，不需要重新编译。
+  再生成 DoomButton。资源包可以覆盖同路径文件来改按钮顺序/短标签/间距/列数，不需要重新编译。
 
   action:     resume / advancements / stats / options / lan / quit（Java 里固定分发）
   label:      完整文案的翻译键，用作悬停提示
-  short:      横向工具栏上显示的短标签（留空则直接用 label 的翻译）
+  short:      按钮上显示的短标签（留空则直接用 label 的翻译）
   condition:  lan = 仅单人且未对局域网开放时出现
+  columns:    每行几个按钮（1 = 单行横向工具栏；2 = 两列网格；1~4）
 -->
 <pause-menu version="1">
-    <layout orientation="horizontal" anchor="bottom-center"
-            button-height="24" gap="4" margin="8"/>
+    <layout orientation="grid" anchor="bottom-center"
+            button-height="24" gap="4" margin="8" columns="2"/>
     <button action="resume"       label="menu.returnToGame" short="回到游戏"/>
     <button action="advancements" label="gui.advancements"  short="进度"/>
     <button action="stats"        label="gui.stats"         short="统计"/>

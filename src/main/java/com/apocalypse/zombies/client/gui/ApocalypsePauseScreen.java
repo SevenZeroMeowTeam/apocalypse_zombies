@@ -20,9 +20,9 @@ import java.util.List;
  *
  * <p>按用户要求「只保留背景图，不要原版文字」：背景铺专门的末日废土插画
  * （{@code gui/pause_background.png}），<b>不画 "Game Menu" 标题</b>。3.5.0 起菜单改为
- * <b>横向工具栏</b>：按钮排成一行停在屏幕底部，布局/短标签/间距由
- * {@code assets/apocalypse_zombies/ui/pause_menu.xml} 描述（见 {@link PauseMenuLayout}），
- * 资源包可以覆盖 XML 改顺序和文案，不用重新编译。</p>
+ * <b>横向工具栏</b>；3.10.1 起默认改为<b>两列网格</b>（3 行 × 2 列，底部居中），
+ * 布局/短标签/间距/列数由 {@code assets/apocalypse_zombies/ui/pause_menu.xml} 描述
+ * （见 {@link PauseMenuLayout}），资源包可以覆盖 XML 改顺序和文案，不用重新编译。</p>
  *
  * <p>行为与原版暂停一致：{@link #isPauseScreen()} 返回 true（单人游戏暂停），
  * ESC 关闭即回到游戏；退出按钮走原版的「先断开世界再回标题」路径。</p>
@@ -60,10 +60,15 @@ public final class ApocalypsePauseScreen extends Screen {
         int height = loaded.layout().buttonHeight();
         int gap = loaded.layout().gap();
         int margin = loaded.layout().margin();
-        int width = Math.max(40, (this.width - 2 * margin - (count - 1) * gap) / count);
-        int total = count * width + (count - 1) * gap;
-        int x = (this.width - total) / 2;
-        int y = this.height - margin - height - 6;
+        // columns = 1 时就是 3.5.0 的单行横向工具栏；默认 XML 用 2 → 3 行 × 2 列网格，底部居中。
+        int columns = Math.max(1, Math.min(loaded.layout().columns(), count));
+        int rows = (count + columns - 1) / columns;
+        int width = Math.max(40, (this.width - 2 * margin - (columns - 1) * gap) / columns);
+        int totalW = columns * width + (columns - 1) * gap;
+        int totalH = rows * height + (rows - 1) * gap;
+        int x0 = (this.width - totalW) / 2;
+        int y0 = this.height - margin - totalH - 6;
+        int lastRowCount = count - (rows - 1) * columns;
 
         AbstractWidget first = null;
         for (int i = 0; i < count; i++) {
@@ -71,7 +76,15 @@ public final class ApocalypsePauseScreen extends Screen {
             Component text = spec.shortLabel().isEmpty()
                     ? Component.translatable(spec.label())
                     : Component.literal(spec.shortLabel());
-            DoomButton button = new DoomButton(x + i * (width + gap), y, width, height, i, text,
+            int column = i % columns;
+            int row = i / columns;
+            int x = x0 + column * (width + gap);
+            int y = y0 + row * (height + gap);
+            // 最后一行只剩一个（比如局域网隐藏后剩 5 个）时居中，避免孤零零贴在左列。
+            if (row == rows - 1 && lastRowCount == 1) {
+                x = (this.width - width) / 2;
+            }
+            DoomButton button = new DoomButton(x, y, width, height, i, text,
                     () -> runAction(spec.action()));
             if (!spec.label().isEmpty()) {
                 button.setTooltip(Tooltip.create(Component.translatable(spec.label())));
@@ -117,7 +130,13 @@ public final class ApocalypsePauseScreen extends Screen {
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 
-    /** 回标题：单人先停集成服务器（原版同一路径），多人直接断开连接。 */
+    /**
+     * 回标题：单人先停集成服务器（原版同一路径），多人直接断开连接。
+     *
+     * <p>{@code halt(false)} 会走完整的服务器停止流程（Saving worlds → 三个维度写盘 → 关闭），
+     * 所以「退出」= 先保存再回到标题，不会丢进度；2026-10-19 的实机日志已实测到
+     * {@code Saving worlds / All dimensions are saved} 再 {@code Stopping!}。</p>
+     */
     private void quitToTitle() {
         boolean local = this.minecraft.hasSingleplayerServer();
         if (this.minecraft.level != null) {
