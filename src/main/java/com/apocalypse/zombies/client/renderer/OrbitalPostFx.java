@@ -7,6 +7,7 @@ import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import com.apocalypse.zombies.orbital.engine.StrikeProtocols;
 import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.pipeline.TextureTarget;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.EffectInstance;
 import net.minecraft.client.renderer.PostPass;
@@ -112,9 +113,24 @@ public final class OrbitalPostFx {
             fx.safeGetUniform("Flash").set(flash);
             fx.safeGetUniform("Vignette").set(vignette);
             fx.safeGetUniform("Grade").set(gradeR, gradeG, gradeB);
+
+            // 关键：PostPass 画的是一个全屏四边形，默认的背面剔除会把整个画面剔掉
+            // （GUI 前这个状态还留着世界渲染的 cull = on），结果是主目标被 clear 成黑。
+            RenderSystem.disableCull();
+            RenderSystem.disableDepthTest();
             float time = (minecraft.level.getGameTime() + partialTick) / 20.0F;
             effectPass.process(time);
             blitPass.process(time);
+
+            // PostPass 结束时会 unbindWrite；必须把主目标重新绑回来，
+            // 否则后面的 GUI 会画到默认帧缓冲，最终 blit 出来的就是黑屏。
+            RenderTarget main = minecraft.getMainRenderTarget();
+            main.bindWrite(false);
+            RenderSystem.viewport(0, 0, main.width, main.height);
+            RenderSystem.disableDepthTest();
+            RenderSystem.enableBlend();
+            RenderSystem.defaultBlendFunc();
+            RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
         } catch (Throwable error) {
             failed = true;
             ApocalypseZombies.LOGGER.warn("[天陨] 后处理链启动失败，回退到 GUI 近似层。", error);
