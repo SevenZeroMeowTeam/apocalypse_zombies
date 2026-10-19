@@ -574,6 +574,15 @@ public final class ClientEvents {
 
     // ------------------------------------------------------------------ hud
 
+    /**
+     * v4.0.3：轻量后处理链。必须在 GUI 之前跑 —— 此时世界已经画进主目标、HUD 还没画，
+     * 后处理只作用于世界画面，不会把 HUD 一起糊掉。
+     */
+    @SubscribeEvent
+    public static void onRenderGuiPre(RenderGuiEvent.Pre event) {
+        com.apocalypse.zombies.client.renderer.OrbitalPostFx.process(event.getPartialTick());
+    }
+
     /** A small corner readout so players can tell which blessing is running. */
     @SubscribeEvent
     public static void onRenderGui(RenderGuiEvent.Post event) {

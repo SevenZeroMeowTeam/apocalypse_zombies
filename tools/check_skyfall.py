@@ -51,7 +51,7 @@ LANG_KEYS = [
     'skyfall.strike.busy',
 ]
 
-EXPECTED_CONFIGS = 221
+EXPECTED_CONFIGS = 222
 FAILS = []
 
 
@@ -180,6 +180,20 @@ def main():
     print('\n[5] 代码与配置')
     for cls in JAVA_CLASSES:
         report(cls in names, '类在包内 ' + cls.split('/')[-1])
+    for shader in ('orbital.json', 'orbital.vsh', 'orbital.fsh',
+                   'orbital_blit.json', 'orbital_blit.vsh', 'orbital_blit.fsh'):
+        path = A + 'shaders/program/' + shader
+        report(path in names, '后处理程序文件存在 ' + shader)
+    program = A + 'shaders/program/orbital.json'
+    if program in names:
+        with zipfile.ZipFile(jar) as z:
+            shader_json = json.loads(z.read(program))
+        declared = {u.get('name') for u in shader_json.get('uniforms', [])}
+        required = {'Strength', 'Radial', 'Chroma', 'Impact', 'Flash', 'Vignette', 'Grade',
+                    'ProjMat', 'InSize', 'OutSize', 'Time'}
+        missing_u = sorted(required - declared)
+        report(not missing_u, 'orbital 程序声明全部 uniform', missing_u[:4] if missing_u else 'ok')
+        report(shader_json.get('attributes') == ['Position'], 'orbital 程序声明 Position 属性')
     config_java = os.path.join(ROOT, 'src', 'main', 'java', 'com', 'apocalypse', 'zombies', 'Config.java')
     with open(config_java, encoding='utf-8') as fh:
         source = fh.read()

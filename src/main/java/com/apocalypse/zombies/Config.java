@@ -509,6 +509,8 @@ public final class Config {
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_STATIC_CARRIERS;
     /** 4.0.2：屏幕级演出强度（速度线/冲击帧/色差/光晕/调色），0~100，0 = 全关。 */
     public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_SCREEN_FX;
+    /** 4.0.3：是否启用轻量后处理 shader（径向模糊/色差/廉价 bloom/白闪/调色）。 */
+    public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_POST_FX;
     /** 打击是否能把基岩一起抹掉（整列模式会一直挖到世界底层，注意可能出现虚空）。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_BREAK_BEDROCK;
     /** 新造/未选择的遥控器默认用哪种打击模式（cannon / lance / gravity / storm）。 */
@@ -1244,6 +1246,10 @@ public final class Config {
                         "Drives radial speed lines, impact ink frames, chromatic edge split, lens flare",
                         "and colour grading; 0 disables the whole layer (useful for motion sickness).")
                 .defineInRange("screen_fx", 100, 0, 100);
+        ORBITAL_STRIKE_POST_FX = b.comment("[4.0.3] Lightweight post-processing shader (radial blur, chromatic split,",
+                        "cheap bloom, white flash, colour grade, vignette) during strikes. Falls back",
+                        "to the pure-GUI approximation automatically if the driver cannot compile it.")
+                .define("post_shader", true);
         ORBITAL_STRIKE_BREAK_BEDROCK = b.comment("Allow the strike to destroy bedrock (and only bedrock --",
                         "barriers, command blocks and block entities stay protected).",
                         "In column mode the beam digs all the way to the world floor, so this can",

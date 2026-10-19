@@ -583,6 +583,9 @@ public final class OrbitalScreenFX {
      * 调色 + 暗角：太空段给整个画面压一层冷紫，屏幕四边再压暗（不用 shader，用多层 fill 近似）。
      */
     public static void renderColorGrade(GuiGraphics graphics, Minecraft minecraft, float partialTick) {
+        if (OrbitalPostFx.active()) {
+            return; // 后处理链已做调色 + 暗角，避免叠两层把画面压死。
+        }
         float fx = screenFx();
         if (fx <= 0.0F || minecraft.player == null || minecraft.options.hideGui
                 || !OrbitalStrikeClientState.isActive()) {
@@ -652,6 +655,9 @@ public final class OrbitalScreenFX {
      * 色差边缘：命中后 10 tick 内，左右边缘红/蓝分离（参考包 chromatic aberration 的近似）。
      */
     public static void renderChromaticEdges(GuiGraphics graphics, Minecraft minecraft) {
+        if (OrbitalPostFx.active()) {
+            return; // 后处理链已做真实色差，GUI 近似层让位。
+        }
         float fx = screenFx();
         if (fx <= 0.0F || minecraft.player == null || minecraft.options.hideGui
                 || !OrbitalStrikeClientState.isActive()) {

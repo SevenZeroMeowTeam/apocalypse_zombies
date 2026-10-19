@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `4.0.2` |
+| **当前版本** | `4.0.3` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -278,6 +278,20 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 4.0.3 — 2026-10-19
+
+**轻量后处理 shader：径向模糊 / 色差 / 廉价 bloom / 白闪 / 调色 / 暗角。**
+
+- 新增 `assets/apocalypse_zombies/shaders/program/`：`orbital`（效果）与 `orbital_blit`（回写）各一对
+  `json/vsh/fsh`；用两个 `PostPass` 组合（世界主目标 → swap 做效果 → passthrough 画回主目标），
+  **只在打击演出期间运行**，没有打击时零开销。
+- uniform：`Strength / Radial / Chroma / Impact / Flash / Vignette / Grade`，由服务端相位与协议色驱动；
+  不在 GUI 之后跑 —— 后处理只影响世界画面，不会把 HUD 糊掉。
+- **失败自动回退**：程序加载/编译/窗口重建任何异常只记一次 warn，并永久退回 4.0.2 的纯 GUI 近似层；
+  配置 `[orbital_strike] post_shader=false` 可手动关闭。
+- shader 可用时 GUI 层让位（不再叠调色/色差），速度线、镜头光晕、墨迹冲击帧仍保留。
+- 配置总数 221 → 222。
 
 ### 4.0.2 — 2026-10-19
 
