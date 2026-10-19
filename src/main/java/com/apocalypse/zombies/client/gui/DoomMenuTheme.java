@@ -40,9 +40,16 @@ import java.util.List;
         bus = Mod.EventBusSubscriber.Bus.FORGE)
 public final class DoomMenuTheme {
 
-    /** 与标题界面同一张《末日菜单》背景（1408×768）。 */
+    /**
+     * 菜单通用背景：干净的末日紫调废墟插画（1408×768）。
+     *
+     * <p><b>为什么不用 apocalypse_title.png</b>：那张《末日菜单》原图里烤死了标题字和
+     * 四个石质按钮，只适合标题界面自己用（真实按钮正好盖住图里的按钮）。铺到断开连接/
+     * 选项/多人等界面时，烤死的字和按钮会从对话框后面透出来，像重影 UI。
+     * 这张由 {@code tools/menu_background.py} 从 pause_background.png 派生，本身没有任何文字/按钮。</p>
+     */
     private static final ResourceLocation BACKGROUND = new ResourceLocation(
-            ApocalypseZombies.MOD_ID, "textures/gui/apocalypse_title.png");
+            ApocalypseZombies.MOD_ID, "textures/gui/menu_background.png");
     /** 选择世界：用户指定的《废土城市》插画（与 ESC 暂停同一张）。 */
     private static final ResourceLocation SELECT_WORLD_BACKGROUND = new ResourceLocation(
             ApocalypseZombies.MOD_ID, "textures/gui/pause_background.png");
