@@ -4,6 +4,8 @@ import com.apocalypse.zombies.command.ApocalypseCommand;
 import com.apocalypse.zombies.event.CommonEvents;
 import com.apocalypse.zombies.network.NetworkHandler;
 import com.apocalypse.zombies.registry.ModBiomeModifiers;
+import com.apocalypse.zombies.registry.ModBlockEntities;
+import com.apocalypse.zombies.registry.ModBlocks;
 import com.apocalypse.zombies.registry.ModEffects;
 import com.apocalypse.zombies.registry.ModEntities;
 import com.apocalypse.zombies.registry.ModItems;
@@ -52,8 +54,16 @@ public class ApocalypseZombies {
         ModSounds.register(modBus);
         ModBiomeModifiers.register(modBus);
         ModSpawns.register(modBus);
+        // v4.0 第一次有自定义方块：方块 + 方块实体（顺序无所谓，DeferredRegister 各自在自己的
+        // 注册事件里落地；方块实体的 supplier 在 BLOCK_ENTITY_TYPE 事件里才读 ModBlocks.SKYFALL_TERMINAL）。
+        ModBlocks.register(modBus);
+        ModBlockEntities.register(modBus);
 
         ModLoadingContext.get().registerConfig(ModConfig.Type.COMMON, Config.SPEC, "apocalypse_zombies-common.toml");
+        // v4.0 P3-c：纯客户端配置（过场广播开关）。CLIENT 配置只在客户端存在，
+        // 专用服务器上这个分支不会执行，ClientConfig 类也不会被加载。
+        DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
+                () -> com.apocalypse.zombies.client.ClientConfig::register);
 
         // 「模组列表 → 配置」按钮：注册的是客户端配置界面，纯客户端类，服务器上这个分支不会走
         // （DistExecutor 保证那个方法连类都不会被加载）。
@@ -61,7 +71,7 @@ public class ApocalypseZombies {
                 () -> com.apocalypse.zombies.client.ModConfigScreens::register);
 
         // 启动自检：配置枚举器（= 图形界面列的那几项）在真机上到底数出多少个。
-        // 之所以要往日志里写一行：那枚举器是反射实现的，只在编译期断言「源码里有 154 个字段」
+        // 之所以要往日志里写一行：那枚举器是反射实现的，只在编译期断言「源码里有 219 个字段」
         // 证明不了运行期 —— 实机探针就是靠这行日志钉住这个数。
         LOGGER.info("Config registry: {} entries (exactly what the in-game config screen lists).",
                 Config.values().size());
@@ -81,6 +91,9 @@ public class ApocalypseZombies {
         NetworkHandler.register();
         // 轨道打击的服务器侧 tick 循环（CommonEvents 那条已够承担其它玩家/世界事件；这里另起一个类）
         com.apocalypse.zombies.event.OrbitalStrikeManager.register();
+        // 天陨终端索引（按维度登记已加载的终端，供遥控器判定「附近有没有可用终端」；
+        // 同时在 ServerStoppingEvent 里清表，避免旧世界坐标带到新世界）。
+        com.apocalypse.zombies.orbital.terminal.SkyfallTerminalManager.register();
 
         LOGGER.info("Apocalypse Zombies loaded: the night is no longer yours.");
     }

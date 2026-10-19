@@ -6,6 +6,7 @@ import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
 import com.apocalypse.zombies.orbital.RiftShape;
 import com.apocalypse.zombies.orbital.engine.StrikeProtocol;
 import com.apocalypse.zombies.orbital.engine.StrikeProtocols;
+import com.apocalypse.zombies.orbital.engine.StrikePhase;
 import com.apocalypse.zombies.registry.ModParticles;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
@@ -34,6 +35,15 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
+import net.minecraftforge.network.PacketDistributor;
+import com.apocalypse.zombies.block.SkyfallTerminalBlockEntity;
+import com.apocalypse.zombies.network.NetworkHandler;
+import com.apocalypse.zombies.network.OrbitalStrikePacket;
+import com.apocalypse.zombies.network.StrikeCancelPacket;
+import com.apocalypse.zombies.network.StrikePhasePacket;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -149,8 +159,49 @@ public final class OrbitalStrikeManager {
      *
      * <p>同一玩家在冷却期间重复右键会覆盖原有目标（避免队列堆叠 + 误触重置阶段）。</p>
      */
-    public static void schedule(ServerPlayer player, BlockPos target, OrbitalStrikeMode mode) {
-        int radius = mode.radius(Mth.clamp(Config.ORBITAL_STRIKE_RADIUS.get(), 1, 96));
+    @Nullable
+    public static UUID schedule(ServerPlayer player, BlockPos target, OrbitalStrikeMode mode) {
+        return schedule(player, target, mode, 0, 1.0F, 1.0F, null);
+    }
+
+    /**
+     * 带覆盖参数的入口：遥控器自由开火走三参版本（全部沿用配置）；天陨终端授权时
+     * 把终端面板上的半径 / 威力 / 下落速度带进来。
+     *
+     * <p><b>为什么半径是「绝对值」而不是倍率</b>：{@code SkyfallTerminalBlockEntity#radius()}
+     * 已经把「配置半径 × 弹种倍率 × 终端滑条」算好并夹到终端上限，这里直接当最终半径用；
+     * 服务端与客户端收到的（{@link com.apocalypse.zombies.network.OrbitalStrikePacket}）
+     * 仍是同一个数，演出和挖地不会错位。</p>
+     *
+     * @param radius    终端算好的最终半径（格）；{@code <= 0} 表示沿用 {@code orbital_strike_radius} × 弹种倍率
+     * @param damageMul 伤害倍率（1.0 = 原伤害；终端滑条 0.5~2.0）
+     * @param fallMul   下落段速度倍率（1.0 = 原时长，> 1 更快；下落 tick 按 1/fallMul 缩短）
+     */
+    @Nullable
+    public static UUID schedule(ServerPlayer player, BlockPos target, OrbitalStrikeMode mode,
+                                int radius, float damageMul, float fallMul) {
+        return schedule(player, target, mode, radius, damageMul, fallMul, null);
+    }
+
+    /**
+     * v4.0 P3 完整入口：多带一个终端坐标（取消时用来退款），并返回本次打击 id。
+     *
+     * <p>返回 {@code null} = 被并发上限拒绝（提示已经发给玩家），调用方<b>不得</b>给终端扣充能。</p>
+     *
+     * @param terminalPos 授权来源终端；自由开火传 {@code null}
+     */
+    @Nullable
+    public static UUID schedule(ServerPlayer player, BlockPos target, OrbitalStrikeMode mode,
+                                int radius, float damageMul, float fallMul,
+                                @Nullable BlockPos terminalPos) {
+        int maxConcurrent = Math.max(1, Config.ORBITAL_STRIKE_MAX_CONCURRENT.get());
+        if (ACTIVE.size() >= maxConcurrent) {
+            player.displayClientMessage(Component.translatable("skyfall.strike.busy"), true);
+            return null;
+        }
+        int finalRadius = radius > 0
+                ? radius
+                : mode.radius(Mth.clamp(Config.ORBITAL_STRIKE_RADIUS.get(), 1, 96));
         int lockTicks = mode.lockTicks(Math.max(20, Config.ORBITAL_STRIKE_LOCK_TICKS.get()));
         int fallTicks = mode.fallTicks(Math.max(6, Config.ORBITAL_STRIKE_FALL_TICKS.get()));
         float yaw = player.getYRot();
@@ -164,13 +215,66 @@ public final class OrbitalStrikeManager {
                     ? 56
                     : mode.fallTicks(Math.max(6, Config.ORBITAL_STRIKE_FALL_TICKS.get()));
         }
+        // 终端的下落速度倍率在**协议迁移之后**才乘：协议决定「这一击该演多久」，
+        // 玩家滑条是在这个基准上加速/减速。速度倍率 → 时长倍率的倒数，且不短于 6t。
+        float safeFallMul = fallMul > 0.0F ? fallMul : 1.0F;
+        fallTicks = Math.max(6, Math.round(fallTicks / safeFallMul));
+        // 威力滑条异常值（0/负/NaN）按 1.0 处理：宁可伤害不缩放，也不要变成治疗或负数。
+        float safeDamageMul = damageMul > 0.0F ? damageMul : 1.0F;
+
+        UUID strikeId = UUID.randomUUID();
+        List<UUID> viewers = collectViewers(player, target);
         ACTIVE.put(player.getUUID(), new ActiveStrike(target.immutable(), player.getUUID(),
-                player.level().dimension(), mode, radius, lockTicks, fallTicks, yaw));
-        // 视觉：把目标点告诉客户端（只对本人发，多人时各看各的；别人放技能时不会在你屏幕上画）
-        com.apocalypse.zombies.network.NetworkHandler.CHANNEL.send(
-                net.minecraftforge.network.PacketDistributor.PLAYER.with(() -> player),
-                new com.apocalypse.zombies.network.OrbitalStrikePacket(
-                        target, radius, lockTicks, fallTicks, mode, yaw));
+                player.level().dimension(), mode, finalRadius, lockTicks, fallTicks, yaw,
+                safeDamageMul, strikeId, terminalPos, viewers));
+        // 视觉：P3 起按收件人逐个发（施放者 spectator=false，附近玩家 spectator=true）。
+        long serverTime = player.level().getGameTime();
+        for (UUID id : viewers) {
+            ServerPlayer viewer = findPlayer(player.getServer(), id);
+            if (viewer == null) {
+                continue;
+            }
+            boolean spectator = !viewer.getUUID().equals(player.getUUID());
+            NetworkHandler.CHANNEL.send(PacketDistributor.PLAYER.with(() -> viewer),
+                    new OrbitalStrikePacket(target, finalRadius, lockTicks, fallTicks, mode, yaw,
+                            strikeId, spectator, serverTime));
+        }
+        return strikeId;
+    }
+
+    /**
+     * 开场收件人：施放者 + 广播半径内的玩家（`broadcast_films=false` 时只有施放者）。
+     *
+     * <p>只收同一维度、同等级的玩家；离线/换维度在发包时再校验一次。</p>
+     */
+    private static List<UUID> collectViewers(ServerPlayer caster, BlockPos target) {
+        List<UUID> viewers = new ArrayList<>();
+        viewers.add(caster.getUUID());
+        if (!Config.ORBITAL_STRIKE_BROADCAST_FILMS.get()) {
+            return viewers;
+        }
+        MinecraftServer server = caster.getServer();
+        if (server == null) {
+            return viewers;
+        }
+        double range = Config.ORBITAL_STRIKE_BROADCAST_RADIUS.get();
+        double rangeSq = range * range;
+        double x = target.getX() + 0.5D;
+        double y = target.getY() + 0.5D;
+        double z = target.getZ() + 0.5D;
+        for (ServerPlayer other : server.getPlayerList().getPlayers()) {
+            if (other.getUUID().equals(caster.getUUID()) || other.level() != caster.level()) {
+                continue;
+            }
+            if (other.distanceToSqr(x, y, z) <= rangeSq) {
+                viewers.add(other.getUUID());
+            }
+        }
+        return viewers;
+    }
+
+    private static ServerPlayer findPlayer(MinecraftServer server, UUID id) {
+        return server == null ? null : server.getPlayerList().getPlayer(id);
     }
 
     @SubscribeEvent
@@ -197,7 +301,7 @@ public final class OrbitalStrikeManager {
             }
         }
         if (!DESTROY_QUEUE.isEmpty()) {
-            int budget = BLOCKS_PER_TICK;
+            int budget = Math.max(500, Config.ORBITAL_STRIKE_BLOCK_BUDGET.get());
             Iterator<DestroyJob> dit = DESTROY_QUEUE.iterator();
             while (dit.hasNext() && budget > 0) {
                 DestroyJob job = dit.next();
@@ -213,6 +317,9 @@ public final class OrbitalStrikeManager {
             return;
         }
         if (!Config.ORBITAL_STRIKE_ENABLED.get()) {
+            for (ActiveStrike strike : ACTIVE.values()) {
+                broadcastCancel(strike, StrikeCancelPacket.REASON_CONFIG_OFF);
+            }
             ACTIVE.clear();
             return;
         }
@@ -222,11 +329,19 @@ public final class OrbitalStrikeManager {
             ActiveStrike strike = entry.getValue();
             ServerLevel level = resolveLevel(strike);
             if (level == null) {
+                broadcastCancel(strike, StrikeCancelPacket.REASON_WORLD_UNLOAD);
                 it.remove();
                 continue;
             }
             // 年龄与时长都在 ActiveStrike 上：模式倍率已经在 schedule 时乘过了。
             int age = ++strike.age;
+            // v4.0 P3：相位切换时给所有观众发一次权威相位（整场约 6 个包）。
+            StrikeProtocol strikeProtocol = StrikeProtocols.protocolFor(strike.mode);
+            StrikePhase phase = strikeProtocol.phaseAt(age, strike.lockTicks, strike.fallTicks);
+            if ((byte) phase.ordinal() != strike.lastPhase) {
+                strike.lastPhase = (byte) phase.ordinal();
+                sendPhase(strike, phase);
+            }
             if (age < strike.lockTicks) {
                 tickLocking(level, strike);
             } else if (age < strike.lockTicks + strike.fallTicks) {
@@ -242,11 +357,14 @@ public final class OrbitalStrikeManager {
                         impactStormBolt(level, strike, index);
                     }
                     if (index >= OrbitalStrikeMode.STORM_POINTS - 1) {
+                        sendPhase(strike, StrikePhase.AFTERMATH);
                         it.remove();
                     }
                 }
             } else {
                 tickImpact(level, strike);
+                // 命中已发生：移除前补发最后一个相位，HUD 才会从 IMPACT 走到 AFTERMATH。
+                sendPhase(strike, StrikePhase.AFTERMATH);
                 it.remove();
             }
         }
@@ -258,6 +376,10 @@ public final class OrbitalStrikeManager {
      */
     @SubscribeEvent
     public static void onServerStopping(net.minecraftforge.event.server.ServerStoppingEvent event) {
+        // 先告诉所有观众「这一发不演了」，再清表 —— 否则客户端镜头会挂在太空。
+        for (ActiveStrike strike : ACTIVE.values()) {
+            broadcastCancel(strike, StrikeCancelPacket.REASON_WORLD_UNLOAD);
+        }
         ACTIVE.clear();
         TOXIC_RAINS.clear();
         THUNDER_QUEUE.clear();
@@ -535,7 +657,7 @@ public final class OrbitalStrikeManager {
             placeCinderRim(level, target, radius);
         }
         if (damage) {
-            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.CANNON);
+            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.CANNON, strike.damageMul);
         }
         spawnSurfaceDebris(level, target, radius);
         spawnCinderStorm(level, ground, radius);
@@ -614,7 +736,7 @@ public final class OrbitalStrikeManager {
             enqueueDestroy(level, target, radius, strike.mode.pierces());
         }
         if (damage) {
-            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.PLANET);
+            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.PLANET, strike.damageMul);
         }
         spawnSurfaceDebris(level, target, radius);
         // 声音：一记闷到胸口的地动 + 高频碎裂
@@ -684,7 +806,7 @@ public final class OrbitalStrikeManager {
             placeBlackRim(level, target, radius);
         }
         if (damage) {
-            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.PLANET);
+            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.PLANET, strike.damageMul);
             // 毒雨区比坑大一圈：躲到坑外不代表安全
             TOXIC_RAINS.add(new ToxicRain(level, ground, (int) Math.round(radius * 1.6D),
                     Config.ORBITAL_STRIKE_BLACK_RAIN_TICKS.get(), strike.owner));
@@ -831,7 +953,7 @@ public final class OrbitalStrikeManager {
             enqueueDestroy(level, target, radius, strike.mode.pierces());
         }
         if (damage) {
-            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.LASER);
+            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.LASER, strike.damageMul);
         }
         spawnSurfaceDebris(level, target, radius);
         // 声音：一声切穿大气的高频炸裂 + 极低的持续轰鸣（音量 > 4，44 格外的机位也听得见）
@@ -975,7 +1097,7 @@ public final class OrbitalStrikeManager {
             enqueueDestroy(level, target, radius, strike.mode.pierces());
         }
         if (damage) {
-            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.CANNON);
+            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.CANNON, strike.damageMul);
         }
         // 真实方块碎屑：从被清理的那块地皮上掀起来 —— 飞的是土/石/草，而不是通用火星。
         spawnSurfaceDebris(level, target, radius);
@@ -1080,7 +1202,7 @@ public final class OrbitalStrikeManager {
         }
         if (damage) {
             // 半径小，但伤害密度高：用 1.6 倍的判定半径，中心一击几乎必杀
-            damageArea(level, ground, radius * 1.6D, strike.owner, OrbitalStrikeMode.LANCE);
+            damageArea(level, ground, radius * 1.6D, strike.owner, OrbitalStrikeMode.LANCE, strike.damageMul);
         }
         spawnSurfaceDebris(level, target, radius);
         level.playSound(null, target, SoundEvents.WARDEN_SONIC_BOOM, SoundSource.PLAYERS, 5.0F, 1.35F);
@@ -1321,7 +1443,7 @@ public final class OrbitalStrikeManager {
             enqueueDestroy(level, target, radius, strike.mode.pierces());
         }
         if (damage) {
-            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.GRAVITY);
+            damageArea(level, ground, radius, strike.owner, OrbitalStrikeMode.GRAVITY, strike.damageMul);
         }
         spawnSurfaceDebris(level, target, radius);
         level.playSound(null, target, SoundEvents.WARDEN_SONIC_BOOM, SoundSource.PLAYERS, 5.0F, 0.35F);
@@ -1440,7 +1562,7 @@ public final class OrbitalStrikeManager {
             placeBroodPod(level, subPos, sub);
         }
         if (damage) {
-            damageArea(level, sub, subRadius * 1.8D, strike.owner, OrbitalStrikeMode.STORM);
+            damageArea(level, sub, subRadius * 1.8D, strike.owner, OrbitalStrikeMode.STORM, strike.damageMul);
         }
         spawnSurfaceDebris(level, subPos, subRadius);
         level.playSound(null, subPos, SoundEvents.GENERIC_EXPLODE, SoundSource.PLAYERS, 3.0F, 1.1F);
@@ -2150,15 +2272,20 @@ public final class OrbitalStrikeManager {
         }
     }
 
+    /**
+     * 范围伤害。{@code damageMul} 来自天陨终端的威力滑条（1.0 = 不缩放），
+     * 只乘常规伤害，不碰秒杀几率 —— 玩家调的是「打多疼」，不是「秒杀概率」。
+     */
     private static void damageArea(ServerLevel level, Vec3 center, double radius, UUID owner,
-                                   OrbitalStrikeMode mode) {
+                                   OrbitalStrikeMode mode, float damageMul) {
         AABB box = new AABB(center.x, center.y, center.z, center.x, center.y, center.z).inflate(radius);
         List<LivingEntity> targets = level.getEntitiesOfClass(LivingEntity.class, box);
         if (targets.isEmpty()) {
             return;
         }
         double max = Math.max(1.0D, radius);
-        float base = Config.ORBITAL_STRIKE_DAMAGE.get().floatValue() * mode.damageScale();
+        float base = Config.ORBITAL_STRIKE_DAMAGE.get().floatValue() * mode.damageScale()
+                * damageMul;
         int killPercent = Mth.clamp(Config.ORBITAL_STRIKE_KILL_CHANCE.get() + mode.killBonus(), 0, 100);
         for (LivingEntity entity : targets) {
             if (entity.isRemoved() || !entity.isAlive() || entity.isSpectator()) {
@@ -2226,6 +2353,114 @@ public final class OrbitalStrikeManager {
         return false;
     }
 
+    // ------------------------------------------------------------------ v4.0 P3：相位 / 取消
+
+    private static MinecraftServer currentServer() {
+        return net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
+    }
+
+    /** 给一次打击的所有观众发当前相位。 */
+    private static void sendPhase(ActiveStrike strike, StrikePhase phase) {
+        MinecraftServer server = currentServer();
+        if (server == null) {
+            return;
+        }
+        int tick = server.getTickCount();
+        for (UUID id : strike.viewers) {
+            ServerPlayer viewer = server.getPlayerList().getPlayer(id);
+            if (viewer != null) {
+                NetworkHandler.CHANNEL.send(PacketDistributor.PLAYER.with(() -> viewer),
+                        new StrikePhasePacket(strike.strikeId, phase.ordinal(), tick));
+            }
+        }
+    }
+
+    /** 告诉所有人这次打击中止了。 */
+    private static void broadcastCancel(ActiveStrike strike, int reason) {
+        MinecraftServer server = currentServer();
+        if (server == null) {
+            return;
+        }
+        for (UUID id : strike.viewers) {
+            ServerPlayer viewer = server.getPlayerList().getPlayer(id);
+            if (viewer != null) {
+                NetworkHandler.CHANNEL.send(PacketDistributor.PLAYER.with(() -> viewer),
+                        new StrikeCancelPacket(strike.strikeId, reason));
+            }
+        }
+    }
+
+    /** 当前进行中的打击数（命令 / 调试用）。 */
+    public static int activeCount() {
+        return ACTIVE.size();
+    }
+
+    /** 按 id 取消一次打击；返回是否真的取消了。 */
+    public static boolean cancel(UUID strikeId, int reason) {
+        Iterator<Map.Entry<UUID, ActiveStrike>> it = ACTIVE.entrySet().iterator();
+        while (it.hasNext()) {
+            ActiveStrike strike = it.next().getValue();
+            if (strike.strikeId.equals(strikeId)) {
+                it.remove();
+                broadcastCancel(strike, reason);
+                refundTerminal(strike);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 取消所有进行中的打击（管理员命令 / 配置总开关用）。 */
+    public static int cancelAll(int reason) {
+        if (ACTIVE.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        for (ActiveStrike strike : ACTIVE.values()) {
+            broadcastCancel(strike, reason);
+            refundTerminal(strike);
+            count++;
+        }
+        ACTIVE.clear();
+        return count;
+    }
+
+    /** 某个终端被拆/被替换：取消它授权的、还没结算完的打击。 */
+    public static int cancelForTerminal(net.minecraft.resources.ResourceKey<Level> dimension,
+                                        BlockPos terminalPos) {
+        int count = 0;
+        Iterator<Map.Entry<UUID, ActiveStrike>> it = ACTIVE.entrySet().iterator();
+        while (it.hasNext()) {
+            ActiveStrike strike = it.next().getValue();
+            if (strike.terminalPos != null && strike.terminalPos.equals(terminalPos)
+                    && strike.dimension.equals(dimension)) {
+                it.remove();
+                broadcastCancel(strike, StrikeCancelPacket.REASON_TERMINAL_BROKEN);
+                refundTerminal(strike);
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** FIRE 之前取消才退款（弹已经出去了就不退）。 */
+    private static void refundTerminal(ActiveStrike strike) {
+        if (strike.terminalPos == null || strike.age >= strike.lockTicks) {
+            return;
+        }
+        MinecraftServer server = currentServer();
+        if (server == null) {
+            return;
+        }
+        ServerLevel level = server.getLevel(strike.dimension);
+        if (level == null) {
+            return;
+        }
+        if (level.getBlockEntity(strike.terminalPos) instanceof SkyfallTerminalBlockEntity terminal) {
+            terminal.refundCharge();
+        }
+    }
+
     /** Box 内整数 BlockPos，**从高到低**逐层（分批挖掘时一层层往下塌，观感比乱序好）。 */
     /** 一次进行中的打击：目标、模式，以及已经乘过模式倍率的半径/时长（客户端收到的是同一组数）。 */
     private static final class ActiveStrike {
@@ -2238,10 +2473,23 @@ public final class OrbitalStrikeManager {
         final int fallTicks;
         /** 触发时的朝向：断层裂谷沿它展开。 */
         final float yaw;
+        /** 终端威力滑条带来的伤害倍率（1.0 = 原伤害）。 */
+        final float damageMul;
+        /** v4.0 P3：本次打击标识，相位/取消包都带它。 */
+        final UUID strikeId;
+        /** v4.0 P3：授权来源终端；自由开火为 null（取消时不退款）。 */
+        @Nullable
+        final BlockPos terminalPos;
+        /** v4.0 P3：开场时确定的过场收件人（施放者 + 广播范围内玩家）。 */
+        final List<UUID> viewers;
+        /** v4.0 P3：最后发给观众的相位 ordinal，-1 = 还没发过。 */
+        byte lastPhase = -1;
         int age;
 
         ActiveStrike(BlockPos target, UUID owner, net.minecraft.resources.ResourceKey<Level> dimension,
-                     OrbitalStrikeMode mode, int radius, int lockTicks, int fallTicks, float yaw) {
+                     OrbitalStrikeMode mode, int radius, int lockTicks, int fallTicks, float yaw,
+                     float damageMul, UUID strikeId, @Nullable BlockPos terminalPos,
+                     List<UUID> viewers) {
             this.target = target;
             this.owner = owner;
             this.dimension = dimension;
@@ -2250,6 +2498,10 @@ public final class OrbitalStrikeManager {
             this.lockTicks = lockTicks;
             this.fallTicks = fallTicks;
             this.yaw = yaw;
+            this.damageMul = damageMul;
+            this.strikeId = strikeId;
+            this.terminalPos = terminalPos;
+            this.viewers = viewers;
         }
     }
 }

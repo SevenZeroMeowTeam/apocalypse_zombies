@@ -2,6 +2,7 @@ package com.apocalypse.zombies.client.renderer;
 
 import com.apocalypse.zombies.ApocalypseZombies;
 import com.apocalypse.zombies.Config;
+import com.apocalypse.zombies.client.ClientFilmSettings;
 import com.apocalypse.zombies.client.OrbitalStrikeClientState;
 import com.apocalypse.zombies.orbital.engine.StrikeProtocol;
 import com.apocalypse.zombies.orbital.engine.StrikeProtocols;
@@ -173,6 +174,14 @@ public final class OrbitalCinematic {
 
     /** 每帧渲染调用（在 {@code OrbitalScreenFX.shakeCamera} 之前，让落地震动叠在演出机位上）。 */
     public static void apply(ViewportEvent.ComputeCameraAngles event, Minecraft minecraft) {
+        // v4.0 P3-c：观众在客户端配置里关掉了过场广播 —— 镜头永远留在他自己眼里。
+        // 世界特效、HUD 旁观横幅、相位/取消包都照常，只是不拉机位；权重归零也顺带让
+        // 太空舞台、黑边与 FOV 压缩一起停用（它们都读 lastWeight）。
+        if (OrbitalStrikeClientState.spectator() && !ClientFilmSettings.broadcastFilms()) {
+            lastWeight = 0.0F;
+            disengage(minecraft);
+            return;
+        }
         if (skipped) {
             lastWeight = 0.0F;
             disengage(minecraft);

@@ -511,6 +511,34 @@ public final class Config {
     public static final ForgeConfigSpec.ConfigValue<String> ORBITAL_STRIKE_DEFAULT_MODE;
     /** 是否允许手持遥控器潜行右键切换打击模式。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_ALLOW_MODE_SWITCH;
+    /** v4.0 P3：过场是否广播给打击点附近的玩家。 */
+    public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_BROADCAST_FILMS;
+    /** v4.0 P3：广播半径（格）—— 只有这个距离内的玩家会收到过场。 */
+    public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_BROADCAST_RADIUS;
+    /** v4.0 P3：同时存在的打击上限。 */
+    public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_MAX_CONCURRENT;
+    /** v4.0 P3：每 tick 全局方块改动预算。 */
+    public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_BLOCK_BUDGET;
+
+    // ===== 天陨指挥终端（v4.0 P1/P2） =====
+    /** 是否必须站在已授权的天陨终端附近才能呼叫打击（关掉 = 遥控器回到 3.x 的自由模式）。 */
+    public static final ForgeConfigSpec.BooleanValue TERMINAL_REQUIRED;
+    /** 遥控器判定「在终端附近」的最大距离（格）。 */
+    public static final ForgeConfigSpec.IntValue TERMINAL_RANGE;
+    /** 一次打击之后终端重新充能需要的秒数（0 = 无充能，仅按协议冷却）。 */
+    public static final ForgeConfigSpec.IntValue TERMINAL_CHARGE_SECONDS;
+    /** 是否只有终端主人（及 OP）能改参数 / 呼叫打击。 */
+    public static final ForgeConfigSpec.BooleanValue TERMINAL_OWNER_ONLY;
+    /** 终端半径滑条的上限（格）。默认 48，落在引擎 96 的上限之内。 */
+    public static final ForgeConfigSpec.IntValue TERMINAL_RADIUS_MAX;
+    /** v4.0 P3：拆掉终端时是否中止尚未结算的打击并退还充能。 */
+    public static final ForgeConfigSpec.BooleanValue TERMINAL_CANCEL_ON_BREAK;
+    /** 快速充能：是否允许用手持物品给终端加速冷却。 */
+    public static final ForgeConfigSpec.BooleanValue TERMINAL_QUICK_CHARGE_ENABLED;
+    /** 快速充能：每次缩短多少秒冷却。 */
+    public static final ForgeConfigSpec.IntValue TERMINAL_QUICK_CHARGE_SECONDS;
+    /** 快速充能：用哪个物品（默认红石块）。 */
+    public static final ForgeConfigSpec.ConfigValue<String> TERMINAL_QUICK_CHARGE_ITEM;
 
     static {
         ForgeConfigSpec.Builder b = new ForgeConfigSpec.Builder();
@@ -1214,6 +1242,51 @@ public final class Config {
         ORBITAL_STRIKE_ALLOW_MODE_SWITCH = b.comment("Allow cycling strike modes with sneak + right click.",
                         "False = every remote stays on default_mode.")
                 .define("allow_mode_switch", true);
+        ORBITAL_STRIKE_BROADCAST_FILMS = b.comment("[v4.0 P3] Broadcast the cutscene to players near the impact",
+                        "point. False = only the caster sees the film; everyone still sees the world effects.")
+                .define("broadcast_films", true);
+        ORBITAL_STRIKE_BROADCAST_RADIUS = b.comment("[v4.0 P3] How far from the impact point the cutscene is broadcast,",
+                        "in blocks. Keep it at or below the camera's own 160-block window.")
+                .defineInRange("broadcast_radius", 160, 32, 256);
+        ORBITAL_STRIKE_MAX_CONCURRENT = b.comment("[v4.0 P3] How many strikes may be in flight at the same time.",
+                        "Extra requests are refused (and told so) instead of stacking up.")
+                .defineInRange("max_concurrent_strikes", 2, 1, 8);
+        ORBITAL_STRIKE_BLOCK_BUDGET = b.comment("[v4.0 P3] Global block-change budget per tick across all strikes.",
+                        "Lower it on weak servers; the crater then takes longer to finish.")
+                .defineInRange("strike_block_budget", 4000, 500, 20000);
+        b.pop();
+
+        // 「天陨指挥终端」：v4.0 的玩法闭环 —— 建造终端、装协议核心、充能、再用遥控器呼叫。
+        b.comment("Skyfall Terminal (v4.0): the block that authorises and tunes orbital strikes.",
+                        "Craft the terminal, place it, insert a protocol core (e.g. cinder), then stand",
+                        "within terminal_range with the remote and right-click to call the strike down.")
+                .push("skyfall_terminal");
+        TERMINAL_REQUIRED = b.comment("Require a charged, unlocked terminal within terminal_range before a",
+                        "strike can be called. False = the remote keeps the old 3.x behaviour (free-fire).")
+                .define("terminal_required", true);
+        TERMINAL_RANGE = b.comment("How close the player must stand to the terminal to call a strike, in blocks.",
+                        "The terminal also has to be in the same dimension and loaded.")
+                .defineInRange("terminal_range", 64, 8, 128);
+        TERMINAL_CHARGE_SECONDS = b.comment("Seconds the terminal needs to recharge after each strike (0 = no",
+                        "extra charge, only the protocol's own cooldown multiplier applies).")
+                .defineInRange("terminal_charge_seconds", 60, 0, 600);
+        TERMINAL_OWNER_ONLY = b.comment("Only the player who placed the terminal (and ops) may change its",
+                        "settings or call strikes through it. False = anyone nearby may use it.")
+                .define("terminal_owner_only", false);
+        TERMINAL_RADIUS_MAX = b.comment("Upper limit of the terminal's radius slider, in blocks. The engine",
+                        "caps radius at 96; the terminal intentionally stops lower by default.")
+                .defineInRange("terminal_radius_max", 48, 4, 96);
+        TERMINAL_CANCEL_ON_BREAK = b.comment("[v4.0 P3] Breaking a terminal aborts its pending strike (before the",
+                        "FIRE phase) and refunds the terminal's charge. False = let the strike finish.")
+                .define("cancel_on_break", true);
+        TERMINAL_QUICK_CHARGE_ENABLED = b.comment("[v4.0 P3] Quick charge: right-click the terminal with the item below",
+                        "to cut its cooldown short. Each use consumes one item.")
+                .define("quick_charge_enabled", true);
+        TERMINAL_QUICK_CHARGE_SECONDS = b.comment("[v4.0 P3] How many seconds of cooldown one quick-charge item removes.")
+                .defineInRange("quick_charge_seconds", 15, 1, 120);
+        TERMINAL_QUICK_CHARGE_ITEM = b.comment("[v4.0 P3] Item id used for quick charge (default: redstone block).",
+                        "Example: \"minecraft:redstone_block\", \"minecraft:amethyst_shard\".")
+                .define("quick_charge_item", "minecraft:redstone_block");
         b.pop();
 
         SPEC = b.build();

@@ -11,8 +11,11 @@ import com.apocalypse.zombies.item.Colt1878Item;
 import com.apocalypse.zombies.item.S686Item;
 import com.apocalypse.zombies.item.UziItem;
 import com.apocalypse.zombies.item.Win94Item;
+import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
+import com.apocalypse.zombies.orbital.terminal.ProtocolCoreItem;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.AxeItem;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.HoeItem;
 import net.minecraft.world.item.Item;
@@ -140,6 +143,55 @@ public final class ModItems {
                     () -> new OrbitalStrikeRemoteItem(new Item.Properties().stacksTo(1).rarity(
                             net.minecraft.world.item.Rarity.RARE)));
 
+    // ------------------------------------------------------------------ 天陨指挥终端（v4.0）
+
+    /**
+     * 天陨指挥终端（方块物品）：放下了才有「终端授权打击」这条链路。
+     *
+     * <p>方块本体在 {@link ModBlocks#SKYFALL_TERMINAL}，数据在
+     * {@link com.apocalypse.zombies.block.SkyfallTerminalBlockEntity}。这里只注册一个
+     * {@link BlockItem} —— 掉落表见 {@code data/apocalypse_zombies/loot_tables/blocks/skyfall_terminal.json}。</p>
+     */
+    public static final RegistryObject<Item> SKYFALL_TERMINAL =
+            ITEMS.register("skyfall_terminal",
+                    () -> new BlockItem(ModBlocks.SKYFALL_TERMINAL.get(), new Item.Properties()));
+
+    /**
+     * 六枚协议核心：右键终端安装，解锁对应弹种（一次性消耗）。
+     *
+     * <p>与 {@link OrbitalStrikeMode} 一一对应 —— 焚城/断层/隔离/蜂群/黎明/黑雨。
+     * P1+P2 先用 CINDER（焚城）跑通闭环，其余核心按同一套机制注册。</p>
+     */
+    public static final RegistryObject<Item> SKYFALL_CORE_CINDER =
+            ITEMS.register("skyfall_core_cinder",
+                    () -> new ProtocolCoreItem(OrbitalStrikeMode.CANNON,
+                            new Item.Properties().stacksTo(16)));
+
+    public static final RegistryObject<Item> SKYFALL_CORE_FAULT =
+            ITEMS.register("skyfall_core_fault",
+                    () -> new ProtocolCoreItem(OrbitalStrikeMode.LANCE,
+                            new Item.Properties().stacksTo(16)));
+
+    public static final RegistryObject<Item> SKYFALL_CORE_QUARANTINE =
+            ITEMS.register("skyfall_core_quarantine",
+                    () -> new ProtocolCoreItem(OrbitalStrikeMode.GRAVITY,
+                            new Item.Properties().stacksTo(16)));
+
+    public static final RegistryObject<Item> SKYFALL_CORE_SWARM =
+            ITEMS.register("skyfall_core_swarm",
+                    () -> new ProtocolCoreItem(OrbitalStrikeMode.STORM,
+                            new Item.Properties().stacksTo(16)));
+
+    public static final RegistryObject<Item> SKYFALL_CORE_DAWN =
+            ITEMS.register("skyfall_core_dawn",
+                    () -> new ProtocolCoreItem(OrbitalStrikeMode.LASER,
+                            new Item.Properties().stacksTo(16)));
+
+    public static final RegistryObject<Item> SKYFALL_CORE_BLACK_RAIN =
+            ITEMS.register("skyfall_core_black_rain",
+                    () -> new ProtocolCoreItem(OrbitalStrikeMode.PLANET,
+                            new Item.Properties().stacksTo(16)));
+
     // ------------------------------------------------------------------ 铜装备
 
     /**
@@ -238,6 +290,14 @@ public final class ModItems {
             event.accept(COPPER_BOOTS);
             // 轨道打击遥控器属于「战斗」，和枪械同页 —— 之前误挂在刷怪蛋页
             event.accept(ORBITAL_STRIKE_REMOTE);
+            // v4.0 天陨指挥终端与六枚协议核心：同样是「战斗」页
+            event.accept(SKYFALL_TERMINAL);
+            event.accept(SKYFALL_CORE_CINDER);
+            event.accept(SKYFALL_CORE_FAULT);
+            event.accept(SKYFALL_CORE_QUARANTINE);
+            event.accept(SKYFALL_CORE_SWARM);
+            event.accept(SKYFALL_CORE_DAWN);
+            event.accept(SKYFALL_CORE_BLACK_RAIN);
         }
         if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
             event.accept(COPPER_PICKAXE);

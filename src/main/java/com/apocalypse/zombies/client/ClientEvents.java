@@ -222,6 +222,8 @@ public final class ClientEvents {
 
         // 演出机位的兜底还原（比如刚退出世界、演出窗口被掐断）：每 tick 检查一次，幂等。
         OrbitalCinematic.tickRestore(minecraft);
+        // P3-c 相位时间轴回追：每 tick 只追 15%，镜头/光柱不会在相位边界跳变。
+        OrbitalStrikeClientState.tick();
         // 太空演出期间压掉本地降水：雨丝绕相机画，会悬在太空底前面。
         OrbitalCinematic.tickWeather(minecraft);
 

@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `3.8.0` |
+| **当前版本** | `3.10.0` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -278,6 +278,48 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 3.10.0 — 2026-10-19
+
+**P3：相位同步 / 过场广播 / 可取消的打击 + 快速充能；P4-A1：太空舞台五件套原创化。**
+
+- **相位同步**：新增 `StrikePhasePacket`，服务端在 MARK/ASCENT/DEVICE/FIRE/IMPACT/AFTERMATH 六个相位各发一次；
+  客户端按协议 `phaseStart` 对表，偏差 >3 tick 时用平滑时间偏移（每 tick ×0.85）追帧，卡顿/掉帧后不再「提前落地」。
+  网络协议号 `1 → 2`：服务端与客户端必须同版本。
+- **过场广播**：施放者附近（`broadcast_radius`，默认 160 格）的玩家也会看到同一部电影与旁观 HUD；
+  每个客户端可用新增的 `apocalypse_zombies-client.toml`（`films.broadcast_films=false`）只看世界效果、不抢镜头。
+- **可取消**：新增 `StrikeCancelPacket` 与 `cancel/cancelAll/cancelForTerminal`。拆终端（`cancel_on_break`，FIRE 前退还充能）、
+  `/apocalypse skyfall cancel`、关配置、关服、维度卸载都会中止并交还镜头，不再出现「镜头挂在太空、地面不再塌」的僵死观感。
+- **并发与预算**：`max_concurrent_strikes=2`、`strike_block_budget=4000` 可配；超限时第 N 次请求被拒绝并提示。
+- **快速充能**：手持红石块右键天陨终端 → 冷却缩短 15 秒/个（`quick_charge_seconds` 可调、`quick_charge_item` 可换、
+  `quick_charge_enabled` 总开关）；终端面板会显示当前物品与缩短秒数。
+- **运维口**：`/apocalypse skyfall strikes` 看当前并发与上限；`/apocalypse skyfall cancel` 中止全部未结算打击。
+- **HUD v2**：施放者六段协议色相位条；旁观者顶部「代号 // 远程授权」细横幅 + 剩余秒 + `[K]` 跳过；
+  区内玩家显示距离警告；打击被中止时 3 秒提示。
+- **P4-A1 资产原创化**：`earth` / `nebula` / `sat_body` / `sat_panel` / `sat_dish` 五张太空舞台贴图全部换成
+  程序化原创资产（`tools/orbital_art.py`，可复现）；新增 `tools/check_orbital_art.py` 做尺寸/alpha 与
+  参考图 dHash 距离门禁（全部 ≥18 才通过）。5 张 1408×768 载体板留到 P4-A2/A3。
+- 配置总数 211 → 219。
+
+### 3.9.0 — 2026-10-19
+
+**v4.0 P1+P2：天陨指挥终端 —— 从「遥控器自由开火」变成「建造终端 + 装核心 + 充能 + 调参 + 授权打击」。**
+
+- **新方块「天陨指挥终端」**（`skyfall_terminal`）：5 铁块 + 下界合金锭 + 红石块合成；右键打开六边形协议面板，
+  自带光源、掉落表、方块实体（首次引入自定义方块注册类 `ModBlocks` / `ModBlockEntities`）；
+- **六枚「协议核心」**：`skyfall_core_cinder / fault / quarantine / swarm / dawn / black_rain` 分别解锁
+  焚城 / 断层 / 隔离 / 蜂群 / 黎明 / 黑雨；右键终端安装（创造模式不消耗）。本版**只放出焚城核心的配方**
+  （下界合金碎片 + 烈焰粉×2 + 岩浆膏），其余五枚可创造模式取得，配方等 P3 补齐；
+- **终端面板**：六边形协议轮盘（节点色直接取 `strike/*.xml` 的协议色，未解锁上锁）、半径 / 威力 / 下落速度
+  三条滑条（50%~200%）、过场开关、充能进度条 + 倒计时、主人名、已装核心 x/6；
+- **服务端权威**：遥控器只负责「瞄哪儿」；周边 64 格内最近的终端决定用哪份协议、打多大、多疼、落多快。
+  终端每打一发按 `terminal_charge_seconds` 充能（默认 60s），期间拒绝授权并提示剩余秒数；
+- **新配置段 `[skyfall_terminal]`**：`terminal_required`（默认 true，没有终端就不能呼叫打击）、
+  `terminal_range`（64）、`terminal_charge_seconds`（60）、`terminal_owner_only`（false）、`terminal_radius_max`（48）；
+- **向后兼容**：`terminal_required=false` 时遥控器退回 3.8 的自由开火行为，旧存档照常能玩；
+- 贴图与模型全部原创（`tools/skyfall_art.py` 可复现生成，未使用任何参考图素材）；
+- 验证：`gradlew build` 通过；专用服务器启动无注册/数据包错误；RCON 实测放置终端（方块实体 NBT 正确）、
+  掉落表正常掉落 `Skyfall Terminal`。
 
 ### 3.8.0 — 2026-10-18
 

@@ -118,6 +118,23 @@ public final class ApocalypseCommand {
 
         root.then(Commands.literal("boss").executes(context -> bossStatus(context.getSource())));
 
+        // v4.0 P3：轨道打击的运维口 —— 中止所有未结算打击 / 看当前并发。
+        root.then(Commands.literal("skyfall")
+                .then(Commands.literal("cancel").executes(context -> {
+                    int cancelled = com.apocalypse.zombies.event.OrbitalStrikeManager.cancelAll(
+                            com.apocalypse.zombies.network.StrikeCancelPacket.REASON_ADMIN);
+                    context.getSource().sendSuccess(() -> Component.literal(
+                            "已中止 " + cancelled + " 发未结算的打击"), true);
+                    return cancelled;
+                }))
+                .then(Commands.literal("strikes").executes(context -> {
+                    int active = com.apocalypse.zombies.event.OrbitalStrikeManager.activeCount();
+                    context.getSource().sendSuccess(() -> Component.literal(
+                            "进行中的打击：" + active + " / 上限 "
+                                    + Config.ORBITAL_STRIKE_MAX_CONCURRENT.get()), false);
+                    return active;
+                })));
+
         root.then(Commands.literal("catgirl")
                 .then(Commands.literal("craft")
                         // 和 mine 的方块参数同一个理由（见下）：`word()`/`string()` 的不带引号形式

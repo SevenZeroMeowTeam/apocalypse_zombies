@@ -1,7 +1,9 @@
 package com.apocalypse.zombies.client.renderer;
 
 import com.apocalypse.zombies.Config;
+import com.apocalypse.zombies.client.ClientFilmSettings;
 import com.apocalypse.zombies.client.OrbitalStrikeClientState;
+import com.apocalypse.zombies.orbital.engine.StrikePhase;
 import com.apocalypse.zombies.orbital.engine.StrikeProtocol;
 import com.apocalypse.zombies.orbital.engine.StrikeProtocols;
 import com.apocalypse.zombies.item.OrbitalStrikeRemoteItem;
@@ -11,6 +13,7 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.Vec3;
@@ -33,6 +36,17 @@ import net.minecraftforge.client.event.ViewportEvent;
  *
  * <p>全部状态从 {@link OrbitalStrikeClientState} 推算（开始时刻 + 服务端给定的锁定时长），
  * 不另存时间戳，也不用发包。</p>
+ *
+ * <p><b>v4.0 P3-c：HUD 分三套受众</b> ——</p>
+ * <ul>
+ *   <li><b>施放者</b>：原来的火控 HUD（四角括号 / 卫星准星 / 前摇进度条），另加一条
+ *       <b>协议色六段相位条</b>；相位优先读服务端相位包，没收到时回退本地按 lock/fall 推算。</li>
+ *   <li><b>旁观者</b>：顶部细横幅「协议代号 // 远程授权 + 相位 + 剩余秒 + [K] 跳过」，
+ *       不画火控角框/卫星准星（那不是他的目标）；客户端关掉过场广播时镜头也不拉。</li>
+ *   <li><b>区内玩家</b>：站在打击半径（外扩 6 格）以内的人，不论身份都额外看到
+ *       「你在打击区内 / 距落点 N 格 · 立即撤离」。</li>
+ * </ul>
+ * <p>取消包到达后状态已清空，本类另留 3 秒的「打击已中止」小提示。</p>
  */
 public final class OrbitalScreenFX {
 
@@ -73,12 +87,21 @@ public final class OrbitalScreenFX {
 
     // ---------------------------------------------------------------- HUD
 
-    /** 锁定阶段：屏幕中央上方的倒计时数字 + 屏幕四边色晕。挂在 {@code RenderGuiEvent.Post}。 */
+    /**
+     * 锁定阶段：屏幕中央上方的倒计时数字 + 屏幕四边色晕。挂在 {@code RenderGuiEvent.Post}。
+     *
+     * <p>P3-c：旁观者不画施放者的大号倒计时 —— 顶部横幅里已经有权威相位与剩余秒数，
+     * 画面留给正在落下来的那一击；「打击已中止」提示则独立于活跃状态（状态已被清空）。</p>
+     */
     public static void renderHud(GuiGraphics graphics, Minecraft minecraft, float partialTick) {
+        renderCancelNotice(graphics, minecraft);
         if (!OrbitalStrikeClientState.isActive() || !OrbitalStrikeClientState.isLockPhase()) {
             return;
         }
         if (minecraft.options.hideGui || minecraft.player == null) {
+            return;
+        }
+        if (OrbitalStrikeClientState.spectator()) {
             return;
         }
         int width = graphics.guiWidth();
@@ -129,8 +152,16 @@ public final class OrbitalScreenFX {
      * 不依赖 render 事件的矩阵；FOV punch 带来的几度误差对 12px 的标记无所谓。</p>
      */
     public static void renderTargetingHud(GuiGraphics graphics, Minecraft minecraft, float partialTick) {
+        if (minecraft.options.hideGui || minecraft.player == null) {
+            return;
+        }
+        // —— 旁观者：这一击不归你管，只给一条顶部细横幅；不画施放者的火控角框与范围框。
+        if (OrbitalStrikeClientState.spectator()) {
+            renderSpectatorHud(graphics, minecraft, partialTick);
+            return;
+        }
         // 用 isHudActive 而不是 isActive：宇宙激光的光柱要烧到虚空，HUD 不能陪跑几十秒
-        if (!OrbitalStrikeClientState.isHudActive() || minecraft.options.hideGui || minecraft.player == null) {
+        if (!OrbitalStrikeClientState.isHudActive()) {
             return;
         }
         float strength = distanceFalloff(minecraft);
@@ -172,38 +203,42 @@ public final class OrbitalScreenFX {
         StrikeProtocol protocol = StrikeProtocols.protocolFor(mode);
         boolean v2 = protocol.migrated();
         int protocolColor = (alpha << 24) | (protocol.color() & 0xFFFFFF);
+        // 相位优先读服务端权威值（StrikePhasePacket），没收到时回退本地按 lock/fall 推算。
+        // 时间轴本身由 OrbitalStrikeClientState 的 phaseOffset 平滑对齐，所以本地回退也不会错拍。
+        StrikePhase phase = v2 ? currentPhase(protocol, elapsed, lockTicks, fallTicks) : null;
         String callsign = v2 ? protocol.codename() : "天陨-01 · SKYFALL";
         graphics.drawString(minecraft.font, callsign,
                 width / 2 - minecraft.font.width(callsign) / 2, inset + len + 6,
                 v2 ? protocolColor : dimCyan, true);
         graphics.drawString(minecraft.font, status,
                 width / 2 - minecraft.font.width(status) / 2, inset + len + 18, statusColor, true);
-        // 当前弹种/协议：切换后立刻看得到（潜行右键循环）
+        // 当前弹种/协议 + 相位：切换后立刻看得到（潜行右键循环）
         String modeLine = v2
-                ? protocol.display() + " · " + protocol.phaseLabel(
-                        protocol.phaseAt(elapsed, lockTicks, fallTicks))
+                ? protocol.display() + " · " + protocol.phaseLabel(phase)
                 : mode.display() + " · " + mode.codename();
         graphics.drawString(minecraft.font, modeLine,
                 width / 2 - minecraft.font.width(modeLine) / 2, inset + len + 30,
                 v2 ? protocolColor : dimCyan, true);
+        // 协议色六段相位条：MARK → AFTERMATH 走一格填一格，当前格呼吸。
+        // 施放者一眼能看出「打到哪一步了、还剩几步」，不必去读小字相位名。
+        if (v2) {
+            drawPhaseBar(graphics, protocol, phase, width, inset + len + 42, alpha, pulse);
+        }
+        int warningY = inset + len + (v2 ? 54 : 42);
         if (v2 && "swarm".equals(protocol.id())) {
             String warn = "警告：巢荚会唤醒尸群";
             graphics.drawString(minecraft.font, warn,
-                    width / 2 - minecraft.font.width(warn) / 2, inset + len + 42,
+                    width / 2 - minecraft.font.width(warn) / 2, warningY,
                     (alpha << 24) | 0xB6FF9A, true);
         }
         if (v2 && "black_rain".equals(protocol.id())) {
             String warn = "警告：毒雨只伤生者 · 亡灵免疫";
             graphics.drawString(minecraft.font, warn,
-                    width / 2 - minecraft.font.width(warn) / 2, inset + len + 42,
+                    width / 2 - minecraft.font.width(warn) / 2, warningY,
                     (alpha << 24) | 0xC9A0FF, true);
         }
-        // v2 电影：K 跳过提示（跳过后不再显示）
-        if (v2 && OrbitalCinematic.isEngaged() && !OrbitalCinematic.isSkipped()) {
-            String skip = "[K] SKIP // 跳过过场";
-            graphics.drawString(minecraft.font, skip,
-                    width - minecraft.font.width(skip) - 12, height - 16, 0xCCFFFFFF, true);
-        }
+        // 电影接管镜头时的跳过提示（跳过后不再显示）
+        drawSkipHint(graphics, minecraft);
 
         // 前摇进度条：锁定时在屏幕下三分之一处，一条会从左往右填满的细条。
         // 7 秒的前摇光靠数字倒计时太干，给一条「能量正在灌进去」的读数。
@@ -228,6 +263,140 @@ public final class OrbitalScreenFX {
 
         // —— 跟随轨道平台的准星标记
         drawSatelliteMarker(graphics, minecraft, partialTick, width, height, cyan, dimCyan);
+
+        // —— 第三套 HUD：站在打击区里的玩家（施放者/旁观者都算）给距离与撤离提示
+        renderZoneWarning(graphics, minecraft, partialTick);
+    }
+
+    /** 相位：服务端权威值优先，没收到相位包时回退本地按 lock/fall 推算（时间轴已被平滑对齐）。 */
+    private static StrikePhase currentPhase(StrikeProtocol protocol, long elapsed,
+                                            int lockTicks, int fallTicks) {
+        StrikePhase authoritative = OrbitalStrikeClientState.serverPhaseValue();
+        return authoritative != null ? authoritative : protocol.phaseAt(elapsed, lockTicks, fallTicks);
+    }
+
+    /** 协议色六段相位条：已走过 / 当前 / 未到三档亮度，当前格上方一条白线指向「现在」。 */
+    private static void drawPhaseBar(GuiGraphics graphics, StrikeProtocol protocol, StrikePhase phase,
+                                     int width, int y, int alpha, float pulse) {
+        StrikePhase[] phases = StrikePhase.values();
+        int segW = 26;
+        int gap = 3;
+        int total = phases.length * segW + (phases.length - 1) * gap;
+        int x0 = (width - total) / 2;
+        int rgb = protocol.color() & 0xFFFFFF;
+        int done = ((Math.max(48, alpha * 2 / 3)) << 24) | rgb;
+        int pending = ((Math.max(20, alpha / 4)) << 24) | rgb;
+        int active = ((Math.min(255, Math.max(90, (int) (alpha * pulse * 1.25F)))) << 24) | rgb;
+        int indicator = ((Math.min(255, Math.max(96, (int) (alpha * 1.2F)))) << 24) | CORE_WHITE;
+        for (int i = 0; i < phases.length; i++) {
+            int x = x0 + i * (segW + gap);
+            int color = i < phase.ordinal() ? done : (i == phase.ordinal() ? active : pending);
+            safeFill(graphics, x, y, x + segW, y + 4, color);
+            if (i == phase.ordinal()) {
+                safeFill(graphics, x, y - 3, x + segW, y - 2, indicator);
+            }
+        }
+    }
+
+    /**
+     * 旁观者 HUD：顶部一条细横幅 —— 「协议代号 // 远程授权」+ 权威相位 + 剩余秒数。
+     *
+     * <p>刻意不画施放者那套四角火控框 / 卫星准星 / 大号倒计时：观众不需要瞄准读数，
+     * 也不想误以为自己在控制这次打击。横幅颜色采用该协议自己的主色，和世界里的光柱、
+     * 芯片核心图标同一色带。</p>
+     */
+    private static void renderSpectatorHud(GuiGraphics graphics, Minecraft minecraft, float partialTick) {
+        if (!OrbitalStrikeClientState.isHudActive()) {
+            return;
+        }
+        int width = graphics.guiWidth();
+        StrikeProtocol protocol = StrikeProtocols.protocolFor(OrbitalStrikeClientState.mode());
+        long elapsed = OrbitalStrikeClientState.elapsed();
+        StrikePhase phase = currentPhase(protocol, elapsed,
+                OrbitalStrikeClientState.lockTicks(), OrbitalStrikeClientState.fallTicks());
+        long impactIn = OrbitalStrikeClientState.lockTicks() + OrbitalStrikeClientState.fallTicks() - elapsed;
+        String title = protocol.codename() + " // 远程授权";
+        String info = protocol.phaseLabel(phase)
+                + (impactIn > 0L ? String.format(" · %d 秒", (impactIn + 19L) / 20L) : " · 命中");
+        int rgb = protocol.color() & 0xFFFFFF;
+        int bannerW = Math.min(width - 32,
+                Math.max(220, Math.max(minecraft.font.width(title), minecraft.font.width(info)) + 30));
+        int bannerH = 27;
+        int bx = (width - bannerW) / 2;
+        int by = 8;
+        graphics.fill(bx, by, bx + bannerW, by + bannerH, 0x99060C11);
+        graphics.fill(bx, by, bx + 3, by + bannerH, 0xFF000000 | rgb);
+        graphics.fill(bx, by, bx + bannerW, by + 1, 0x66000000 | rgb);
+        graphics.fill(bx, by + bannerH - 1, bx + bannerW, by + bannerH, 0x66000000 | rgb);
+        graphics.drawCenteredString(minecraft.font, title, width / 2, by + 5, 0xFF000000 | rgb);
+        graphics.drawCenteredString(minecraft.font, info, width / 2, by + 16, 0xFFEAFEFF);
+        drawSkipHint(graphics, minecraft);
+        renderZoneWarning(graphics, minecraft, partialTick);
+    }
+
+    /** [K] 跳过提示：电影真的在接管镜头、且还没跳过时才出现（施放者与旁观者通用）。 */
+    private static void drawSkipHint(GuiGraphics graphics, Minecraft minecraft) {
+        if (!OrbitalCinematic.isEngaged() || OrbitalCinematic.isSkipped()) {
+            return;
+        }
+        String skip = "[K] SKIP // 跳过过场";
+        graphics.drawString(minecraft.font, skip,
+                graphics.guiWidth() - minecraft.font.width(skip) - 12,
+                graphics.guiHeight() - 16, 0xCCFFFFFF, true);
+    }
+
+    /**
+     * 第三套 HUD：区内玩家。只要人站在打击半径（外扩 6 格的坑沿）以内，不管他是施放者
+     * 还是被广播的观众，都看到「你在打击区内 + 距落点多少格 + 立即撤离」。
+     *
+     * <p>这条提示压在快捷栏上方、用琥珀色而不是火控青：此时最该做的事是跑，不是看读数。</p>
+     */
+    private static void renderZoneWarning(GuiGraphics graphics, Minecraft minecraft, float partialTick) {
+        if (!OrbitalStrikeClientState.isHudActive()) {
+            return;
+        }
+        double distance = OrbitalStrikeClientState.distanceToPlayer();
+        // 只提醒「站在坑里/坑沿」的人：半径外 6 格开始不再打扰。
+        if (distance > OrbitalStrikeClientState.radius() + 6.0D) {
+            return;
+        }
+        int width = graphics.guiWidth();
+        int height = graphics.guiHeight();
+        long time = minecraft.level == null ? 0L : minecraft.level.getGameTime();
+        float pulse = 0.65F + 0.35F * Mth.sin((time + partialTick) * 0.55F);
+        int alpha = (int) (pulse * 255.0F);
+        String line1 = "警告：你在打击区内";
+        String line2 = String.format("距落点 %d 格 · 立即撤离", (int) Math.round(distance));
+        int y = height - 66;
+        graphics.drawString(minecraft.font, line1,
+                width / 2 - minecraft.font.width(line1) / 2, y,
+                (alpha << 24) | 0xFFB35A, true);
+        graphics.drawString(minecraft.font, line2,
+                width / 2 - minecraft.font.width(line2) / 2, y + 11,
+                ((alpha * 3 / 4) << 24) | 0xFFD27A, true);
+    }
+
+    /**
+     * 「打击已中止」提示：服务端取消后客户端状态已经清空，但 HUD 还能留 3 秒，
+     * 免得玩家以为只是网络卡了一下、还在原地等光柱。
+     */
+    private static void renderCancelNotice(GuiGraphics graphics, Minecraft minecraft) {
+        if (!OrbitalStrikeClientState.cancelNoticeActive()) {
+            return;
+        }
+        if (minecraft.options.hideGui || minecraft.player == null) {
+            return;
+        }
+        Component text = Component.translatable("skyfall.strike.cancelled");
+        int width = graphics.guiWidth();
+        int tw = minecraft.font.width(text);
+        int boxW = tw + 28;
+        int x = (width - boxW) / 2;
+        int y = 44;
+        graphics.fill(x, y, x + boxW, y + 18, 0xAA0A0E12);
+        graphics.fill(x, y, x + boxW, y + 1, 0xCCFFD27A);
+        graphics.fill(x, y + 17, x + boxW, y + 18, 0xCCFFD27A);
+        graphics.drawString(minecraft.font, text, x + (boxW - tw) / 2, y + 5, 0xFFFFD27A, true);
     }
 
     private static void drawSatelliteMarker(GuiGraphics graphics, Minecraft minecraft, float partialTick,
@@ -476,6 +645,11 @@ public final class OrbitalScreenFX {
             return;
         }
         if (minecraft.options.hideGui || minecraft.player == null) {
+            return;
+        }
+        // P3-c：观众在客户端关掉过场广播时不放穿大气层转场 —— 否则会出现
+        // 「镜头一动没动、画面却在穿大气层」的割裂感。世界特效与 HUD 照常。
+        if (OrbitalStrikeClientState.spectator() && !ClientFilmSettings.broadcastFilms()) {
             return;
         }
         long elapsed = OrbitalStrikeClientState.elapsed();

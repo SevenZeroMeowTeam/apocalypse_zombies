@@ -3,7 +3,9 @@ package com.apocalypse.zombies.item;
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.event.OrbitalStrikeManager;
 import com.apocalypse.zombies.orbital.OrbitalStrikeMode;
+import com.apocalypse.zombies.orbital.terminal.SkyfallTerminalManager;
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -92,17 +94,43 @@ public class OrbitalStrikeRemoteItem extends Item {
             return InteractionResultHolder.pass(stack);
         }
         OrbitalStrikeMode mode = getMode(stack);
-        // 冷却为 0 表示「完全无冷却」：跳过 isOnCooldown 检查，也不写冷却。
-        int cooldownSeconds = mode.cooldownSeconds(Config.ORBITAL_STRIKE_COOLDOWN.get());
-        if (cooldownSeconds > 0 && player.getCooldowns().isOnCooldown(this)) {
-            return InteractionResultHolder.fail(stack);
-        }
         // 准星取点：射线末端必须是 BLOCK 才算「瞄到地」—— 瞄到空气就让玩家自己再想想。
         HitResult hit = player.pick(PICK_REACH, 0.0F, false);
         if (!(hit instanceof BlockHitResult blockHit) || blockHit.getType() != HitResult.Type.BLOCK) {
             return InteractionResultHolder.fail(stack);
         }
-        OrbitalStrikeManager.schedule(serverPlayer, blockHit.getBlockPos().immutable(), mode);
+        BlockPos target = blockHit.getBlockPos().immutable();
+
+        // —— 终端路径优先：附近有一台已解锁、充能完毕、玩家有权限的终端时，
+        //    打击参数（半径/威力/下落速度）全由终端决定，遥控器只负责瞄哪儿。
+        //    这里放在物品冷却检查**之前**：终端的充能由终端自己管，不该再被遥控器的
+        //    旧冷却（自由开火留下的）二次卡住。
+        SkyfallTerminalManager.Authorization authorization =
+                SkyfallTerminalManager.authorize(serverPlayer, target);
+        if (authorization == SkyfallTerminalManager.Authorization.AUTHORISED) {
+            // 授权失败/充能中的提示都由 manager 发，这里只给一个身体上的反馈。
+            player.swing(hand, true);
+            return InteractionResultHolder.consume(stack);
+        }
+        if (authorization == SkyfallTerminalManager.Authorization.BLOCKED) {
+            return InteractionResultHolder.fail(stack);
+        }
+        // NO_TERMINAL：终端是可选门槛。配置要求终端时拒绝（并提示），否则回退到 3.x 的自由开火。
+        if (Config.TERMINAL_REQUIRED.get()) {
+            serverPlayer.displayClientMessage(
+                    Component.translatable("skyfall.terminal.required").withStyle(ChatFormatting.YELLOW), true);
+            return InteractionResultHolder.fail(stack);
+        }
+
+        // —— 自由开火（3.x 旧路径）：冷却作用在物品上。
+        // 冷却为 0 表示「完全无冷却」：跳过 isOnCooldown 检查，也不写冷却。
+        int cooldownSeconds = mode.cooldownSeconds(Config.ORBITAL_STRIKE_COOLDOWN.get());
+        if (cooldownSeconds > 0 && player.getCooldowns().isOnCooldown(this)) {
+            return InteractionResultHolder.fail(stack);
+        }
+        if (OrbitalStrikeManager.schedule(serverPlayer, target, mode) == null) {
+            return InteractionResultHolder.fail(stack);
+        }
         // 手臂挥一下：给「按下了开关」一个身体上的反馈（纯表现，不影响任何判定）
         player.swing(hand, true);
         if (cooldownSeconds > 0) {
