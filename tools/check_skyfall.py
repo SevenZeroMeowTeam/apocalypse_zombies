@@ -184,6 +184,8 @@ def main():
                    'orbital_blit.json', 'orbital_blit.vsh', 'orbital_blit.fsh'):
         path = A + 'shaders/program/' + shader
         report(path in names, '后处理程序文件存在 ' + shader)
+    for shader in ('orbit_sky.json', 'orbit_sky.vsh', 'orbit_sky.fsh'):
+        report(A + 'shaders/core/' + shader in names, '天幕 shader 存在 ' + shader)
     for facility in ('facility_hull', 'facility_gold', 'facility_panel', 'facility_solar',
                      'facility_dish', 'facility_glow_cyan', 'facility_glow_orange', 'facility_dark'):
         report(A + 'textures/block/' + facility + '.png' in names, '设施贴图存在 ' + facility)

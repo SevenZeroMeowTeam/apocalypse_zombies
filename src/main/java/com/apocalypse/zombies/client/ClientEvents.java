@@ -463,6 +463,7 @@ public final class ClientEvents {
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
         VeinMineHighlighter.render(event);   // 1.1.82：玩家一键挖掘的描边（自己判断 stage / 开关）
         OrbitalStrikeHighlighter.render(event);   // 1.2.5：轨道打击选区立方体描边（自己判断 stage / 开关）
+        com.apocalypse.zombies.client.renderer.OrbitSkyShader.render(event); // v4.0.9：轨道维度程序化天幕
         MoonEvent moon = ClientMoonState.getMoonEvent();
         if (!moon.isActive()) {
             return;
