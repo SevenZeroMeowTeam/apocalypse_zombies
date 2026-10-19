@@ -54,7 +54,7 @@ public final class OrbitDimension {
         if (!inOrbit(player)) {
             rememberReturn(player);
         }
-        player.teleportTo(level, center.getX() + 0.5D, DECK_Y + 1.0D, center.getZ() + 0.5D,
+        player.teleportTo(level, center.getX() + 0.5D, DECK_Y + 1.0D, center.getZ() + 18.5D,
                 player.getYRot(), 0.0F);
         player.sendSystemMessage(Component.literal(
                 "轨道设施 // " + mode.codename() + " —— 右键平台角的磁石可返回。"));

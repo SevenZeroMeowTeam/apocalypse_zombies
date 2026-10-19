@@ -1246,10 +1246,11 @@ public final class Config {
                         "Drives radial speed lines, impact ink frames, chromatic edge split, lens flare",
                         "and colour grading; 0 disables the whole layer (useful for motion sickness).")
                 .defineInRange("screen_fx", 100, 0, 100);
-        ORBITAL_STRIKE_POST_FX = b.comment("[4.0.3] Lightweight post-processing shader (radial blur, chromatic split,",
-                        "cheap bloom, white flash, colour grade, vignette) during strikes. Falls back",
-                        "to the pure-GUI approximation automatically if the driver cannot compile it.")
-                .define("post_shader", true);
+        ORBITAL_STRIKE_POST_FX = b.comment("[4.0.7] EXPERIMENTAL: multi-pass FBO post shader. OFF by default —",
+                        "4.0.3~4.0.6 在部分显卡/Embeddium 组合上会把打击画面刷成黑屏，原因仍未实机确认。",
+                        "关着时走 4.0.2 的纯 GUI 近似层（速度线/光晕/墨迹冲击帧），不会黑屏。",
+                        "只有你愿意帮忙测 GLSL 时才打开；打开后若黑屏，改回 false 即可恢复。")
+                .define("post_shader_experimental", false);
         ORBITAL_STRIKE_BREAK_BEDROCK = b.comment("Allow the strike to destroy bedrock (and only bedrock --",
                         "barriers, command blocks and block entities stay protected).",
                         "In column mode the beam digs all the way to the world floor, so this can",

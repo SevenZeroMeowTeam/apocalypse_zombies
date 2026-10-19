@@ -16,6 +16,7 @@ import net.minecraft.util.Mth;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.joml.Matrix4f;
+import org.lwjgl.opengl.GL11;
 
 /**
  * 一条轻量后处理链（v4.0.3）：把世界画面先画进 swap，再用
@@ -41,6 +42,7 @@ public final class OrbitalPostFx {
     private static int width = -1;
     private static int height = -1;
     private static boolean failed;
+    private static boolean announced;
 
     private OrbitalPostFx() {
     }
@@ -122,6 +124,14 @@ public final class OrbitalPostFx {
             effectPass.process(time);
             blitPass.process(time);
 
+            // 后处理在部分驱动上会留下 GL 错误；一旦出现就永久关闭，避免继续刷黑屏。
+            int glError = GL11.glGetError();
+            if (glError != 0) {
+                failed = true;
+                ApocalypseZombies.LOGGER.warn("[天陨] 后处理 GL 错误 0x{}，已关闭后处理。",
+                        Integer.toHexString(glError));
+            }
+
             // PostPass 结束时会 unbindWrite；必须把主目标重新绑回来，
             // 否则后面的 GUI 会画到默认帧缓冲，最终 blit 出来的就是黑屏。
             RenderTarget main = minecraft.getMainRenderTarget();
@@ -157,6 +167,11 @@ public final class OrbitalPostFx {
             blitPass.setOrthoMatrix(ortho);
             width = main.width;
             height = main.height;
+            if (!announced) {
+                announced = true;
+                ApocalypseZombies.LOGGER.info("[天陨] 后处理链已启用 {}x{}（实验性，可在配置关闭）",
+                        main.width, main.height);
+            }
             return true;
         } catch (Throwable error) {
             failed = true;

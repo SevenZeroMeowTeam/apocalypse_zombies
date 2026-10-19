@@ -31,6 +31,24 @@ public final class ModBlocks {
                     .lightLevel(state -> 7)
                     .noOcclusion()));
 
+    // ---- v4.0.8 轨道设施装饰方块（只用于 orbit 维度，不可破坏、无物品形态） ----
+    public static final RegistryObject<Block> FACILITY_HULL = facility("facility_hull", MapColor.COLOR_GRAY, 0);
+    public static final RegistryObject<Block> FACILITY_GOLD = facility("facility_gold", MapColor.GOLD, 0);
+    public static final RegistryObject<Block> FACILITY_PANEL = facility("facility_panel", MapColor.SNOW, 0);
+    public static final RegistryObject<Block> FACILITY_SOLAR = facility("facility_solar", MapColor.COLOR_BLUE, 0);
+    public static final RegistryObject<Block> FACILITY_DISH = facility("facility_dish", MapColor.SNOW, 0);
+    public static final RegistryObject<Block> FACILITY_GLOW_CYAN = facility("facility_glow_cyan", MapColor.COLOR_CYAN, 15);
+    public static final RegistryObject<Block> FACILITY_GLOW_ORANGE = facility("facility_glow_orange", MapColor.COLOR_ORANGE, 15);
+    public static final RegistryObject<Block> FACILITY_DARK = facility("facility_dark", MapColor.COLOR_BLACK, 0);
+
+    private static RegistryObject<Block> facility(String name, MapColor color, int light) {
+        return BLOCKS.register(name, () -> new Block(BlockBehaviour.Properties.of()
+                .mapColor(color)
+                .strength(-1.0F, 3600000.0F)
+                .sound(SoundType.METAL)
+                .lightLevel(state -> light)));
+    }
+
     private ModBlocks() {
     }
 
