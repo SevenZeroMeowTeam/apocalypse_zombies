@@ -364,7 +364,7 @@ public static UUID schedule(ServerPlayer player, BlockPos target, OrbitalStrikeM
 | 编译 / 专服 / RCON 冒烟 | ✅ | `compileJava` 与 `build` 全绿；`runServer` 启动 `Done (3.6s)` + RCON；`tools/skyfall_probe.py` 四条判据 PASS（放终端/NBT/掉落/命令） |
 | 客户端实机目检、双人验收 | ⬜ 待做 | 本机无图形客户端自动化，留 P3-d 人工验收 |
 | P4-A1 太空舞台五件套原创化 | ✅（dHash min=23，门禁 PASS） | `textures/environment/{earth,nebula,sat_body,sat_panel,sat_dish}.png`、`tools/orbital_art.py`、`tools/check_orbital_art.py` |
-| P4-A2/A3 载体板（5 张 1408×768） | ⬜ 未开始 | `textures/environment/carrier_*.png` |
+| P4-A2/A3 载体板（5 张 1408×768 + 小行星抠图） | ✅（3.11.0，dHash 对本参考图最小 23） | `textures/environment/carrier_{cannon,lance,singularity,plasma,asteroid,asteroid_cutout}.png`、`tools/carrier_art.py`、`tools/check_carrier_art.py` |
 | P5 门禁与出货 | ⬜ 未开始 | `tools/check_skyfall.py`、`tools/_deploy_400.py` |
 
 ### 环境与验证（2026-10-19）
