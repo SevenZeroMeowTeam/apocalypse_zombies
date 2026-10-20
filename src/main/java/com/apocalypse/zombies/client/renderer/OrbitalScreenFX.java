@@ -3,6 +3,7 @@ package com.apocalypse.zombies.client.renderer;
 import com.apocalypse.zombies.Config;
 import com.apocalypse.zombies.client.ClientFilmSettings;
 import com.apocalypse.zombies.client.OrbitalStrikeClientState;
+import com.apocalypse.zombies.client.gui.OrbitHudShapes;
 import com.apocalypse.zombies.orbital.engine.StrikePhase;
 import com.apocalypse.zombies.orbital.engine.StrikeProtocol;
 import com.apocalypse.zombies.orbital.engine.StrikeProtocols;
@@ -221,6 +222,18 @@ public final class OrbitalScreenFX {
         StrikeProtocol protocol = StrikeProtocols.protocolFor(mode);
         boolean v2 = protocol.migrated();
         int protocolColor = (alpha << 24) | (protocol.color() & 0xFFFFFF);
+
+        // —— 落点准星（v5.2：用新的 HUD 图形层）。
+        // 锁定时准星环随进度收紧 —— 一眼能看出「还差多少就锁死」。
+        {
+            int reticleSize = 34;
+            int rx = width / 2 - reticleSize / 2;
+            int ry = height / 2 - reticleSize / 2;
+            float lock = OrbitalStrikeClientState.lockProgress();
+            int reticleColor = (alpha << 24) | (v2 ? (protocol.color() & 0xFFFFFF) : HUD_CYAN);
+            OrbitHudShapes.reticle(graphics, rx, ry, reticleSize, reticleColor, alpha / 255.0F, lock);
+        }
+
         // 相位优先读服务端权威值（StrikePhasePacket），没收到时回退本地按 lock/fall 推算。
         // 时间轴本身由 OrbitalStrikeClientState 的 phaseOffset 平滑对齐，所以本地回退也不会错拍。
         StrikePhase phase = v2 ? currentPhase(protocol, elapsed, lockTicks, fallTicks) : null;
@@ -263,18 +276,16 @@ public final class OrbitalScreenFX {
         if (elapsed < lockTicks) {
             float progress = OrbitalStrikeClientState.lockProgress();
             int barW = Math.min(220, width / 3);
-            int barH = 4;
+            int barH = 6;
             int bx = (width - barW) / 2;
             int by = height - 44;
-            int frame = (alpha / 2) << 24;
-            safeFill(graphics, bx - 1, by - 1, bx + barW + 1, by + barH + 1, frame | 0x0A2A33);
-            int filled = (int) (barW * progress);
-            if (filled > 0) {
-                safeFill(graphics, bx, by, bx + filled, by + barH, cyan);
-            }
+            // v5.2：用新的 HUD 图形层画这条进度（标尺模式：画过的部分更亮 + 线头带火花），
+            // 比原来两三个 fill 矩形更像「仪器读数」。
+            OrbitHudShapes.rule(graphics, bx, by, barW, HUD_CYAN, alpha / 255.0F, progress);
             // 进度头部一个亮点，读起来像「正在推进」
-            if (filled > 2) {
-                safeFill(graphics, bx + filled - 2, by - 1, bx + filled, by + barH + 1,
+            if (progress > 0.01F) {
+                safeFill(graphics, bx + (int) (barW * progress) - 2, by - 1,
+                        bx + (int) (barW * progress), by + barH + 1,
                         (alpha << 24) | CORE_WHITE);
             }
         }

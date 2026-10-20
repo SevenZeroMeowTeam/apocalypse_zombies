@@ -1707,10 +1707,232 @@ public final class OrbitalStrikeManager {
             DESTROY_QUEUE.add(new BoxJob(level,
                     Mth.floor(box.minX), Mth.floor(box.minY), Mth.floor(box.minZ),
                     Mth.floor(box.maxX), Mth.floor(box.maxY), Mth.floor(box.maxZ)));
+        } else if ("parallel".equals(normalized)) {
+            // v5.2：并行算形（工作线程算形状，服务端线程落块）。
+            DESTROY_QUEUE.add(new ParallelCarveJob(level, center, radius));
         } else {
             // 默认 'layers'：一层一层往下削（地表 → 半径深），层间停顿可配置。
             DESTROY_QUEUE.add(new LayerJob(level, center, radius));
         }
+    }
+
+    /**
+     * v5.2：并行算形的弹坑任务。
+     *
+     * <p>结构照搬参考包 {@code star/m.java} 的三段式：</p>
+     * <ol>
+     *   <li><b>读</b>：服务端线程把这一层的方块状态批量读进一个数组（一次顺序读，很快）；</li>
+     *   <li><b>算</b>：工作线程对着这份快照决定每一格「挖掉 / 换成什么」——纯算术，不碰世界；</li>
+     *   <li><b>落</b>：服务端线程把算好的结果写回去（受 tick 预算限制）。</li>
+     * </ol>
+     *
+     * <p>纪律与参考包一致：<b>工作线程绝不碰活的区块</b>，所有区块读写都在服务端线程。
+     * 区块数据没有并发保护，绕过这条纪律会撕裂区块。</p>
+     */
+    private static final class ParallelCarveJob implements DestroyJob {
+        private final ServerLevel level;
+        private final BlockPos center;
+        private final int radius;
+        private final int bottomY;
+        /** 已提交、还没算完的形状任务。 */
+        private final List<java.util.concurrent.CompletableFuture<OrbitalCarveEngine.Plan>> pending =
+                new ArrayList<>();
+        /** 算完了、还没落地的形状。 */
+        private final List<OrbitalCarveEngine.Plan> ready = new ArrayList<>();
+        private int y;
+
+        ParallelCarveJob(ServerLevel level, BlockPos center, int radius) {
+            this.level = level;
+            this.center = center;
+            this.radius = radius;
+            this.bottomY = Math.max(level.getMinBuildHeight(), center.getY() - radius);
+            this.y = Math.min(level.getMaxBuildHeight() - 1, center.getY() + 1);
+        }
+
+        @Override
+        public int step(int budget) {
+            int processed = 0;
+            // —— 落：把算好的形状写进世界（受 tick 预算限制）
+            while (!ready.isEmpty() && processed < budget) {
+                OrbitalCarveEngine.Plan plan = ready.remove(0);
+                processed += applyPlan(plan);
+            }
+            if (processed >= budget) {
+                return processed;
+            }
+            // —— 收：把已经算完的任务挪进待落地队列
+            pending.removeIf(f -> {
+                if (f.isDone() && !f.isCompletedExceptionally()) {
+                    ready.add(f.join());
+                    return true;
+                }
+                return f.isCompletedExceptionally();
+            });
+            // —— 读+算：提交下一层
+            if (ready.isEmpty() && pending.isEmpty() && y > bottomY) {
+                submitLayer();
+            } else if (ready.isEmpty() && pending.isEmpty() && y <= bottomY) {
+                // 到底了
+            }
+            return processed;
+        }
+
+        /**
+         * 读一层快照 → 交给工作线程算 → 落地。
+         *
+         * <p>「读」在服务端线程做（工作线程不能读区块）；「算」在工作线程做。</p>
+         */
+        private void submitLayer() {
+            final int layerY = y;
+            final int r = radius;
+            final int cx = center.getX();
+            final int cz = center.getZ();
+            final int size = r * 2 + 1;
+
+            // —— 读：一次性把这一层的方块状态读出来（服务端线程，唯一能碰区块的地方）
+            final BlockState[] snapshot = new BlockState[size * size];
+            for (int ix = 0; ix < size; ix++) {
+                for (int iz = 0; iz < size; iz++) {
+                    snapshot[ix * size + iz] = level.getBlockState(
+                            new BlockPos(cx - r + ix, layerY, cz - r + iz));
+                }
+            }
+            final int layer = layerY;
+            final int ccx = cx;
+            final int ccz = cz;
+            final int r2 = r * r;
+            // 相对原点的 Y 偏移（原点 = 打击点的高度）
+            final int dy = layerY - center.getY();
+
+            pending.add(OrbitalCarveEngine.submit(
+                    new OrbitalCarveEngine.Region(level, cx - r, layerY, cz - r, cx + r, layerY, cz + r),
+                    (reg, sink, limit) -> {
+                        // —— 算：纯算术，工作线程，不读世界
+                        int count = 0;
+                        for (int ix = 0; ix < size && count < limit; ix++) {
+                            for (int iz = 0; iz < size && count < limit; iz++) {
+                                int x = ccx - r + ix;
+                                int z = ccz - r + iz;
+                                int dx = x - ccx;
+                                int dz = z - ccz;
+                                if (dx * dx + dz * dz > r2) {
+                                    continue;   // 圆盘外
+                                }
+                                BlockState s = snapshot[ix * size + iz];
+                                if (s.isAir()) {
+                                    continue;
+                                }
+                                // 状态为 null = 「挖掉」；非 null = 「换成这个」
+                                BlockState target = conversionFor(s);
+                                // 存**相对坐标**：21 位装不下绝对坐标（世界边界 ±3000 万格），
+                                // 但相对打击点最多几百格，21 位绰绰有余。
+                                sink.add(OrbitalCarveEngine.packRelative(dx, dy, dz), target);
+                                count++;
+                            }
+                        }
+                        return count;
+                    },
+                    size * size));
+            y--;
+        }
+
+        /** 把算好的形状落到世界里（服务端线程）。 */
+        private int applyPlan(OrbitalCarveEngine.Plan plan) {
+            int applied = 0;
+            int n = plan.size();
+            // 相对坐标的原点：打击点（x/z）和这一层的 y
+            int originX = center.getX();
+            int originZ = center.getZ();
+            int originY = center.getY();
+            for (int i = 0; i < n; i++) {
+                long key = plan.packed()[i];
+                BlockState target = plan.states()[i];
+                BlockPos pos = new BlockPos(
+                        OrbitalCarveEngine.unpackRelativeX(key, originX),
+                        OrbitalCarveEngine.unpackRelativeY(key, originY),
+                        OrbitalCarveEngine.unpackRelativeZ(key, originZ));
+                if (!level.isLoaded(pos)) {
+                    continue;
+                }
+                if (target == null) {
+                    // 挖掉
+                    BlockState before = level.getBlockState(pos);
+                    if (before.isAir()) {
+                        continue;
+                    }
+                    if (!canCarve(level, before, pos)) {
+                        continue;
+                    }
+                    level.destroyBlock(pos, false);
+                } else {
+                    // 换成目标方块（例如沙子压成砂岩）
+                    BlockState before = level.getBlockState(pos);
+                    if (before == target) {
+                        continue;
+                    }
+                    level.setBlock(pos, target, Block.UPDATE_ALL);
+                }
+                applied++;
+            }
+            return applied;
+        }
+
+        @Override
+        public boolean done() {
+            return y <= bottomY && pending.isEmpty() && ready.isEmpty();
+        }
+    }
+
+    /**
+     * 落块前的「能不能挖」判断（与 {@link #destroyOne} 同规则，但不真的挖）。
+     */
+    private static boolean canCarve(ServerLevel level, BlockState state, BlockPos pos) {
+        if (state.isAir()) {
+            return false;
+        }
+        net.minecraft.world.level.block.Block block = state.getBlock();
+        if (block == Blocks.BEDROCK && !Config.ORBITAL_STRIKE_BREAK_BEDROCK.get()) {
+            return false;
+        }
+        if (block == Blocks.BARRIER || block == Blocks.COMMAND_BLOCK
+                || block == Blocks.CHAIN_COMMAND_BLOCK || block == Blocks.REPEATING_COMMAND_BLOCK
+                || block == Blocks.STRUCTURE_BLOCK || block == Blocks.JIGSAW) {
+            return false;
+        }
+        if (state.hasBlockEntity()) {
+            return false;
+        }
+        float hardness = state.getDestroySpeed(level, pos);
+        if (hardness < 0.0F) {
+            return false;
+        }
+        if (hardness > Config.ORBITAL_STRIKE_MAX_HARDNESS.get().floatValue()) {
+            return false;
+        }
+        return !isProtected(block);
+    }
+
+    /**
+     * 弹坑里的「塌陷修正」：把会掉落的方块换成不掉的等价物。
+     *
+     * <p>移植自参考包 {@code star/m.java} 的材料转换规则：沙子被挖开后，
+     * 原版会让它变成掉落物实体、掉进坑里再堆起来，弹坑转眼就被填平 ——
+     * 参考包的做法是把沙子换成砂岩（不掉了），砾石换成石头。</p>
+     *
+     * <p>返回 {@code null} 表示「照常挖掉」。</p>
+     */
+    private static BlockState conversionFor(BlockState state) {
+        net.minecraft.world.level.block.Block block = state.getBlock();
+        if (block == Blocks.SAND) {
+            return Blocks.SANDSTONE.defaultBlockState();
+        }
+        if (block == Blocks.RED_SAND) {
+            return Blocks.RED_SANDSTONE.defaultBlockState();
+        }
+        if (block == Blocks.GRAVEL) {
+            return Blocks.STONE.defaultBlockState();
+        }
+        return null;
     }
 
     /**

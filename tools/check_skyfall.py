@@ -51,7 +51,7 @@ LANG_KEYS = [
     'skyfall.strike.busy',
 ]
 
-EXPECTED_CONFIGS = 223
+EXPECTED_CONFIGS = 224
 FAILS = []
 
 
@@ -186,7 +186,10 @@ def main():
         report(path in names, '后处理程序文件存在 ' + shader)
     for shader in ('orbit_sky.json', 'orbit_sky.vsh', 'orbit_sky.fsh'):
         report(A + 'shaders/core/' + shader in names, '天幕 shader 存在 ' + shader)
-    report(A + 'shaders/program/orbit_grade.glsl' in names, '合成器共享 include 存在')
+    # v5.2.0：共享代码改为内联进 orbital.fsh（program 着色器不支持 import），
+    # 所以这里**不再**需要 orbit_grade.glsl 这个独立文件。
+    report(A + 'shaders/program/orbit_grade.glsl' not in names,
+           '合成器共享代码已内联（不再有独立 include 文件）')
     for beam in ('orbit_beam.json', 'orbit_beam.vsh', 'orbit_beam.fsh'):
         report(A + 'shaders/core/' + beam in names, '实体光柱 shader 存在 ' + beam)
     beam_json_path = A + 'shaders/core/orbit_beam.json'
@@ -209,6 +212,43 @@ def main():
         missing_sky = sorted(sky_required - sky_uniforms)
         report(not missing_sky, '天幕声明全部 uniform（含 GameTime 动画驱动）',
                missing_sky if missing_sky else 'ok')
+    # v5.2.0：轨道炮特写（移植 star_gun）+ HUD 图形层（移植 white_space 的形状光栅器）
+    for core_name, core_desc in (('orbit_gun', '轨道炮特写'), ('orbit_hud', 'HUD 图形层')):
+        for ext in ('json', 'vsh', 'fsh'):
+            report(A + 'shaders/core/%s.%s' % (core_name, ext) in names,
+                   '%s shader 存在 %s.%s' % (core_desc, core_name, ext))
+    if A + 'shaders/core/orbit_gun.json' in names:
+        with zipfile.ZipFile(jar) as z:
+            gun_json = json.loads(z.read(A + 'shaders/core/orbit_gun.json'))
+        gun_declared = {u.get('name') for u in gun_json.get('uniforms', [])}
+        gun_required = {'CamPos', 'CamForward', 'CamRight', 'CamUp', 'TanHalf', 'Aspect',
+                        'PixelSize', 'Charge', 'Fired', 'GameTime', 'Alpha'}
+        missing_gun = sorted(gun_required - gun_declared)
+        report(not missing_gun, '轨道炮声明全部 uniform', missing_gun[:4] if missing_gun else 'ok')
+    if A + 'shaders/core/orbit_hud.json' in names:
+        with zipfile.ZipFile(jar) as z:
+            hud_json = json.loads(z.read(A + 'shaders/core/orbit_hud.json'))
+        hud_declared = {u.get('name') for u in hud_json.get('uniforms', [])}
+        hud_required = {'ModelViewMat', 'ProjMat', 'ColorModulator', 'ScreenSize'}
+        missing_hud = sorted(hud_required - hud_declared)
+        report(not missing_hud, 'HUD 图形层声明全部 uniform', missing_hud[:4] if missing_hud else 'ok')
+        report(hud_json.get('attributes') == ['Position', 'UV0', 'Color'],
+               'HUD 图形层声明 Position/UV0/Color 属性')
+    # v5.2.0：并行算形引擎（服务端）
+    report(os.path.isfile(os.path.join(ROOT, 'src', 'main', 'java', 'com', 'apocalypse',
+                                       'zombies', 'event', 'OrbitalCarveEngine.java')),
+           '并行算形引擎存在 OrbitalCarveEngine.java')
+    report(os.path.isfile(os.path.join(ROOT, 'src', 'main', 'java', 'com', 'apocalypse',
+                                       'zombies', 'client', 'renderer', 'OrbitalGunStage.java')),
+           '轨道炮特写渲染器存在 OrbitalGunStage.java')
+    report(os.path.isfile(os.path.join(ROOT, 'src', 'main', 'java', 'com', 'apocalypse',
+                                       'zombies', 'client', 'gui', 'OrbitHudShapes.java')),
+           'HUD 图形层 Java API 存在 OrbitHudShapes.java')
+    # v5.2.0：离线 GLSL 校验器 + 预览渲染器
+    report(os.path.isfile(os.path.join(ROOT, 'tools', 'glsl_check.py')),
+           'GLSL 真编译校验器存在 tools/glsl_check.py')
+    report(os.path.isfile(os.path.join(ROOT, 'tools', 'shader_preview.py')),
+           '着色器离线预览器存在 tools/shader_preview.py')
     # v4.1.0：轨道卫星 GeckoLib 模型（生成器 tools/facility_model.py）
     report(A + 'geo/satellite.geo.json' in names, '卫星 geo 存在')
     report(A + 'textures/entity/facility/satellite.png' in names, '卫星贴图存在')
@@ -236,7 +276,8 @@ def main():
         required = {'Strength', 'Radial', 'Chroma', 'Impact', 'Flash', 'Vignette', 'Grade',
                     'ProjMat', 'InSize', 'OutSize', 'Time',
                     'ZoomBlur', 'Bloom', 'Desaturate', 'Contrast', 'Grain',
-                    'ImpactMode', 'ImpactStrength', 'ImpactCenter', 'Exposure', 'Accent'}
+                    'ImpactMode', 'ImpactStrength', 'ImpactCenter', 'Exposure', 'Accent',
+                    'ShaftPos', 'ShaftStrength'}
         missing_u = sorted(required - declared)
         report(not missing_u, 'orbital 程序声明全部 uniform', missing_u[:4] if missing_u else 'ok')
         report(shader_json.get('attributes') == ['Position'], 'orbital 程序声明 Position 属性')
@@ -244,8 +285,18 @@ def main():
         if fsh_path in names:
             with zipfile.ZipFile(jar) as z:
                 fsh = z.read(fsh_path).decode('utf-8', 'replace')
-            report('#include "orbit_grade.glsl"' in fsh, 'orbital.fsh include 共享 include')
+            # Minecraft 的 program 着色器**不支持 import**（EffectProgram 会报
+            # "#error Import statement not supported"），共享代码必须内联。
+            # 只看真正的指令行，注释里提到 #include 不算。
+            code = re.sub(r'//[^\n]*', '', fsh)
+            code = re.sub(r'/\*.*?\*/', '', code, flags=re.S)
+            report('#include' not in code and '#moj_import' not in code,
+                   'orbital.fsh 不用 import（program 着色器不支持 import）')
             report('impactFrame' in fsh, 'orbital.fsh 调用冲击帧')
+            # 三目配平：'?' 多于 ':' 会让整个 program 编译失败（MC 静默不画）
+            q = code.count('?')
+            c = code.count(':')
+            report(q <= c, 'orbital.fsh 三目 ?/: 配平', '%d vs %d' % (q, c))
     config_java = os.path.join(ROOT, 'src', 'main', 'java', 'com', 'apocalypse', 'zombies', 'Config.java')
     with open(config_java, encoding='utf-8') as fh:
         source = fh.read()
@@ -299,7 +350,30 @@ def main():
     probe = os.path.join(ROOT, 'tools', 'skyfall_probe.py')
     report(os.path.isfile(probe), '专服探针脚本存在 tools/skyfall_probe.py')
 
-    print('\n[9] 包体指纹')
+    print('\n[9] GLSL 真编译（用本机 OpenGL 3.3 上下文）')
+    # 这一关卡是 5.2.0 加的：v5.0.0/v5.1.0 的三个 shader 从来没在玩家机器上
+    # 编译成功过（orbit_sky.fsh 有一个三目不配平），但因为没有任何离线编译手段，
+    # 本地构建、专服冒烟、门禁全绿就出货了，玩家那边只是「特效没出现」。
+    # 现在每个出货包都必须在本机真编译一遍，且 uniform 必须在链接后的 program 上查得到。
+    glsl = os.path.join(ROOT, 'tools', 'glsl_check.py')
+    report(os.path.isfile(glsl), 'GLSL 校验器存在 tools/glsl_check.py')
+    if os.path.isfile(glsl):
+        env = dict(os.environ)
+        env['PYTHONIOENCODING'] = 'utf-8'
+        try:
+            proc = subprocess.run([sys.executable, glsl], capture_output=True, text=True,
+                                  env=env, timeout=300)
+        except Exception as exc:
+            report(False, 'GLSL 真编译', str(exc)[:120])
+        else:
+            out = (proc.stdout or '') + (proc.stderr or '')
+            for line in out.splitlines():
+                if line.startswith(('compiled ', 'all shaders', 'FAILURES', 'STATIC')):
+                    print('  ' + line)
+            report(proc.returncode == 0, 'GLSL 全部编译通过（链接后 uniform 可查）',
+                   out.strip().splitlines()[-1][:120] if out.strip() else 'no output')
+
+    print('\n[10] 包体指纹')
     with open(jar, 'rb') as fh:
         digest = hashlib.sha256(fh.read()).hexdigest()
     print('  sha256 %s  (%d bytes)' % (digest, os.path.getsize(jar)))

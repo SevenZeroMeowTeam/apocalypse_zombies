@@ -32,13 +32,15 @@ float hash12(vec2 p) {
     return fract((p3.x + p3.y) * p3.z);
 }
 
-float noise(vec3 x) {
+float vnoise3(vec3 x) {
     vec3 i = floor(x);
     vec3 f = fract(x);
     f = f * f * (3.0 - 2.0 * f);
     return mix(
-        mix(mix(hash13(i), hash13(i + vec3(1, 0, 0))), mix(hash13(i + vec3(0, 1, 0)), hash13(i + vec3(1, 1, 0))), f.y),
-        mix(mix(hash13(i + vec3(0, 0, 1)), hash13(i + vec3(1, 0, 1))), mix(hash13(i + vec3(0, 1, 1)), hash13(i + vec3(1, 1, 1))), f.y),
+        mix(mix(hash13(i), hash13(i + vec3(1, 0, 0)), f.x),
+            mix(hash13(i + vec3(0, 1, 0)), hash13(i + vec3(1, 1, 0)), f.x), f.y),
+        mix(mix(hash13(i + vec3(0, 0, 1)), hash13(i + vec3(1, 0, 1)), f.x),
+            mix(hash13(i + vec3(0, 1, 1)), hash13(i + vec3(1, 1, 1)), f.x), f.y),
         f.z);
 }
 
@@ -46,7 +48,7 @@ float fbm(vec3 p) {
     float v = 0.0;
     float a = 0.5;
     for (int i = 0; i < 5; i++) {
-        v += a * noise(p);
+        v += a * vnoise3(p);
         p *= 2.03;
         a *= 0.5;
     }
@@ -82,7 +84,7 @@ vec3 starField(vec3 rd, float pix) {
     vec3 col = vec3(0.0);
     for (int layer = 0; layer < 3; layer++) {
         float fl = float(layer);
-        float scale = layer == 0 ? 90.0 : layer == 1 ? 210.0 : layer == 2 ? 430.0;
+        float scale = layer == 0 ? 90.0 : layer == 1 ? 210.0 : 430.0;
         vec3 id = floor(rd * scale);
         float h = hash13(id + fl * 17.0);
         if (h > (layer == 0 ? 0.055 : layer == 1 ? 0.045 : 0.035)) continue;

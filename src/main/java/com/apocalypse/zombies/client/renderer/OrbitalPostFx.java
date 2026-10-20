@@ -191,6 +191,14 @@ public final class OrbitalPostFx {
 
         try {
             EffectInstance fx = effectPass.getEffect();
+            RenderTarget main = minecraft.getMainRenderTarget();
+            // 画面尺寸：OutSize 决定宽高比（色差/暗角/冲击帧的取样步长都靠它），
+            // InSize 是主画面像素尺寸（径向速度模糊按像素定步长）。
+            // v5.2 之前这两个 uniform 从没被赋值过，一直是 json 里的默认 (1,1)，
+            // 所以宽高比是 1:1、非方屏上色差和暗角都是歪的。
+            fx.safeGetUniform("OutSize").set((float) main.width, (float) main.height);
+            fx.safeGetUniform("InSize").set((float) main.width, (float) main.height);
+            fx.safeGetUniform("Time").set((minecraft.level.getGameTime() + partialTick) / 20.0F);
             fx.safeGetUniform("Strength").set(strength);
             fx.safeGetUniform("Radial").set(radial);
             fx.safeGetUniform("Chroma").set(chroma);
@@ -208,6 +216,12 @@ public final class OrbitalPostFx {
             fx.safeGetUniform("ImpactCenter").set(centerX, centerY);
             fx.safeGetUniform("Exposure").set(exposure);
             fx.safeGetUniform("Accent").set(accentR, accentG, accentB);
+            // 光轴（v5.2，移植参考包 star_rays.fsh）：光源就是屏幕上的落点，
+            // 强度在落地那一下拉满，随后随冲击帧一起退下去。
+            float shaft = Math.max(impact, impactAge >= 0L && impactAge < 24L
+                    ? (1.0F - impactAge / 24.0F) * 0.6F : 0.0F);
+            fx.safeGetUniform("ShaftPos").set(centerX, centerY);
+            fx.safeGetUniform("ShaftStrength").set(shaft);
 
             // 关键：PostPass 画的是一个全屏四边形，默认的背面剔除会把整个画面剔掉
             // （GUI 前这个状态还留着世界渲染的 cull = on），结果是主目标被 clear 成黑。
@@ -227,7 +241,6 @@ public final class OrbitalPostFx {
 
             // PostPass 结束时会 unbindWrite；必须把主目标重新绑回来，
             // 否则后面的 GUI 会画到默认帧缓冲，最终 blit 出来的就是黑屏。
-            RenderTarget main = minecraft.getMainRenderTarget();
             main.bindWrite(false);
             RenderSystem.viewport(0, 0, main.width, main.height);
             RenderSystem.disableDepthTest();

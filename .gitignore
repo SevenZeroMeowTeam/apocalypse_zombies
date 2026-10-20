@@ -59,3 +59,6 @@ __pycache__/
 /*.png
 /*.jfif
 /*.jpg
+
+# DSH 工具的临时锁文件（本机残留，不该进仓库）
+.dsh-ops-update-*

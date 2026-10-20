@@ -527,6 +527,8 @@ public final class Config {
     public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_MAX_CONCURRENT;
     /** v4.0 P3：每 tick 全局方块改动预算。 */
     public static final ForgeConfigSpec.IntValue ORBITAL_STRIKE_BLOCK_BUDGET;
+    /** v5.2：地形改写是否用工作线程算形（关掉 = 主线程同步算，慢但行为一致）。 */
+    public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_PARALLEL_CARVE;
 
     // ===== 天陨指挥终端（v4.0 P1/P2） =====
     /** 是否必须站在已授权的天陨终端附近才能呼叫打击（关掉 = 遥控器回到 3.x 的自由模式）。 */
@@ -1281,6 +1283,10 @@ public final class Config {
         ORBITAL_STRIKE_BLOCK_BUDGET = b.comment("[v4.0 P3] Global block-change budget per tick across all strikes.",
                         "Lower it on weak servers; the crater then takes longer to finish.")
                 .defineInRange("strike_block_budget", 4000, 500, 20000);
+        ORBITAL_STRIKE_PARALLEL_CARVE = b.comment("[v5.2] Compute the crater's shape on worker threads.",
+                        "The block writes still happen on the server thread, so this only changes who does the maths.",
+                        "Turn it off if your server has very few CPU cores or you see chunk-loading stutter.")
+                .define("parallel_carve", true);
         b.pop();
 
         // 「天陨指挥终端」：v4.0 的玩法闭环 —— 建造终端、装协议核心、充能、再用遥控器呼叫。

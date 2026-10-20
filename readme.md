@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `5.1.0` |
+| **当前版本** | `5.2.0` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -278,6 +278,78 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 5.2.0 — 2026-10-20
+
+**修掉三个「从来就没在玩家机器上编译成功过」的着色器，并给以后加一道真编译的关卡。**
+
+这一版的重点不是加新特效，而是先弄清楚一件事：**v5.0.0 的太空天幕、v5.1.0 的实体光柱，
+从出货到今天，一次都没有在玩家的显卡上编译成功过。** 游戏日志里那 19 行
+`could not find uniform named ...` 就是证据 —— 链接失败时所有 uniform 都查不到，
+MC 对 core shader 编译失败的处理是**静默不画**，所以玩家只看到「特效没出现」，
+日志里也只有一行不起眼的警告。
+
+三个根因：
+
+| 文件 | 症状 | 根因 |
+|---|---|---|
+| `core/orbit_sky.fsh` | `'mix' : no matching overloaded function` | 三目写成了 `a ? b : c ? d : e ? f`（3 个 `?` 只配 2 个 `:`）。GLSL 的三目是**右结合**的，这个写法少一个 `:`，编译器报「expecting COMMA or COLON」 |
+| `core/orbit_beam.fsh` | `'noise2' : overloaded functions must have the same return type` | 函数名 `noise2` 撞上 ARB_gpu_shader5 的内建 `noise2`（返回 vec2），和我们的 `float noise2(vec2)` 冲突。改名 `bnoise2` |
+| `program/orbital.fsh` | `#include` 无法解析 | Minecraft 的 **program 着色器根本不支持 import**（`EffectProgram` 的预处理器对任何 import 直接返回 `#error Import statement not supported`）。共享代码必须内联 |
+
+另外两处「一直在但从没人用」的死代码：
+
+- `OutSize` / `InSize` / `Time` 三个 uniform **从来没被 Java 赋值过**，一直是 json 里的默认 `(1,1)`。
+  也就是说合成器的宽高比一直是 1:1 —— 非方屏上色差、暗角、冲击帧的取样步长全是歪的。
+  现在每帧喂真实分辨率。
+- `Radial`（径向速度模糊）Java 一直在设值，着色器里却没用它 —— 那个效果其实一直没生效。
+  现在补上实现（参考包 composite.fsh 的 RadialBlur）。
+
+**新增的关卡：出货前必须真编译一遍 GLSL。**
+
+- 新增 [tools/glsl_check.py](tools/glsl_check.py)：用本机 OpenGL 3.3 上下文
+  **真编译**模组里的每个着色器，并在**链接后的 program** 上查每个 uniform 的位置
+  （和 Minecraft 查法一致 —— 查链接后的 program 才算数）。
+- 新增 [tools/shader_preview.py](tools/shader_preview.py)：把着色器**真的渲染成 PNG**。
+  以前本机开不了图形客户端，shader 写完只能打包给玩家看效果；现在能先自己看。
+- 两者都接进了 [tools/check_skyfall.py](tools/check_skyfall.py) 的门禁：
+  GLSL 编译不过 = 出货门禁不过。
+
+**新特效（移植参考包 the-shooting-star）：**
+
+- **轨道炮「弧光长矛」特写** —— `shaders/core/orbit_gun.{json,vsh,fsh}` +
+  [OrbitalGunStage.java](src/main/java/com/apocalypse/zombies/client/renderer/OrbitalGunStage.java)。
+  移植参考包 `star_gun.fsh` 的做法（解析 SDF + 光线步进），但**造型与配色是我们自己的**：
+  方形加速线圈 × 8、三根 120° 聚焦爪、尾部反应堆与笼架、散热鳍、推进喷口；
+  能量色是弧光青而不是参考包的红。
+  充能时一道光波从炮闩推向炮口，开火瞬间炮口爆闪 + 整炮后坐 + 电弧倒跑回炮闩。
+  相机完全在 shader 空间（和参考包一样，Java 只给一组四元组）。
+- **光轴**（`star_rays.fsh` 的 `shafts()`）—— 40 步、抖动起点、权重逐���衰减的
+  屏幕空间光束采集，移植进合成器。落点即光源，光束取协议色。
+- **HUD 图形层**（`white_space` 的形状光栅器）—— `shaders/core/orbit_hud.{json,vsh,fsh}` +
+  [OrbitHudShapes.java](src/main/java/com/apocalypse/zombies/client/gui/OrbitHudShapes.java)。
+  一个形状 = 一个四边形，形状状态藏在顶点色里，AA 用 `fwidth` 在**局部像素空间**算
+  （所以形状在任何仿射变换下都保持干净）。实现了面板 / 软投影 / 圆盘（实心·环·辉光·粗环）/
+  进度弧 / 准星 / 标尺六种，打击 HUD 现在用真正的进度标尺和落点准星。
+  **没有复制参考包的字体和贴图**（那些是第三方资产），文字仍用原版字体。
+
+**服务器端：地形改写改成「工作线程算形 / 服务端线程落块」。**
+
+- 新增 [OrbitalCarveEngine.java](src/main/java/com/apocalypse/zombies/event/OrbitalCarveEngine.java)：
+  线程池规模 `clamp(核数-2, 2, 8)`、内存预算 `maxMemory/16`、
+  **工作线程绝不碰活的区块**（MC 的区块数据没有并发保护，绕过这条会撕裂区块）。
+  参考包 the-shooting-star 也是这么分的。
+- 新增弹坑模式 `parallel`（配置项 `orbital_strike.parallel_carve`）：
+  服务端线程批量读一层快照 → 工作线程纯算术决定每一格「挖掉 / 换成什么」→
+  服务端线程按 tick 预算落地。
+- **顺带修了一个真实的观感 bug**：以前挖开沙子，沙子会变成掉落物掉回坑里，
+  弹坑转眼被填平（参考包管这叫「塌陷修正」）。现在沙子压成砂岩、砾石换成石头。
+
+**相机：** 参考包用 Mixin 劫持 `Camera.setup` 和 `GameRenderer.getFov`/`renderHand`。
+本机拿不到 Mixin 的 gradle 插件（插件门户与各镜像都 404），所以改用 Forge 自带的事件：
+`ViewportEvent.ComputeCameraAngles`（位置/朝向）、`ViewportEvent.ComputeFov`（视野）、
+`RenderHandEvent`（藏手）。**效果等价，但不用给模组引入 Mixin 依赖** ——
+对玩家来说少一个能出问题的环节。
 
 ### 5.1.0 — 2026-10-20
 

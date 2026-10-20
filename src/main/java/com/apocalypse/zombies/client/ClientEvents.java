@@ -323,13 +323,25 @@ public final class ClientEvents {
         }
     }
 
-    /** 轨道打击落地瞬间的镜头抖动（自己判断阶段 / 距离，越远越弱）。 */
+    /**
+     * 轨道打击落地瞬间的镜头抖动（自己判断阶段 / 距离，越远越弱）。
+     */
     @SubscribeEvent
     public static void onComputeCameraAngles(ViewportEvent.ComputeCameraAngles event) {
         // 先摆「见证机位」，震动叠在它上面 —— 落地那一下的抖是打在远景上的。
         OrbitalCinematic.apply(event, Minecraft.getInstance());
         OrbitalScreenFX.shakeCamera(event, Minecraft.getInstance());
     }
+
+    /**
+     * 演出期间把手（以及手里的枪）藏起来。
+     *
+     * <p>参考包 the-shooting-star 用 GameRendererMixin 取消 {@code renderHand} 来做这件事；
+     * 我们改用 Forge 自己的 {@link RenderHandEvent}（它带 {@code @Cancelable}），
+     * 效果一样，但不用给模组引入 Mixin 依赖 —— 对玩家来说少一个能出问题的环节。</p>
+     *
+     * <p>实现见下方已有的 {@code onRenderHand}（它同时管着本模组自己的枪械手臂渲染）。</p>
+     */
 
     // ------------------------------------------------------------------ sky
 
@@ -465,6 +477,7 @@ public final class ClientEvents {
         OrbitalStrikeHighlighter.render(event);   // 1.2.5：轨道打击选区立方体描边（自己判断 stage / 开关）
         com.apocalypse.zombies.client.renderer.OrbitSkyShader.render(event); // v4.0.9：轨道维度程序化天幕
         com.apocalypse.zombies.client.renderer.OrbitalBeam.render(event);    // v5.1：实体光柱（移植 star_beam）
+        com.apocalypse.zombies.client.renderer.OrbitalGunStage.render(event); // v5.2：轨道炮特写（移植 star_gun）
         MoonEvent moon = ClientMoonState.getMoonEvent();
         if (!moon.isActive()) {
             return;
