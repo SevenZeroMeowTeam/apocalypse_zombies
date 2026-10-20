@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `5.2.0` |
+| **当前版本** | `6.0.0` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -278,6 +278,80 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 6.0.0 — 2026-10-20
+
+**演出层换成参考包 the-shooting-star 的完整管线：全屏 raymarch 太空全景 + bloom 金字塔 + 自建 FBO 链。**
+
+上一版先把「从没编译成功过」的 shader 修好，这版才轮到真正换管线。
+按参考包的做法重做了三件事 —— 整幅太空画面由一个片元着色器算出来、
+辉光走真正的多级金字塔、后处理有自己的帧缓冲链。
+
+#### 1) 太空全景：全屏 raymarch，取代公告板式三维舞台
+
+以前太空背景是**一堆公告板面片**拼的（`OrbitalSpaceStage`）：
+一个暗蓝渐变穹顶 + 一张银河贴图球 + 约 900 颗程序化星点 + 地球圆盘贴图 + 三圈大气辉光。
+远近层次全靠面片排序硬凑，转视角时层次会露馅。
+
+现在整幅画面由**一个片元着色器**画出来（`shaders/core/orbit_space.*` +
+[OrbitSpacePass.java](src/main/java/com/apocalypse/zombies/client/renderer/OrbitSpacePass.java)），
+做法和参考包的 `star_space.fsh` 一致：
+
+- 相机在 **shader 空间**里（`CamPos/CamForward/CamRight/CamUp`），
+  Java 每帧给一组四元组，镜头绕地球缓慢漂移（模拟卫星绕飞）；
+- 银河全景用**等距柱状贴图**采样，`u=0` 与 `u=1` 是同一条视线（烘焙时逐像素对齐，环绕无缝）；
+- 地球是**解析球体**：反照率贴图 + 云层（贴在 A 通道）+ 海面镜面高光 + 晨昏线 + 夜面城市灯；
+- 大气沿视线积分厚度，按太阳角度在蓝/橙之间过渡（掠射角偏红）；
+- 太阳方向**跟随相机**（左上方）—— 纯世界坐标的固定太阳会让镜头转到夜面时整个地球全黑。
+
+贴图是**自己烘焙的**（`tools/space_bake.py`）：参考包用的是 NASA 的 ESO 全景与地球贴图
+（第三方资产，不能用），所以我们从**自己的 `orbit_sky` 着色器**烘两张出来 ——
+`space_panorama.png`（2048×1024 银河全景）与 `planet_albedo.png`（1024×1024 行星反照率 + 云量）。
+烘焙入口是给 `orbit_sky.fsh` 加的 `BakeMode` uniform（0=游戏内 / 1=全景 / 2=行星），
+游戏内永远是 0，**画面零变化**（已用逐像素对比验证）。
+
+#### 2) bloom 金字塔：5 级降 + 4 级升，自建 FBO 链
+
+新增 [OrbitalBloomChain.java](src/main/java/com/apocalypse/zombies/client/renderer/OrbitalBloomChain.java)
+与 `orbit_bloom_down/up/depth_copy` 三个 program，结构照搬参考包的 `render/d.java`：
+5 级降采样（13 抽样 Jimenez 滤波）→ 4 级升采样（9 抽样 tent，加法在 shader 里做）→
+合成（`Radius=0` 让 tent 塌缩成恒等，输出 = 场景 + bloom × 强度）。
+
+**差分亮部提取**（参考包 `bloom_down.fsh` 的 Prefilter 分支）：首级拿「特效之前」的画面
+与当前画面相减，**只有打击特效新加上去的光会发光**，原版天空和雪地不会整片糊掉。
+为此后处理链多存了一份特效前的画面副本。
+
+整条链失败即回退：任何 GL 错误或异常都把 `failed` 置真并永久关闭，
+调用方拿 `false` 后退回原来那条朴素的 blit，**绝不把异常抛进渲染循环**。
+
+#### 3) 预览图变成游戏里真正用的贴图
+
+`build/shader-preview/` 里的离线预览渲染现在会转成正式资源
+（`tools/preview_to_texture.py`）：
+
+| 贴图 | 用途 |
+|---|---|
+| `gun_cannon_plate.png` | **轨道炮的载体板** —— 远景那门炮和特写那门炮是同一门了 |
+| `gun_cannon_plate_fired.png` | 开火瞬间的载体板 |
+| `beam_column.png` | 光柱柔光贴片 |
+| `impact_frame.png` | 冲击帧墨线底纹 |
+| `hud_shapes.png` | HUD 图形元素表 |
+
+全部进原创性门禁（`tools/check_orbital_art.py`，对 3 张参考图 dHash 距离全部 ≥ 18）。
+
+#### 配置
+
+- `[orbital_strike] space_pass`（默认开）：全屏 raymarch 太空全景；关掉退回旧的三维舞台。
+- `[orbital_strike] bloom`（默认开）：bloom 金字塔；关掉退回朴素的 blit。
+
+#### 验证
+
+- GLSL 真编译 9/9，链接后 uniform 全部可查。
+- 太空全景离线渲染：地球在画面中心、偏蓝像素 46%、大气边缘 100% 偏蓝；揭示淡入正常。
+- bloom 逐级变暗与外扩符合预期（升采样把亮区从 4.5px 推到 27.5px）。
+- 专服冒烟 + 装机包 `apocalypse_zombies-6.0.0-clean.jar`。
+
+---
 
 ### 5.2.0 — 2026-10-20
 

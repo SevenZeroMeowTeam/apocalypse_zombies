@@ -10,6 +10,9 @@
     { "name": "TanHalf", "type": "float", "count": 1, "values": [ 0.7 ] },
     { "name": "Aspect", "type": "float", "count": 1, "values": [ 1.0 ] },
     { "name": "Alpha", "type": "float", "count": 1, "values": [ 1.0 ] },
-    { "name": "GameTime", "type": "float", "count": 1, "values": [ 0.0 ] }
+    { "name": "GameTime", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "BakeMode", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "BakePixel", "type": "float", "count": 1, "values": [ 0.0 ] },
+    { "name": "BakeUMapping", "type": "float", "count": 2, "values": [ 1.0, 0.0 ] }
   ]
 }

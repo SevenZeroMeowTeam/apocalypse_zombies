@@ -1,0 +1,19 @@
+{
+  "vertex": "apocalypse_zombies:orbit_space",
+  "fragment": "apocalypse_zombies:orbit_space",
+  "attributes": [ "Position" ],
+  "samplers": [
+    { "name": "Panorama" },
+    { "name": "PlanetMap" }
+  ],
+  "uniforms": [
+    { "name": "CamPos", "type": "float", "count": 3, "values": [ 0.0, 0.0, 1.35 ] },
+    { "name": "CamForward", "type": "float", "count": 3, "values": [ 0.0, 0.0, -1.0 ] },
+    { "name": "CamRight", "type": "float", "count": 3, "values": [ 1.0, 0.0, 0.0 ] },
+    { "name": "CamUp", "type": "float", "count": 3, "values": [ 0.0, 1.0, 0.0 ] },
+    { "name": "TanHalf", "type": "float", "count": 1, "values": [ 0.4663 ] },
+    { "name": "Aspect", "type": "float", "count": 1, "values": [ 1.7778 ] },
+    { "name": "Alpha", "type": "float", "count": 1, "values": [ 1.0 ] },
+    { "name": "Reveal", "type": "float", "count": 1, "values": [ 1.0 ] }
+  ]
+}

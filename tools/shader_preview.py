@@ -514,6 +514,171 @@ def analyze_hud_png(path):
     }
 
 
+def _lum_stats(pixels, w, h, label):
+    """量一张图：平均亮度 / 峰值 / 亮区半径（亮区 = 亮度 > 峰值的 2%）。"""
+    total = w * h
+    lums = []
+    for i in range(total):
+        r = pixels[i * 3] / 255.0
+        g = pixels[i * 3 + 1] / 255.0
+        b = pixels[i * 3 + 2] / 255.0
+        lums.append(0.2126 * r + 0.7152 * g + 0.0722 * b)
+    peak = max(lums) if lums else 0.0
+    mean = sum(lums) / total if total else 0.0
+    cut = max(peak * 0.02, 1.0e-4)
+    cx, cy = w / 2.0, h / 2.0
+    radius = 0.0
+    bright = 0
+    for y in range(h):
+        for x in range(w):
+            if lums[y * w + x] > cut:
+                bright += 1
+                d = max(abs(x + 0.5 - cx), abs(y + 0.5 - cy))
+                if d > radius:
+                    radius = d
+    print(f"     {label:>8s} {w:4d}x{h:<4d} 平均亮度 {mean:.6f}  峰值 {peak:.4f}  "
+          f"亮区 {bright:6d}px  亮区半径 {radius:5.1f}px ({radius / max(1.0, max(cx, cy)) * 100:5.2f}% 半宽)")
+    return {"mean": mean, "peak": peak, "radius": radius, "bright": bright,
+            "spread": radius / max(1.0, max(cx, cy))}
+
+
+def _bind_sampler(prog, name, tex, unit):
+    """把纹理绑到纹理单元，并把 sampler uniform 指到那个单元。
+
+    moderngl 的 sampler uniform 存的是**纹理单元号**（不是纹理 id），
+    所以这里先 use(unit) 再写 uniform 值。
+    """
+    tex.use(unit)
+    prog[name].value = unit
+
+
+def preview_bloom(ctx, width, height):
+    """bloom 金字塔：纯黑背景 + 中央亮方块 → 5 级降采样 → 4 级升采样 → 合成。
+
+    打印每一级的平均亮度 / 峰值 / 亮区半径，用来验证「越往下越暗、越往外越散」。
+    """
+    import moderngl
+    from PIL import Image
+
+    vsrc = """
+#version 150
+in vec2 in_position;
+out vec2 texCoord;
+void main() {
+    texCoord = in_position * 0.5 + 0.5;
+    gl_Position = vec4(in_position, 0.0, 1.0);
+}
+"""
+    prog_down = ctx.program(vertex_shader=vsrc,
+                            fragment_shader=load(SHADERS / "program/orbit_bloom_down.fsh"))
+    prog_up = ctx.program(vertex_shader=vsrc,
+                          fragment_shader=load(SHADERS / "program/orbit_bloom_up.fsh"))
+
+    data = b"".join(struct.pack("<2f", x, y) for x, y in QUAD)
+    vbo = ctx.buffer(data)
+    vao_down = ctx.vertex_array(prog_down, [(vbo, "2f", "in_position")])
+    vao_up = ctx.vertex_array(prog_up, [(vbo, "2f", "in_position")])
+
+    # 输入图：纯黑背景 + 中央一个小亮方块（模拟打击瞬间的一点强光）
+    base = Image.new("RGB", (width, height), (0, 0, 0))
+    px = base.load()
+    cx, cy = width // 2, height // 2
+    side = max(2, width // 64)
+    for y in range(cy - side, cy + side):
+        for x in range(cx - side, cx + side):
+            px[x, y] = (255, 255, 255)
+    src = ctx.texture((width, height), 3)
+    src.write(base.tobytes())
+
+    def new_target(w, h):
+        tex = ctx.texture((w, h), 3)
+        fbo = ctx.framebuffer(color_attachments=[tex])
+        return tex, fbo
+
+    # —— 降采样 5 级（首级做亮部提取）——
+    print(f"  [bloom] 降采样（源 {width}x{height}，亮方块 {side * 2}px，亮部阈值 0.5）")
+    levels = []
+    src_tex = src
+    src_w, src_h = width, height
+    for i in range(5):
+        nw, nh = max(1, (src_w + 1) // 2), max(1, (src_h + 1) // 2)
+        tex, fbo = new_target(nw, nh)
+        fbo.use()
+        ctx.clear(0.0, 0.0, 0.0, 1.0)
+        prog_down["InSize"] = (float(src_w), float(src_h))
+        prog_down["Threshold"] = 0.5
+        prog_down["Prefilter"] = 1.0 if i == 0 else 0.0
+        # 差分提取关掉：用阈值提取（AuxSampler 仍然要绑上，否则纹理单元是空的）
+        prog_down["DiffPrefilter"] = 0.0
+        _bind_sampler(prog_down, "DiffuseSampler", src_tex, 0)
+        _bind_sampler(prog_down, "AuxSampler", src_tex, 1)
+        vao_down.render(moderngl.TRIANGLES, 3)
+        levels.append({"tex": tex, "fbo": fbo, "w": nw, "h": nh})
+        src_tex, src_w, src_h = tex, nw, nh
+
+    down_stats = []
+    for i, lv in enumerate(levels):
+        raw = lv["fbo"].read(components=3, alignment=1)
+        down_stats.append(_lum_stats(raw, lv["w"], lv["h"], f"D{i}"))
+
+    # —— 升采样 4 次（加到下面一级上）——
+    print("  [bloom] 升采样（9 抽样 tent 滤波后加到下面一级）")
+    small_tex = levels[4]["tex"]
+    small_w, small_h = levels[4]["w"], levels[4]["h"]
+    ups = []
+    for i in range(3, -1, -1):
+        nw, nh = levels[i]["w"], levels[i]["h"]
+        tex, fbo = new_target(nw, nh)
+        fbo.use()
+        ctx.clear(0.0, 0.0, 0.0, 1.0)
+        prog_up["InSize"] = (float(small_w), float(small_h))
+        prog_up["Radius"] = 1.0
+        prog_up["Strength"] = 1.0
+        _bind_sampler(prog_up, "DiffuseSampler", small_tex, 0)
+        _bind_sampler(prog_up, "AuxSampler", levels[i]["tex"], 1)
+        vao_up.render(moderngl.TRIANGLES, 3)
+        ups.append({"tex": tex, "fbo": fbo, "w": nw, "h": nh})
+        small_tex, small_w, small_h = tex, nw, nh
+
+    up_stats = []
+    for k, uv in enumerate(ups):
+        raw = uv["fbo"].read(components=3, alignment=1)
+        up_stats.append(_lum_stats(raw, uv["w"], uv["h"], f"U{3 - k}"))
+
+    # —— 合成：output = scene + bloom × strength ——
+    bloom_tex = ups[-1]["tex"]
+    comp_tex, comp_fbo = new_target(width, height)
+    comp_fbo.use()
+    ctx.clear(0.0, 0.0, 0.0, 1.0)
+    prog_up["InSize"] = (float(ups[-1]["w"]), float(ups[-1]["h"]))
+    prog_up["Radius"] = 0.0
+    prog_up["Strength"] = 0.8
+    _bind_sampler(prog_up, "DiffuseSampler", bloom_tex, 0)
+    _bind_sampler(prog_up, "AuxSampler", src, 1)
+    vao_up.render(moderngl.TRIANGLES, 3)
+
+    print("  [bloom] 合成（output = scene + bloom × 0.8）")
+    raw = comp_fbo.read(components=3, alignment=1)
+    comp_stats = _lum_stats(raw, width, height, "composite")
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out = OUT_DIR / "bloom_composite.png"
+    Image.frombytes("RGB", (width, height), raw).transpose(Image.Transpose.FLIP_TOP_BOTTOM).save(out)
+
+    # —— 结论 ——
+    dimming = down_stats[-1]["peak"] < down_stats[0]["peak"]
+    spreading = down_stats[-1]["spread"] > down_stats[0]["spread"]
+    up_bigger = up_stats[-1]["radius"] >= up_stats[0]["radius"]
+    print(f"     逐级变暗（峰值 {down_stats[0]['peak']:.4f} → {down_stats[-1]['peak']:.4f}）: "
+          f"{'是' if dimming else '否'}")
+    print(f"     逐级外扩（亮区半径占比 {down_stats[0]['spread'] * 100:.2f}% → "
+          f"{down_stats[-1]['spread'] * 100:.2f}%）: {'是' if spreading else '否'}")
+    print(f"     升采样逐级外扩（亮区半径 {up_stats[0]['radius']:.1f}px → "
+          f"{up_stats[-1]['radius']:.1f}px）: {'是' if up_bigger else '否'}   "
+          f"合成峰值 {comp_stats['peak']:.4f}")
+    return out
+
+
 PREVIEWS = {
     "sky": ("轨道维度程序化天幕", preview_orbit_sky),
     "beam": ("实体光柱（体积渐变）", preview_orbit_beam),
@@ -521,6 +686,7 @@ PREVIEWS = {
     "gun": ("轨道炮「弧光长矛」（解析 SDF 炮体 · 充能中）", preview_orbit_gun),
     "gun_fired": ("轨道炮：开火瞬间（闪光 + 后坐 + 弹道）", preview_orbit_gun_fired),
     "orbital": ("打击合成器（冲击帧 + 分级）", preview_orbital),
+    "bloom": ("bloom 金字塔（5 级降采样 + 4 级升采样 + 合成）", preview_bloom),
 }
 
 

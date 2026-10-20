@@ -20,6 +20,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 
 /**
  * 一条轻量后处理链（v4.0.3）：把世界画面先画进 swap，再用
@@ -40,6 +41,12 @@ import org.lwjgl.opengl.GL11;
 public final class OrbitalPostFx {
 
     private static TextureTarget swap;
+    /**
+     * 「特效之前」的画面副本 —— 供 bloom 做<b>差分</b>亮部提取：
+     * 只有打击特效新加上去的光会发光，原版天空/雪地不会整片糊掉
+     * （参考包 bloom_down.fsh 的 Prefilter 分支就是这么做的）。
+     */
+    private static TextureTarget sceneCopy;
     private static PostPass effectPass;
     private static PostPass blitPass;
     private static int width = -1;
@@ -228,8 +235,40 @@ public final class OrbitalPostFx {
             RenderSystem.disableCull();
             RenderSystem.disableDepthTest();
             float time = (minecraft.level.getGameTime() + partialTick) / 20.0F;
+
+            // —— 先把「特效之前」的画面留一份（bloom 差分用）
+            boolean haveOriginal = false;
+            if (sceneCopy != null) {
+                try {
+                    copyTo(sceneCopy, main);
+                    haveOriginal = true;
+                } catch (Throwable error) {
+                    // 复制失败就退化成普通阈值 bloom，不影响主流程
+                    haveOriginal = false;
+                }
+            }
+
             effectPass.process(time);
-            blitPass.process(time);
+
+            // v6.0：这里不再是「原样 blit 回去」，而是走 bloom 金字塔 ——
+            // 5 级降采样 + 4 级升采样，辉光加回画面（参考包 composite.fsh 的那套）。
+            // 顺序：**先 bloom 再特效**，所以打击特效本身也会被辉光影响（和参考包一致）。
+            boolean bloomed = false;
+            try {
+                if (!bloomEnabled()) {
+                    throw new IllegalStateException("bloom disabled by config");
+                }
+                // swap（特效结果）+ bloom → main
+                float bloomStrength = 0.55F + 0.45F * Math.max(impact, flash);
+                bloomed = OrbitalBloomChain.render(swap, main, bloomStrength, 0.72F,
+                        haveOriginal ? sceneCopy : null);
+            } catch (Throwable error) {
+                ApocalypseZombies.LOGGER.warn("[天陨] bloom 金字塔失败，改用原样 blit", error);
+            }
+            if (!bloomed) {
+                // bloom 不可用（配置关闭 / 之前失败过）→ 退回最朴素的 blit
+                blitPass.process(time);
+            }
 
             // 后处理在部分驱动上会留下 GL 错误；一旦出现就永久关闭，避免继续刷黑屏。
             int glError = GL11.glGetError();
@@ -266,6 +305,8 @@ public final class OrbitalPostFx {
             ResourceManager resources = minecraft.getResourceManager();
             swap = new TextureTarget(main.width, main.height, false, Minecraft.ON_OSX);
             swap.setClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+            sceneCopy = new TextureTarget(main.width, main.height, false, Minecraft.ON_OSX);
+            sceneCopy.setClearColor(0.0F, 0.0F, 0.0F, 0.0F);
             effectPass = new PostPass(resources, "apocalypse_zombies:orbital", main, swap);
             blitPass = new PostPass(resources, "apocalypse_zombies:orbital_blit", swap, main);
             Matrix4f ortho = new Matrix4f().setOrtho(0.0F, main.width, 0.0F, main.height, 0.1F, 1000.0F);
@@ -287,7 +328,41 @@ public final class OrbitalPostFx {
         }
     }
 
+    /**
+     * 把一张 RenderTarget 的颜色拷到另一张。
+     *
+     * <p>用 blit（{@code glBlitFramebuffer}）最快，但要求两张 FBO 的格式一致 ——
+     * 这里都是同样的 TextureTarget，没问题。</p>
+     */
+    private static void copyTo(RenderTarget dst, RenderTarget src) {
+        RenderSystem.assertOnRenderThread();
+        int prev = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER);
+        try {
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, src.frameBufferId);
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, dst.frameBufferId);
+            GL30.glBlitFramebuffer(0, 0, src.width, src.height,
+                    0, 0, dst.width, dst.height,
+                    GL11.GL_COLOR_BUFFER_BIT, GL11.GL_NEAREST);
+        } finally {
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prev);
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, 0);
+        }
+    }
+
+    /** bloom 是否启用（配置没就绪时按开处理）。 */
+    private static boolean bloomEnabled() {
+        try {
+            return Config.ORBITAL_STRIKE_BLOOM.get();
+        } catch (Throwable t) {
+            return true;
+        }
+    }
+
     private static void close() {
+        if (sceneCopy != null) {
+            sceneCopy.destroyBuffers();
+            sceneCopy = null;
+        }
         if (blitPass != null) {
             blitPass.close();
             blitPass = null;

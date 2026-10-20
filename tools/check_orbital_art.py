@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""P4-A1 资产门禁：校验太空舞台 5 张原创贴图的尺寸/格式，并用 dHash 证明它们不是参考图的
+"""P4-A1 资产门禁：校验太空舞台原创贴图的尺寸/格式，并用 dHash 证明它们不是参考图的
 缩放 / 裁切 / 重编码。
 
 为什么用 dHash：把图片压成 9x8 灰度差值的 64 bit 指纹，汉明距离对「轻微重编码」几乎不变、
-对「换一张结构不同的图」很敏感。门禁要求 5 张生成贴图与 3 张参考图的 64 bit 指纹距离
+对「换一张结构不同的图」很敏感。门禁要求每张生成贴图与 3 张参考图的 64 bit 指纹距离
 全部 ≥ 18（64 bit 里差 18 bit 已经是很不同的构图），只要有任何一张离参考图太近就 FAIL。
+
+其中 ``space_panorama`` / ``planet_albedo`` 是用本模组自己的 ``orbit_sky`` 着色器
+离线烘焙出来的（见 ``tools/space_bake.py``），素材来源与参考图完全无关。
 
 用法：
     python tools/check_orbital_art.py
@@ -31,6 +34,15 @@ TEXTURES = {
     "sat_body": ((256, 256), ("RGBA", "RGB")),
     "sat_panel": ((256, 256), ("RGBA", "RGB")),
     "sat_dish": ((256, 256), ("RGBA",)),
+    # —— 用本模组自己的 orbit_sky 着色器离线烘焙（tools/space_bake.py）
+    "space_panorama": ((2048, 1024), ("RGB",)),
+    "planet_albedo": ((1024, 1024), ("RGBA",)),
+    # —— v6.0：预览渲染转成的游戏贴图
+    "gun_cannon_plate": ((1408, 768), ("RGBA",)),
+    "gun_cannon_plate_fired": ((1408, 768), ("RGBA",)),
+    "beam_column": ((256, 1024), ("RGB",)),
+    "impact_frame": ((1024, 1024), ("RGB",)),
+    "hud_shapes": ((960, 420), ("RGBA",)),
 }
 PATHS = {name: os.path.join(ENV_DIR, name + ".png") for name in TEXTURES}
 
@@ -48,6 +60,14 @@ NEAREST_REFERENCE = {
     "sat_body": "ref_satellite",
     "sat_panel": "ref_satellite",
     "sat_dish": "ref_satellite",
+    "space_panorama": "ref_cosmos",
+    "planet_albedo": "ref_earth",
+    # —— v6.0：预览渲染转成的游戏贴图
+    "gun_cannon_plate": "ref_satellite",
+    "gun_cannon_plate_fired": "ref_satellite",
+    "beam_column": "ref_earth",
+    "impact_frame": "ref_earth",
+    "hud_shapes": "ref_earth",
 }
 MIN_DHASH_DISTANCE = 18
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
@@ -82,11 +102,21 @@ def check_format(name: str, fmt, size, modes) -> list[str]:
 
 
 def check_alpha_semantics(name: str, image: Image.Image) -> list[str]:
-    """渲染期约束：地球/天线必须有圆形透明底；舱体/电池片/星云必须不透明。"""
+    """渲染期约束：地球/天线必须有圆形透明底；舱体/电池片/星云必须不透明；
+    行星反照率图的 A 通道是**云量**（0=晴空，255=全云），所以允许半透明。"""
     problems = []
     rgba = image.convert("RGBA")
     alpha = rgba.getchannel("A")
     lo, hi = alpha.getextrema()
+    if name == "planet_albedo":
+        if hi != 255:
+            problems.append("%s: 没有完全被云覆盖的像素（max alpha=%d）" % (name, hi))
+        if lo != 0:
+            problems.append("%s: 没有晴空像素（min alpha=%d），云量通道应有 0" % (name, lo))
+        levels = len(set(alpha.getdata()))
+        if levels < 8:
+            problems.append("%s: alpha 只有 %d 级，云量层次太少" % (name, levels))
+        return problems
     if name in ("earth", "sat_dish"):
         corner = alpha.getpixel((0, 0))
         if corner != 0:
@@ -95,6 +125,16 @@ def check_alpha_semantics(name: str, image: Image.Image) -> list[str]:
             problems.append("%s: 没有完全不透明的内部（max alpha=%d）" % (name, hi))
         if lo != 0:
             problems.append("%s: 没有透明区域（min alpha=%d），圆形遮罩丢失" % (name, lo))
+    elif name in ("gun_cannon_plate", "gun_cannon_plate_fired", "hud_shapes"):
+        # v6.0：这些是从**黑底渲染**里抠出来的（tools/preview_to_texture.py 的 key_out_black），
+        # 所以四角透明、主体不透明 —— 和 earth/sat_dish 同一类。
+        corner = alpha.getpixel((0, 0))
+        if corner != 0:
+            problems.append("%s: 左上角 alpha=%d，抠图应为透明" % (name, corner))
+        if hi != 255:
+            problems.append("%s: 没有完全不透明的主体（max alpha=%d）" % (name, hi))
+        if lo != 0:
+            problems.append("%s: 没有透明区域（min alpha=%d）" % (name, lo))
     else:
         if lo != 255:
             problems.append("%s: 出现半透明/透明像素（min alpha=%d），该层应完全不透明"
@@ -152,8 +192,8 @@ def main() -> int:
     print()
 
     # ---------- 3) dHash 汉明距离矩阵 ----------
-    print("[3] dHash hamming distance matrix (5 generated x %d reference, threshold >= %d)"
-          % (len(refs), MIN_DHASH_DISTANCE))
+    print("[3] dHash hamming distance matrix (%d generated x %d reference, threshold >= %d)"
+          % (len(images), len(refs), MIN_DHASH_DISTANCE))
     if not images or not refs:
         print("  (无法计算：生成图或参考图缺失)")
         problems.append("无法计算 dHash 距离矩阵")
@@ -189,8 +229,8 @@ def main() -> int:
         for line in problems:
             print("  -", line)
         return 1
-    print("PASS: 5 张原创贴图尺寸/格式正确，与 3 张参考图的 dHash 距离全部 >= %d"
-          % MIN_DHASH_DISTANCE)
+    print("PASS: %d 张原创贴图尺寸/格式正确，与 %d 张参考图的 dHash 距离全部 >= %d"
+          % (len(TEXTURES), len(REFERENCE_FILES), MIN_DHASH_DISTANCE))
     return 0
 
 

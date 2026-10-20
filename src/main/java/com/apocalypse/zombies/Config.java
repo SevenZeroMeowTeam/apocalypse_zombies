@@ -513,6 +513,10 @@ public final class Config {
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_POST_FX;
     /** v5.1：是否启用实体光柱 shader（移植参考包 star_beam 的四段体积渐变）。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_BEAM_ENABLED;
+    /** v6.0：是否用全屏 raymarch 的太空全景（替代旧的公告板式三维舞台）。 */
+    public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_SPACE_PASS;
+    /** v6.0：是否启用 bloom 金字塔（5 级降 + 4 级升）。 */
+    public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_BLOOM;
     /** 打击是否能把基岩一起抹掉（整列模式会一直挖到世界底层，注意可能出现虚空）。 */
     public static final ForgeConfigSpec.BooleanValue ORBITAL_STRIKE_BREAK_BEDROCK;
     /** 新造/未选择的遥控器默认用哪种打击模式（cannon / lance / gravity / storm）。 */
@@ -1260,6 +1264,14 @@ public final class Config {
                         "deep), energy streaks, skin and haze. Applies to cinder / quarantine / black_rain.",
                         "Falls back to the old line-and-ring beam automatically if the driver cannot compile it.")
                 .define("beam_shader", true);
+        ORBITAL_STRIKE_SPACE_PASS = b.comment("[v6.0] Draw the space backdrop with a fullscreen raymarch pass",
+                        "(galaxy panorama + lit planet + atmosphere) instead of the old billboard stage.",
+                        "Turn it off if your GPU struggles; the old 3D stage comes back automatically.")
+                .define("space_pass", true);
+        ORBITAL_STRIKE_BLOOM = b.comment("[v6.0] Bloom pyramid over the strike post-processing",
+                        "(5 downsample + 4 upsample levels, like the reference pack).",
+                        "Turn it off if you see flicker or the picture washes out.")
+                .define("bloom", true);
         ORBITAL_STRIKE_BREAK_BEDROCK = b.comment("Allow the strike to destroy bedrock (and only bedrock --",
                         "barriers, command blocks and block entities stay protected).",
                         "In column mode the beam digs all the way to the world floor, so this can",

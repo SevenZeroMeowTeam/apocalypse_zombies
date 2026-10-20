@@ -14,6 +14,14 @@ uniform float Aspect;
 uniform float Alpha;
 uniform float GameTime;
 
+// —— 烘焙模式（离线出图专用，游戏内永远是 0）——
+// 0 = 游戏内相机视线（默认）；1 = 等距柱状全景天空；2 = 等距柱状行星反照率。
+// Java 侧不设置这三个 uniform，它们保持 orbit_sky.json 里的默认值（0.0 / 0.0 / (1,0)），
+// 因此游戏内的渲染路径与烘焙前完全一致。
+uniform float BakeMode;
+uniform float BakePixel;   // 烘焙时一个纹素对应的角尺寸（弧度）
+uniform vec2 BakeUMapping; // 烘焙时 u 的线性映射（缩放, 平移）：u = u_texel * x + y
+
 in vec2 vUV;
 out vec4 fragColor;
 
@@ -129,6 +137,22 @@ vec3 deepField(vec3 rd, float pix) {
     return col;
 }
 
+/** 地球/月球共用的地表反照率（fbm 地形 + 高纬冰盖 + 云量）。 */
+vec3 surfaceAlbedo(vec3 n, float landFreq, vec3 landA, vec3 landB, vec3 ocean,
+                   float cloudFreq, out float landMask, out float iceMask, out float cloudMask) {
+    float land = fbm(n * landFreq + 11.0);
+    float detail = fbm(n * (landFreq * 3.0));
+    vec3 surf = mix(ocean, mix(landA, landB, smoothstep(0.25, 0.65, detail)),
+                    smoothstep(0.50, 0.58, land));
+    // 高纬冰盖
+    float ice = smoothstep(0.72, 0.93, abs(n.y));
+    surf = mix(surf, vec3(0.86, 0.90, 0.95), ice * 0.85);
+    landMask = land;
+    iceMask = ice;
+    cloudMask = smoothstep(0.52, 0.72, fbm(n * cloudFreq + vec3(GameTime * 0.0009, 0.0, 0.0)));
+    return surf;
+}
+
 /** 地球/月球共用的表面计算（fbm 地形 + 云 + 光照 + 冰盖 + 海面镜面高光）。 */
 vec3 bodySurface(vec3 dir, vec3 centerDir, float er, vec3 sunDir,
                  float landFreq, vec3 landA, vec3 landB, vec3 ocean,
@@ -139,19 +163,15 @@ vec3 bodySurface(vec3 dir, vec3 centerDir, float er, vec3 sunDir,
     float z = sqrt(max(0.0, 1.0 - dot(p, p)));
     vec3 n = normalize(t * p.x + s * p.y - centerDir * z);
 
-    float land = fbm(n * landFreq + 11.0);
-    float detail = fbm(n * (landFreq * 3.0));
-    vec3 surf = mix(ocean, mix(landA, landB, smoothstep(0.25, 0.65, detail)),
-                    smoothstep(0.50, 0.58, land));
-    // 高纬冰盖
-    float ice = smoothstep(0.72, 0.93, abs(n.y));
-    surf = mix(surf, vec3(0.86, 0.90, 0.95), ice * 0.85);
+    float land;
+    float ice;
+    float clouds;
+    vec3 surf = surfaceAlbedo(n, landFreq, landA, landB, ocean, cloudFreq, land, ice, clouds);
     // 海面镜面高光（参考图里最明显的那一块）
     float spec = pow(max(dot(reflect(-sunDir, n), normalize(dir - centerDir * 0.0)), 0.0), 40.0);
     surf += vec3(1.0, 0.86, 0.66) * spec * (1.0 - ice) * 0.55 * step(0.5, land);
 
     if (cloudAmount > 0.0) {
-        float clouds = smoothstep(0.52, 0.72, fbm(n * cloudFreq + vec3(GameTime * 0.0009, 0.0, 0.0)));
         surf = mix(surf, vec3(0.92, 0.94, 0.97), clouds * cloudAmount);
     }
 
@@ -166,12 +186,8 @@ vec3 bodySurface(vec3 dir, vec3 centerDir, float er, vec3 sunDir,
     return surf;
 }
 
-void main() {
-    vec3 dir = normalize(CamForward
-            + CamRight * (vUV.x * TanHalf * Aspect)
-            + CamUp * (vUV.y * TanHalf));
-    float pix = TanHalf / 720.0;   // 每像素对应的角尺寸（近似）
-
+/** 深空背景：底色 + 银河带 + 星云 + 三层星场 + 深场星系（不含太阳/地球/月球）。 */
+vec3 skyBackdrop(vec3 dir, float pix) {
     // —— 深空底色
     vec3 col = vec3(0.006, 0.008, 0.020);
 
@@ -196,6 +212,49 @@ void main() {
 
     // —— 深场星系
     col += deepField(dir, pix);
+
+    return col;
+}
+
+/** 烘焙入口：等距柱状（equirectangular）映射。 */
+vec4 bakeEquirect(float u, float v) {
+    float lon = (u - 0.5) * TAU;
+    float lat = (0.5 - v) * PI;
+    vec3 dir = vec3(cos(lat) * sin(lon), sin(lat), cos(lat) * cos(lon));
+    // 接缝修正：u=0 与 u=1 指向同一条视线，但 sin(±π) 得到 ±1e-16，
+    // 让网格查表落进相邻的两个格子。这里把 x 归零，保证全景图首末列逐像素一致。
+    if (abs(dir.x) < 1e-9) {
+        dir.x = 0.0;
+    }
+    if (BakeMode > 1.5) {
+        // 行星反照率：RGB = 地表颜色（陆地/海洋/冰盖），A = 云量
+        float land;
+        float ice;
+        float clouds;
+        vec3 surf = surfaceAlbedo(dir, 3.1, vec3(0.09, 0.23, 0.09), vec3(0.36, 0.30, 0.16),
+                                  vec3(0.025, 0.09, 0.26), 5.0, land, ice, clouds);
+        return vec4(surf, clouds);
+    }
+    // 全景天空：银河带 + 星云 + 三层星场 + 深场星系（太阳/地球/月球仍是游戏内实时解析体）
+    vec3 col = skyBackdrop(dir, BakePixel);
+    return vec4(col, 1.0);
+}
+
+void main() {
+    // —— 烘焙模式：等距柱状（equirectangular）贴图，取样点即纹素中心
+    if (BakeMode > 0.5) {
+        float bu = (vUV.x * 0.5 + 0.5) * BakeUMapping.x + BakeUMapping.y;   // 纹素中心的 u（0..1）
+        float bv = 0.5 - vUV.y * 0.5;   // 纹素中心的 v（0..1，v=0 在图顶）
+        fragColor = bakeEquirect(bu, bv);
+        return;
+    }
+
+    vec3 dir = normalize(CamForward
+            + CamRight * (vUV.x * TanHalf * Aspect)
+            + CamUp * (vUV.y * TanHalf));
+    float pix = TanHalf / 720.0;   // 每像素对应的角尺寸（近似）
+
+    vec3 col = skyBackdrop(dir, pix);
 
     // —— 太阳：黑体色 + pointGlow 晕
     vec3 sunDir = normalize(vec3(0.55, 0.22, 0.80));

@@ -35,7 +35,15 @@ public final class OrbitalCarrierPlates {
 
     // ------------------------------------------------------------------ 资源
 
-    private static final ResourceLocation TEX_CANNON = tex("carrier_cannon");
+    /**
+     * v6.0：轨道炮的载体板换成**我们自己炮体的真实渲染**
+     * （由 tools/shader_preview.py 从 orbit_gun.fsh 离线渲出，再由
+     * tools/preview_to_texture.py 合成到 1408×768 的板上）。
+     *
+     * <p>这样画面里那门炮，和特写时那门炮是<b>同一门</b> ——
+     * 以前远景板是手画的电影板，和 SDF 炮完全是两回事，一眼就能看出不是同一件东西。</p>
+     */
+    private static final ResourceLocation TEX_CANNON = tex("gun_cannon_plate");
     private static final ResourceLocation TEX_LANCE = tex("carrier_lance");
     private static final ResourceLocation TEX_SINGULARITY = tex("carrier_singularity");
     private static final ResourceLocation TEX_ASTEROID = tex("carrier_asteroid");

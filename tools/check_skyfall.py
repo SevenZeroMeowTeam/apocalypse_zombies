@@ -32,6 +32,15 @@ STRIKE_PROTOCOLS = ['cinder', 'fault', 'quarantine', 'swarm', 'dawn', 'black_rai
 CARRIERS = ['carrier_cannon', 'carrier_lance', 'carrier_singularity',
             'carrier_plasma', 'carrier_asteroid']
 SPACE = ['earth', 'nebula', 'sat_body', 'sat_panel', 'sat_dish']
+# 用本模组自己的 orbit_sky 着色器离线烘焙的两张贴图（tools/space_bake.py）。
+# 它们不参与 jar 校验（要等 jar 重建），直接查源码资源目录。
+BAKED = {'space_panorama': (2048, 1024, 'RGB'), 'planet_albedo': (1024, 1024, 'RGBA'),
+         # v6.0：由离线预览渲染转成的游戏贴图（tools/preview_to_texture.py）
+         'gun_cannon_plate': (1408, 768, 'RGBA'),
+         'gun_cannon_plate_fired': (1408, 768, 'RGBA'),
+         'beam_column': (256, 1024, 'RGB'),
+         'impact_frame': (1024, 1024, 'RGB'),
+         'hud_shapes': (960, 420, 'RGBA')}
 JAVA_CLASSES = [
     'com/apocalypse/zombies/block/SkyfallTerminalBlock.class',
     'com/apocalypse/zombies/block/SkyfallTerminalBlockEntity.class',
@@ -51,7 +60,7 @@ LANG_KEYS = [
     'skyfall.strike.busy',
 ]
 
-EXPECTED_CONFIGS = 224
+EXPECTED_CONFIGS = 226
 FAILS = []
 
 
@@ -322,6 +331,18 @@ def main():
     for name in SPACE:
         path = A + 'textures/environment/%s.png' % name
         report(path in names, '太空舞台贴图存在 ' + name)
+    for name, (bw, bh, bmode) in sorted(BAKED.items()):
+        path = os.path.join(ROOT, 'src', 'main', 'resources', A,
+                            'textures/environment/%s.png' % name)
+        if not os.path.isfile(path):
+            report(False, '烘焙贴图存在 ' + name)
+            continue
+        with open(path, 'rb') as fh:
+            blob = fh.read()
+        gw, gh, gmode = png_size(blob)
+        report((gw, gh, gmode) == (bw, bh, bmode),
+               '烘焙贴图 %s %dx%d %s' % (name, bw, bh, bmode),
+               '%sx%s %s' % (gw, gh, gmode))
 
     if args.skip_art:
         print('\n[7] 贴图门禁（--skip-art 跳过）')

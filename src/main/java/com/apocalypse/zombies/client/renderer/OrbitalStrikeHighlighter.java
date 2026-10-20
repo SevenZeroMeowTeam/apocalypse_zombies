@@ -148,7 +148,11 @@ public final class OrbitalStrikeHighlighter {
         double beamR = beamRadius(strikeRadius);
 
         float spaceOpacity = OrbitalCinematic.spaceOpacity();
-        OrbitalSpaceStage.render(pose, lines, buffers, matrix, gameTime, partial, spaceOpacity);
+        // v6.0：太空全景改由全屏 raymarch pass 画（OrbitSpacePass），
+        // 这里不再摆公告板式的老舞台 —— 否则两层天空会叠在一起。
+        if (!OrbitSpacePass.isActive()) {
+            OrbitalSpaceStage.render(pose, lines, buffers, matrix, gameTime, partial, spaceOpacity);
+        }
         // 太空底完全淡出后才画真实世界落点：背景盒写深度，会挡住身后的世界几何。
         if (spaceOpacity <= 0.01F) {
             renderFallPhase(pose, lines, buffers, matrix, level, target, cx, cz, gy,

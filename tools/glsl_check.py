@@ -36,6 +36,11 @@ CORE = {
 PROGRAM = {
     "orbital": ("orbital.vsh", "orbital.fsh"),
     "orbital_blit": ("orbital_blit.vsh", "orbital_blit.fsh"),
+    # bloom 金字塔：三个 program 共用 orbital_blit.vsh 当顶点着色器
+    # （texCoord = Position.xy / OutSize，正是全屏 pass 需要的）
+    "orbit_bloom_down": ("orbital_blit.vsh", "orbit_bloom_down.fsh"),
+    "orbit_bloom_up": ("orbital_blit.vsh", "orbit_bloom_up.fsh"),
+    "orbit_depth_copy": ("orbital_blit.vsh", "orbit_depth_copy.fsh"),
 }
 
 INCLUDE_RE = re.compile(r'^\s*#include\s+"([^"]+)"\s*$', re.M)
