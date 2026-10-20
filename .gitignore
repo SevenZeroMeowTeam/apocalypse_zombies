@@ -62,3 +62,7 @@ __pycache__/
 
 # DSH 工具的临时锁文件（本机残留，不该进仓库）
 .dsh-ops-update-*
+# ===== 材质包 / 天体图工具的临时备份 =====
+# tools/env_celestial_scale.py 首次运行会把原图拷贝到这里，
+# 内容与 src 下的天体贴图重复，没必要进仓库。
+/tools/_backup_env/

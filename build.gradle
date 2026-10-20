@@ -161,6 +161,29 @@ dependencies {
     // http://www.gradle.org/docs/current/userguide/dependency_management.html
 }
 
+// ---------------------------------------------------------------------------
+// 内嵌植被贴图：只装模组的玩家也该看到新的草地与树叶
+//
+// 资源包仍独立分发（resourcepack/apocalypse_16x、resourcepack/apocalypse_32x），
+// 但植被是世界的底色 —— 看不到就等于没做。这里把 16x 包里的植被贴图并进
+// processResources 的输出，于是它们随着 mod.jar 走：Forge 的 mod 资源包优先级高于原版、
+// 低于用户资源包，所以装了 32x（或任何资源包）的玩家仍然看到自己那一套。
+//
+// 只内嵌 16x：32x 是「想更好看就自己开」的选项，不该悄悄把模组做胖一倍。
+// 名单 = resourcepack/tools/generate_textures.py 里的 VEGETATION（12 张，与脚本同源）
+//      + 同族项（见下面注释）。贴图本身仍由那个脚本生成，这里只做搬运。
+// ---------------------------------------------------------------------------
+def vegetationTextures = [
+        'grass_block_top', 'grass_block_side', 'dead_bush',
+        'oak_leaves', 'spruce_leaves', 'birch_leaves', 'jungle_leaves',
+        'acacia_leaves', 'dark_oak_leaves', 'mangrove_leaves', 'azalea_leaves',
+        'cherry_leaves',
+        // 同族项：草方块侧脸的下半截就是泥土，草根的接触阴影又压在泥土上 —— 两块并排时
+        // 泥土不跟着换会立刻穿帮；树干同理，橡木原木不与橡木树叶同调就别扭。
+        'dirt', 'coarse_dirt', 'oak_log', 'oak_log_top',
+]
+def vegetationSource = file('resourcepack/apocalypse_16x/assets/minecraft/textures/block')
+
 // This block of code expands all declared replace properties in the specified resource targets.
 // A missing property will result in an error. Properties are expanded using ${} Groovy notation.
 // When "copyIdeResources" is enabled, this will also run before the game launches in IDE environments.
@@ -177,6 +200,23 @@ tasks.named('processResources', ProcessResources).configure {
 
     filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
         expand replaceProperties + [project: project]
+    }
+
+    // 16x 植被贴图内嵌进 mod 资源：并进本任务自己的输出目录，jar 自然就带上了。
+    // 与上面的占位符展开互不影响（那条 filesMatching 只管 mods.toml / pack.mcmeta）。
+    inputs.files(vegetationSource)
+    inputs.property('vegetationTextures', vegetationTextures)
+    doFirst {
+        def missing = vegetationTextures.findAll {
+            !new File(vegetationSource, it + '.png').isFile()
+        }
+        if (!missing.isEmpty()) {
+            throw new GradleException("缺少 16x 植被贴图 ${missing}，先跑 python resourcepack/tools/generate_textures.py")
+        }
+    }
+    from(vegetationSource) {
+        include vegetationTextures.collect { it + '.png' }
+        into 'assets/minecraft/textures/block'
     }
 }
 

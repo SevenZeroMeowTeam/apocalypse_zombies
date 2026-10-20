@@ -85,7 +85,14 @@ public final class ClientEvents {
 
     /** Distance vanilla draws the moon quad at. Pulled a hair closer so we beat it on depth. */
     private static final float MOON_DISTANCE = 99.0F;
-    /** Vanilla's moon sprite half-size. */
+    /**
+     * Vanilla's moon sprite half-size, kept at vanilla's value on purpose: the 45% shrink lives in
+     * moon_phases.png (its visible disc was rescaled), not in the quad. Screen size therefore stays
+     * {@code 2 * 20 * 0.45 = 18}, exactly matching the vanilla moon's {@code 40 * 0.45 = 18} at the
+     * same moment, which is what lets this re-drawn moon land on top of the one it covers.
+     * {@code * moon.getMoonScale()} still multiplies on top, so the per-event size multiplier is
+     * unchanged.
+     */
     private static final float MOON_BASE_SIZE = 20.0F;
 
     /** Ticks between fire requests while the trigger is held. A packet throttle, not the rate of fire. */

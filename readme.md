@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `6.1.0` |
+| **当前版本** | `6.1.1` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -289,6 +289,40 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 6.1.1 — 2026-10-20
+
+**植被质感与光照：草方块/枯木重绘、补齐 8 种树叶，明暗烘焙进贴图；代码侧加植被色调与全帧环境光分级；修好材质包在 1.20.1 被判不兼容（等于从未生效）。**
+
+#### 1) 植被贴图：光照烘焙进 16×16
+
+- **重做**：草方块顶/侧、橡木树叶、枯木。统一假想光源在左上，叶簇按球冠法线算受光量，迎光轮廓补微高光、背光侧压暗，再按绘制高度场补环境遮蔽；高光向暖灰 `#cfc49f` 混合而不是直接乘亮度，避免烧成惨白。草方块侧面的泥土直接复用 `dirt.png` 的随机源，两块并排不出现"两种土"。
+- **新增 8 种树叶**：云杉 / 白桦 / 丛林 / 金合欢 / 深色橡木 / 红树 / 杜鹃 / 樱花，按针叶—阔叶、色调、叶簇密度与透光率区分；16x 与 32x 的覆盖率与平均色严格对齐（平均色漂移 ≤ 7.4/255）。
+- 全部由 [`resourcepack/tools/generate_textures.py`](resourcepack/tools/generate_textures.py) 程序化生成，固定种子可复现。植被改走独立随机源（`texture_rng`），其余 **220 张非植被材质与上一版逐字节相同** —— 由新增的 [`_legacy_stream.py`](resourcepack/tools/_legacy_stream.py) 冻结历史取数序列保证（单流 MT19937 有状态，植被取数次数一动，其后的 57 张就会整体平移）。
+
+#### 2) 代码侧光照
+
+- [`VegetationTintEvents.java`](src/main/java/com/apocalypse/zombies/client/VegetationTintEvents.java)（新）：`RegisterColorHandlersEvent.Block`（**MOD 总线**，不是 FORGE）覆盖草方块/高草/蕨/大蕨与 1.20.1 全部 10 种树叶的 tint，先取生物群系本色再轻量校正，保留群系差异。
+  幅度**刻意做轻**（去饱和 0.20、暖偏 1.06/1.01/0.90、压暗 0.98）：tint 在游戏里是乘法叠在贴图上，贴图侧已经烘焙过去饱和，若这里再来一遍 40% + 0.90，六群系的最终亮度会掉到原版的 0.89~0.92，草会读成脏灰而不是更真实。当前实测 0.971~0.985。
+- 全帧环境光分级（[`SkyWeatherEffects.java`](src/main/java/com/apocalypse/zombies/client/sky/SkyWeatherEffects.java)）：挂 `RenderLevelStageEvent.Stage.AFTER_LEVEL` —— 该阶段在 `GameRenderer` 里派发，位于**所有画质的透明度链之后、第一人称手持物与 GUI 之前**（`AFTER_WEATHER` 在 Fabulous 画质下落在天气 framebuffer 内，会让不同画质表现不一致）。叠一层 ≤0.18 透明度的色偏：日出黄昏偏暖、夜晚偏冷蓝、血月偏红并压绿压蓝、雨雪向中性灰收敛。
+- **新开关**（`config/apocalypse_zombies-client.toml` 的 `sky` 段，默认开）：`vegetation_tint`、`ambient_light_grade`。植被 tint 的颜色烘进区块网格，改开关后需重建区块才看得到。
+
+#### 3) 材质包：修好 1.20.1 下的"静默失效"
+
+- `pack.mcmeta` 的 `pack_format` 由 **4 改为 15**。1.20.1 只读 `pack_format`、**完全不读 `supported_formats`**，旧的 4 会被判"为旧版本制作"并从 `options.txt` 里移除（实机日志：`Removed resource pack file/apocalypse_16x ... no longer compatible`）——也就是说这套材质包在 1.20.1 上**从未真正生效过**。`supported_formats: 4–99` 保留，继续覆盖 1.20.2+；1.13–1.20.0 与 1.12 及更早改为需要手动「仍然加载」。
+- 16x 的 12 张植被贴图（外加 `dirt` / `coarse_dirt` / `oak_log` / `oak_log_top`）由 `processResources` 内嵌进模组 jar，**不装材质包也能看到新植被**；32x 不内嵌，避免与材质包抢优先级。内嵌的 16 张与资源包源文件 SHA256 全等，jar 内无 32x 泄漏。
+
+#### 4) 日月：45% 缩放回退到原尺寸
+
+- 6.1.0 曾把日月可见圆盘缩到原大小的 45%。实机验证后判定"失去气势"，**已回退到原尺寸**：贴图与 6.0.0 逐字节一致，日月仍是内置的 1024² / 2048×1024 高清覆盖（不是原版 16×16）。
+- [`tools/env_celestial_scale.py`](tools/env_celestial_scale.py) 保留为可调工具（`CELESTIAL_SCALE = 1.0`，值为 1.0 时直接从原图逐字节还原）。
+  **务必注意**：屏幕尺寸 = quad 比例 × 贴图圆盘占比，缩放只能落在贴图上，**禁止**乘进 `SUN_HALO_SIZE` / `MOON_HALO_SIZE` / `MOON_BASE_SIZE` 等 quad 常量 —— 那会变成 0.45² ≈ 20%，且月亮事件的自绘月亮只剩原版月亮的一半、盖不住它本该覆盖的那一层。
+
+#### 验证
+
+- 实机启动（Forge 47.4.27 + 52 个模组）：整份 `latest.log` **0 ERROR**，世界加载正常；资源包确认被加载（`Reloading ResourceManager: tacz_resources, mod_resources, vanilla, file/apocalypse_16x, ...`）。
+- 圆盘可见像素比 **1.0000**；`sun.png` / `moon_phases.png` 与 git HEAD 逐字节一致；jar 内 `sun.png` 1,522,237 B、`moon_phases.png` 922,227 B。
+- 非植被 220 张材质逐字节不变；`compileJava` / `jar` 均通过。
 
 ### 6.1.0 — 2026-10-20
 

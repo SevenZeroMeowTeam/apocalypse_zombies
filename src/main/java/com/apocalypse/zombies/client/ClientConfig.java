@@ -21,7 +21,8 @@ import net.minecraftforge.fml.config.ModConfig;
  * 适合晕 3D、录屏、或只想第一时间看清脚下地形的玩家。</p>
  *
  * <p>v6.1 新增 {@code sky} 段：轻量天空/天气增强（总开关 + 太阳/月亮辉光 + 天气雾效），
- * 渲染逻辑见 {@link com.apocalypse.zombies.client.sky.SkyWeatherEffects}。游戏内配置界面
+ * v6.2 在同一段里加了植被色调（{@link com.apocalypse.zombies.client.VegetationTintEvents}）
+ * 与全帧光照分级；渲染逻辑见 {@link com.apocalypse.zombies.client.sky.SkyWeatherEffects}。游戏内配置界面
  * （ApocalypseConfigScreen）只遍历 COMMON 的 {@code Config.values()}，本 spec 的项
  * （和 films 一样）通过 {@code config/apocalypse_zombies-client.toml} 编辑。</p>
  */
@@ -38,6 +39,10 @@ public final class ClientConfig {
     public static final ForgeConfigSpec.BooleanValue SKY_GLOW_HALOS;
     /** 天气雾效增强：雨浓雾暗、雪雾偏白、雷暴更深，随 rainLevel 平滑过渡。 */
     public static final ForgeConfigSpec.BooleanValue WEATHER_FOG_ENHANCE;
+    /** 植被色调：草方块/高草/蕨/树叶的去饱和 + 暖偏移 + 轻微压暗（末日枯黄基调）。 */
+    public static final ForgeConfigSpec.BooleanValue VEGETATION_TINT;
+    /** 全帧环境光分级：关卡渲染末尾一层极低 alpha 的暖/冷/血色偏，统一地面与植被观感。 */
+    public static final ForgeConfigSpec.BooleanValue AMBIENT_LIGHT_GRADE;
 
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
@@ -69,6 +74,20 @@ public final class ClientConfig {
                         "further. Strength follows the rain level smoothly. Natural-sky dimensions only",
                         "(never the Nether, the End or the orbit dimension). Needs realistic_sky_effects.")
                 .define("weather_fog_enhance", true);
+        VEGETATION_TINT = builder
+                .comment("Desaturate and warm the biome colour of grass, tall grass, ferns and every",
+                        "leaf block, so the ground reads as dry and sun-bleached. Biome differences",
+                        "are kept (the adjustment is the same affine shift for every biome).",
+                        "The result is baked into chunk meshes: rebuilding a chunk picks up a change.",
+                        "Needs realistic_sky_effects.")
+                .define("vegetation_tint", true);
+        AMBIENT_LIGHT_GRADE = builder
+                .comment("A very low-alpha full-frame colour grade at the end of the level render:",
+                        "warm at dawn/dusk, cold blue at night, red during a blood moon, greyer and",
+                        "dimmer in rain. Gives the ground and the vegetation one shared ambient",
+                        "light. Drawn during level rendering only, so the GUI and chat are never",
+                        "tinted. Needs realistic_sky_effects.")
+                .define("ambient_light_grade", true);
         builder.pop();
         SPEC = builder.build();
     }
