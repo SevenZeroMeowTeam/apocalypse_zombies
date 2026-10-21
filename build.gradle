@@ -162,20 +162,17 @@ dependencies {
 }
 
 // ---------------------------------------------------------------------------
-// 内嵌 Scorched 16x 方块贴图：只装模组的玩家也该看到完整的自家材质世界
+// 内嵌 Scorched 方块贴图：只装模组的玩家也该看到完整的自家材质世界
 //
 // 资源包仍独立分发（resourcepack/apocalypse_16x、resourcepack/apocalypse_32x），
-// 但 6.1.1 只内嵌 16 张植被同族贴图，石头/沙土/矿石/木材/玻璃/红石电器等仍是官方
-// 材质 —— 模组体验一半自家、一半原版。6.2.0 起把 16x 包 textures/block 的全部贴图
-// 并进 processResources 的输出，整套 Scorched 观感随着 mod.jar 走：Forge 的 mod
-// 资源包优先级高于原版、低于用户资源包，装了 32x（或任何资源包）的玩家仍然看到
-// 自己那一套。
+// 6.2.0 先内嵌 16x 全套；6.2.1 按需求把内嵌源换成 32x —— 同一 textures/block 路径
+// 两套分辨率互斥只能二选一，模组默认观感取更细的一档（裂纹与噪点）。
+// Forge 的 mod 资源包优先级高于原版、低于用户资源包，装了任何资源包的玩家仍然
+// 看到自己那一套。
 //
-// 只内嵌 16x：32x 是「想更好看就自己开」的选项，不该悄悄把模组做胖一倍。
 // 贴图由 resourcepack/tools/generate_textures.py 生成，这里只做整目录搬运（无名单，
 // 包里新增贴图自动随 jar 走）；textures/blocks/（1.13 前旧路径）不内嵌，1.20.1 不读。
-// ---------------------------------------------------------------------------
-def scorchedBlockTextures = file('resourcepack/apocalypse_16x/assets/minecraft/textures/block')
+def scorchedBlockTextures = file('resourcepack/apocalypse_32x/assets/minecraft/textures/block')
 
 // This block of code expands all declared replace properties in the specified resource targets.
 // A missing property will result in an error. Properties are expanded using ${} Groovy notation.
@@ -195,13 +192,13 @@ tasks.named('processResources', ProcessResources).configure {
         expand replaceProperties + [project: project]
     }
 
-    // 16x Scorched 方块贴图全量内嵌进 mod 资源：并进本任务自己的输出目录，jar 自然就带上了。
+    // Scorched 32x 方块贴图全量内嵌进 mod 资源：并进本任务自己的输出目录，jar 自然就带上了。
     // 与上面的占位符展开互不影响（那条 filesMatching 只管 mods.toml / pack.mcmeta）。
     inputs.files(scorchedBlockTextures)
     doFirst {
         def pngs = fileTree(scorchedBlockTextures).matching { include '*.png' }.files
         if (pngs.size() < 70) {
-            throw new GradleException("Scorched 16x 方块贴图只剩 ${pngs.size()} 张（应 ≥70），先跑 python resourcepack/tools/generate_textures.py")
+            throw new GradleException("Scorched 32x 方块贴图只剩 ${pngs.size()} 张（应 ≥70），先跑 python resourcepack/tools/generate_textures.py")
         }
     }
     from(scorchedBlockTextures) {
