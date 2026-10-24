@@ -6,6 +6,7 @@ import com.apocalypse.zombies.client.gui.ApocalypseTitleScreen;
 import com.apocalypse.zombies.client.renderer.OrbitalCinematic;
 import com.apocalypse.zombies.client.renderer.OrbitalScreenFX;
 import com.apocalypse.zombies.client.renderer.OrbitalStrikeHighlighter;
+import com.apocalypse.zombies.client.renderer.TreeFellHighlighter;
 import com.apocalypse.zombies.client.renderer.VeinMineHighlighter;
 import com.apocalypse.zombies.client.weapon.WeaponArms;
 import com.apocalypse.zombies.client.weapon.WeaponHandGrip;
@@ -86,10 +87,11 @@ public final class ClientEvents {
     /** Distance vanilla draws the moon quad at. Pulled a hair closer so we beat it on depth. */
     private static final float MOON_DISTANCE = 99.0F;
     /**
-     * Vanilla's moon sprite half-size, kept at vanilla's value on purpose: the 45% shrink lives in
-     * moon_phases.png (its visible disc was rescaled), not in the quad. Screen size therefore stays
-     * {@code 2 * 20 * 0.45 = 18}, exactly matching the vanilla moon's {@code 40 * 0.45 = 18} at the
-     * same moment, which is what lets this re-drawn moon land on top of the one it covers.
+     * Vanilla's moon sprite half-size, kept at vanilla's value on purpose: the 75% shrink lives in
+     * moon_phases.png (its visible disc was rescaled), not in the quad. The quad therefore stays
+     * {@code 2 * 20 = 40}, exactly matching vanilla's moon quad at the same moment, which is what
+     * lets this re-drawn moon land on top of the one it covers. The disc itself is 75% of the 6.1.0
+     * sprite (see {@code SkyWeatherEffects#CELESTIAL_SCALE} / {@code tools/env_celestial_scale.py}).
      * {@code * moon.getMoonScale()} still multiplies on top, so the per-event size multiplier is
      * unchanged.
      */
@@ -481,6 +483,7 @@ public final class ClientEvents {
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
         VeinMineHighlighter.render(event);   // 1.1.82：玩家一键挖掘的描边（自己判断 stage / 开关）
+        TreeFellHighlighter.render(event);   // 6.3.0：斧子一键砍伐的描边（同一套笔画，绿色）
         OrbitalStrikeHighlighter.render(event);   // 1.2.5：轨道打击选区立方体描边（自己判断 stage / 开关）
         com.apocalypse.zombies.client.renderer.OrbitSkyShader.render(event); // v4.0.9：轨道维度程序化天幕
         com.apocalypse.zombies.client.renderer.OrbitSpacePass.render(event); // v6.0：全屏 raymarch 太空全景
@@ -732,6 +735,7 @@ public final class ClientEvents {
 
         // 玩家一键挖掘的数字（准星下方那行「会连挖 N 格」）—— 自己判断开关与准星状态。
         VeinMineHighlighter.renderCount(graphics, minecraft);
+        TreeFellHighlighter.renderCount(graphics, minecraft);   // 6.3.0：砍树的数字（原木+斧头归砍树，其余归连挖，不会重叠）
 
         float progress = GunAimState.getAimProgress(event.getPartialTick());
         if (progress > 0.0F && GunAimState.hasScopeOverlay()) {

@@ -33,11 +33,11 @@ import org.joml.Matrix4f;
  * v6.1：轻量天空/天气增强（纯客户端演出层：不写世界数据、不发网络包、不建 Mixin）。
  *
  * <p><b>太阳/月亮辉光</b>：在 {@code RenderLevelStageEvent.Stage.AFTER_SKY} 用加性混合
- * （SRC_ALPHA × ONE）在太阳/月亮方位各画一层比原版天体大一圈的光晕 quad。纹理直接复用
- * 原版 {@code textures/environment/sun.png} 与 {@code textures/environment/moon_phases.png}
- * （4×2 相位格的左上格 = 满月），方位变换与原版天体及本模组 {@code ClientEvents#renderMoon}
- * 完全一致：{@code YP.rotationDegrees(-90)} + {@code XP.rotationDegrees(getTimeOfDay * 360)}，
- * quad 落在 ±{@link #HALO_DISTANCE} 的天幕平面上（+Y 朝太阳、-Y 朝月亮）。
+ * （SRC_ALPHA × ONE）在太阳/月亮方位各画一层光晕 quad，贴图是径向渐变
+ * {@code apocalypse_zombies:textures/environment/halo.png}（{@code tools/env_halo_glow.py} 烘制，
+ * 色调走 setShaderColor：太阳暖白、月亮冷蓝），quad 落在 ±{@link #HALO_DISTANCE} 的天幕平面上
+ * （+Y 朝太阳、-Y 朝月亮）。写实日月本体就是原版 quad 里的贴图（{@code SkyTextureOverrides}
+ * 强注册的那套），辉光只负责一圈柔光 —— 不再把本体贴图拉大叠一遍。
  * 月亮事件激活时跳过月亮辉光 —— 那时 {@code ClientEvents} 的 renderSkyWash/renderMoon 已经
  * 接管了月亮表现，两套月亮叠在同一片天空上会打架；太阳辉光不参与互斥，可常驻。
  * 雨雪越大辉光越淡（暴雨基本熄灭），避免与雨幕贴图抢戏。</p>
@@ -71,35 +71,43 @@ public final class SkyWeatherEffects {
 
     // 复用 minecraft 命名空间的原版天体贴图（并行工作流替换的就是这套路径）。
     // 47.4 起两个 ResourceLocation 构造器都标了 forRemoval，用 Forge 的工厂替代。
-    private static final ResourceLocation SUN_LOCATION =
-            ResourceLocation.withDefaultNamespace("textures/environment/sun.png");
-    private static final ResourceLocation MOON_LOCATION =
-            ResourceLocation.withDefaultNamespace("textures/environment/moon_phases.png");
+    /**
+     * 辉光专用贴图（{@code tools/env_halo_glow.py} 烘的径向渐变，中性白，色调走 setShaderColor）。
+     *
+     * <p><b>为什么不再用 sun.png / moon_phases 当光晕：</b>6.1.0 的做法是把本体贴图全图拉伸到
+     * 62/44 半径的大 quad 上加性叠亮 —— 贴图里那个 75% 圆盘跟着放大成第二颗天体（太阳屏幕上
+     * 变成 93 直径的大环包着 45 的本体盘；月亮更是无论相位都叠一层 66 直径的满月格）。
+     * 光晕应该是平滑径向衰减，不是第二颗太阳 —— 6.3.1 换专用渐变（本体 = 原版 quad 里的
+     * 写实日月，光晕只负责一圈柔光）。halo 在本模组命名空间，资源栈永远只有我们能提供，
+     * 不需要槽位强注册。</p>
+     */
+    private static final ResourceLocation HALO_LOCATION =
+            ResourceLocation.fromNamespaceAndPath(ApocalypseZombies.MOD_ID,
+                    "textures/environment/halo.png");
 
     /**
-     * 天体（太阳/月亮）相对原版的缩放比例：<b>1.0 = 原大小</b>（与 6.0.0 观感一致）。
+     * 天体（太阳/月亮）相对 6.1.0 / 6.0.0 写实贴图的缩放比例：<b>0.75 = 75%</b>（6.3.1）。
      * <b>本常量只是比例文档，不参与任何计算。</b>
      *
      * <p><b>为什么不能乘进 quad 常量：</b>屏幕上的天体尺寸 = quad 比例 × 贴图里圆盘的占比，
-     * 两个比例是相乘的。45% 已经实现在贴图里 —— {@code sun.png} / {@code moon_phases.png} 的
-     * 可见圆盘被 {@code tools/env_celestial_scale.py}（其 SCALE 必须与这里一致）缩到 45% 并居中
+     * 两个比例是相乘的。缩放已经实现在贴图里 —— {@code sun.png} / {@code moon_phases.png} 的
+     * 可见圆盘被 {@code tools/env_celestial_scale.py}（其 SCALE 必须与这里一致）缩到 75% 并居中
      * 回原画布（画布尺寸不变、4×2 相位格各自居中），四周留透明边；原版 {@code LevelRenderer}
      * 写死的 quad（太阳 30、月亮 20 单位）保持原值不动。此时：</p>
      * <ul>
-     *   <li>原版自绘太阳：{@code 30 × 1.0 = 30}（原尺寸）；</li>
-     *   <li>本模组辉光跨度：{@code 2 × 62 × 1.0 = 124}（原尺寸）；</li>
-     *   <li>{@code ClientEvents#renderMoon} 的月亮：{@code 2 × 20 × 1.0 = 40}，与同一时刻原版
-     *       月亮的 40 完全对齐。</li>
+     *   <li>原版自绘太阳：{@code 30 × 0.75}（75%）；</li>
+     *   <li>本模组辉光跨度：{@code 2 × 62}（quad 不变，贴图圆盘变小，光晕相对本体仍大一圈）；</li>
+     *   <li>{@code ClientEvents#renderMoon} 的月亮：{@code 2 × 20}，与同一时刻原版月亮的 quad
+     *       完全对齐（盖住原版那一层），可见圆盘同样是贴图里的 75%。</li>
      * </ul>
      * <p><b>历史：</b>6.1.0 曾把本常量设为 0.45（日月缩到 45%），实机观感“日月失去气势”，
-     * 已回退到 1.0。若要重新缩小，只改本常量与 {@code tools/env_celestial_scale.py} 的
-     * {@code CELESTIAL_SCALE}，不要动 quad 常量。</p>
-     * <p>一旦再把本常量乘进 quad（例如 {@code SUN_HALO_SIZE = 62 * 0.45}），屏幕尺寸就变成
-     * 0.45² ≈ 20%：辉光只剩 25.1（原 124），而 {@code renderMoon} 的月亮只剩 8.1 —— 比同一时刻
-     * 原版月亮的 18 小一半，那层月亮本来要精确盖住原版月亮，缩小后盖不住，会漏出一圈原版月亮。
-     * 所以：<b>禁止</b>把 {@code CELESTIAL_SCALE} 乘进任何 quad 常量。</p>
+     * 6.1.1 回退到 1.0；6.3.1 按用户要求改为 0.75。若要再改大小，只改本常量与
+     * {@code tools/env_celestial_scale.py} 的 {@code CELESTIAL_SCALE}，不要动 quad 常量。</p>
+     * <p>一旦再把本常量乘进 quad（例如 {@code SUN_HALO_SIZE = 62 * 0.75}），屏幕尺寸就变成
+     * 0.75² ≈ 56%：辉光和 {@code renderMoon} 的月亮都会比原版那一层小一圈，盖不住，
+     * 会漏出原版月亮的边缘。所以：<b>禁止</b>把 {@code CELESTIAL_SCALE} 乘进任何 quad 常量。</p>
      */
-    public static final float CELESTIAL_SCALE = 1.0F;
+    public static final float CELESTIAL_SCALE = 0.75F;
     /** 太阳辉光 quad 的半边长（原版太阳本体是 30，光晕大一圈才读得出「光」）。 */
     private static final float SUN_HALO_SIZE = 62.0F;
     /** 月亮辉光 quad 的半边长（原版月亮本体是 20）。 */
@@ -160,7 +168,7 @@ public final class SkyWeatherEffects {
         float y = sun ? HALO_DISTANCE : -HALO_DISTANCE;
 
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        RenderSystem.setShaderTexture(0, sun ? SUN_LOCATION : MOON_LOCATION);
+        RenderSystem.setShaderTexture(0, HALO_LOCATION);
         if (sun) {
             RenderSystem.setShaderColor(1.0F, 0.95F, 0.82F, SUN_HALO_ALPHA * fade);
         } else {
@@ -178,18 +186,18 @@ public final class SkyWeatherEffects {
         Tesselator tesselator = Tesselator.getInstance();
         BufferBuilder buffer = tesselator.getBuilder();
         buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX);
+        // halo.png 是径向对称渐变，两面 quad 都是全图 UV；太阳 +Y 平面、月亮 -Y 平面，
+        // 绕向各自沿用原版太阳 / 本模组 renderMoon 的写法。
         if (sun) {
-            // 与原版太阳 quad 同一绕向（+Y 平面，参照 LevelRenderer.renderSky）。
             buffer.vertex(matrix, -size, y, -size).uv(0.0F, 0.0F).endVertex();
             buffer.vertex(matrix, size, y, -size).uv(1.0F, 0.0F).endVertex();
             buffer.vertex(matrix, size, y, size).uv(1.0F, 1.0F).endVertex();
             buffer.vertex(matrix, -size, y, size).uv(0.0F, 1.0F).endVertex();
         } else {
-            // 与本模组 renderMoon 同一绕向（-Y 平面）；满月格 = moon_phases.png 左上 4×2 格的 (0,0)。
-            buffer.vertex(matrix, -size, y, size).uv(0.25F, 0.5F).endVertex();
-            buffer.vertex(matrix, size, y, size).uv(0.0F, 0.5F).endVertex();
-            buffer.vertex(matrix, size, y, -size).uv(0.0F, 0.0F).endVertex();
-            buffer.vertex(matrix, -size, y, -size).uv(0.25F, 0.0F).endVertex();
+            buffer.vertex(matrix, -size, y, size).uv(0.0F, 1.0F).endVertex();
+            buffer.vertex(matrix, size, y, size).uv(1.0F, 1.0F).endVertex();
+            buffer.vertex(matrix, size, y, -size).uv(1.0F, 0.0F).endVertex();
+            buffer.vertex(matrix, -size, y, -size).uv(0.0F, 0.0F).endVertex();
         }
         tesselator.end();
 

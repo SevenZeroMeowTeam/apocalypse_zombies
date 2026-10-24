@@ -17,8 +17,10 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
@@ -213,6 +215,14 @@ public final class PlayerVeinMine {
             return List.of();
         }
         if (Config.PLAYER_MINE_REQUIRE_TOOL.get() && !tool.isCorrectToolForDrops(originState)) {
+            return List.of();
+        }
+        // 原木目标让给斧子一键砍伐（6.3.0）：树是竖着长的一长串，矿脉那种「半径 + 上限」的圈子
+        // 罩不住整棵树，两套一起触发还会对着同一批方块重复结算。斧头 + 原木 → 树归 player_fell，
+        // 一键挖掘从此不掺和（没有斧头、或砍树关着时，一键挖掘照旧）。
+        if (Config.PLAYER_FELL_ENABLED.get()
+                && originState.is(BlockTags.LOGS)
+                && tool.getItem() instanceof AxeItem) {
             return List.of();
         }
         int max = clampMax(Config.PLAYER_MINE_MAX_BLOCKS.get());

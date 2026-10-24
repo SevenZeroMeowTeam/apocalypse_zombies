@@ -56,8 +56,8 @@ public final class VeinMineHighlighter {
     /** 线框外扩一点点，免得与方块表面共面打架（z-fighting）。 */
     private static final double INFLATE = 0.002D;
 
-    /** 数字画在准星下方多少像素 —— 贴着准星，又不压在它上面。 */
-    private static final int COUNT_OFFSET_Y = 14;
+    /** 数字画在准星下方多少像素 —— 贴着准星，又不压在它上面（连挖 / 砍树两个高亮器共用）。 */
+    static final int COUNT_OFFSET_Y = 14;
 
     private static BlockPos cachedPos;
     private static String cachedKey = "";
@@ -76,24 +76,33 @@ public final class VeinMineHighlighter {
         if (!ensureCache(minecraft) || !Config.PLAYER_MINE_HIGHLIGHT.get()) {
             return;
         }
-        BlockPos pos = cachedPos;
         if (cached.size() <= 1) {
             return;   // 只有瞄准的那一格 —— 原版自己画，不用我们插嘴
         }
+        paintOutlines(event, cached, cachedPos, RED, GREEN, BLUE, ALPHA);
+    }
 
+    /**
+     * 把一串方块画成线框（连挖 / 砍树两个高亮器共用的一套笔画）。
+     *
+     * <p>1.20.1 的 RenderLevelStageEvent 不带 MultiBufferSource（那是更晚的版本才有的），
+     * 所以借用主渲染缓冲 —— 与 LevelRenderer 画原版黑框用的是同一个。{@code skip} 是留给
+     * 原版黑框的那一格（瞄准格自己），别的调用方没有就传一个不在名单里的坐标。</p>
+     */
+    static void paintOutlines(RenderLevelStageEvent event, List<BlockPos> targets, BlockPos skip,
+                              float red, float green, float blue, float alpha) {
+        Minecraft minecraft = Minecraft.getInstance();
         Vec3 camera = event.getCamera().getPosition();
         PoseStack pose = event.getPoseStack();
-        // 1.20.1 的 RenderLevelStageEvent 不带 MultiBufferSource（那是更晚的版本才有的），
-        // 所以借用主渲染缓冲 —— 与 LevelRenderer 画原版黑框用的是同一个。
         MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
         VertexConsumer buffer = buffers.getBuffer(RenderType.lines());
         pose.pushPose();
         pose.translate(-camera.x, -camera.y, -camera.z);
-        for (BlockPos target : cached) {
-            if (target.equals(pos)) {
+        for (BlockPos target : targets) {
+            if (target.equals(skip)) {
                 continue;   // 那一格留给原版的黑框
             }
-            outline(pose, buffer, target);
+            outline(pose, buffer, target, red, green, blue, alpha);
         }
         pose.popPose();
         buffers.endBatch(RenderType.lines());
@@ -157,7 +166,8 @@ public final class VeinMineHighlighter {
     }
 
     /** 画一个方块（整格 1×1×1）的线框。 */
-    private static void outline(PoseStack pose, VertexConsumer buffer, BlockPos pos) {
+    private static void outline(PoseStack pose, VertexConsumer buffer, BlockPos pos,
+                                float red, float green, float blue, float alpha) {
         double minX = pos.getX() - INFLATE;
         double minY = pos.getY() - INFLATE;
         double minZ = pos.getZ() - INFLATE;
@@ -166,33 +176,35 @@ public final class VeinMineHighlighter {
         double maxZ = pos.getZ() + 1.0D + INFLATE;
 
         // 12 条棱，每条两个顶点；法线随便给个朝外的方向 —— RenderType.lines() 只吃位置 + 颜色。
-        edge(pose, buffer, minX, minY, minZ, maxX, minY, minZ, 0.0F, -1.0F, 0.0F);
-        edge(pose, buffer, maxX, minY, minZ, maxX, minY, maxZ, 1.0F, 0.0F, 0.0F);
-        edge(pose, buffer, maxX, minY, maxZ, minX, minY, maxZ, 0.0F, -1.0F, 0.0F);
-        edge(pose, buffer, minX, minY, maxZ, minX, minY, minZ, -1.0F, 0.0F, 0.0F);
+        edge(pose, buffer, minX, minY, minZ, maxX, minY, minZ, 0.0F, -1.0F, 0.0F, red, green, blue, alpha);
+        edge(pose, buffer, maxX, minY, minZ, maxX, minY, maxZ, 1.0F, 0.0F, 0.0F, red, green, blue, alpha);
+        edge(pose, buffer, maxX, minY, maxZ, minX, minY, maxZ, 0.0F, -1.0F, 0.0F, red, green, blue, alpha);
+        edge(pose, buffer, minX, minY, maxZ, minX, minY, minZ, -1.0F, 0.0F, 0.0F, red, green, blue, alpha);
 
-        edge(pose, buffer, minX, maxY, minZ, maxX, maxY, minZ, 0.0F, 1.0F, 0.0F);
-        edge(pose, buffer, maxX, maxY, minZ, maxX, maxY, maxZ, 1.0F, 0.0F, 0.0F);
-        edge(pose, buffer, maxX, maxY, maxZ, minX, maxY, maxZ, 0.0F, 1.0F, 0.0F);
-        edge(pose, buffer, minX, maxY, maxZ, minX, maxY, minZ, -1.0F, 0.0F, 0.0F);
+        edge(pose, buffer, minX, maxY, minZ, maxX, maxY, minZ, 0.0F, 1.0F, 0.0F, red, green, blue, alpha);
+        edge(pose, buffer, maxX, maxY, minZ, maxX, maxY, maxZ, 1.0F, 0.0F, 0.0F, red, green, blue, alpha);
+        edge(pose, buffer, maxX, maxY, maxZ, minX, maxY, maxZ, 0.0F, 1.0F, 0.0F, red, green, blue, alpha);
+        edge(pose, buffer, minX, maxY, maxZ, minX, maxY, minZ, -1.0F, 0.0F, 0.0F, red, green, blue, alpha);
 
-        edge(pose, buffer, minX, minY, minZ, minX, maxY, minZ, 0.0F, 0.0F, -1.0F);
-        edge(pose, buffer, maxX, minY, minZ, maxX, maxY, minZ, 0.0F, 0.0F, -1.0F);
-        edge(pose, buffer, maxX, minY, maxZ, maxX, maxY, maxZ, 0.0F, 0.0F, 1.0F);
-        edge(pose, buffer, minX, minY, maxZ, minX, maxY, maxZ, 0.0F, 0.0F, 1.0F);
+        edge(pose, buffer, minX, minY, minZ, minX, maxY, minZ, 0.0F, 0.0F, -1.0F, red, green, blue, alpha);
+        edge(pose, buffer, maxX, minY, minZ, maxX, maxY, minZ, 0.0F, 0.0F, -1.0F, red, green, blue, alpha);
+        edge(pose, buffer, maxX, minY, maxZ, maxX, maxY, maxZ, 0.0F, 0.0F, 1.0F, red, green, blue, alpha);
+        edge(pose, buffer, minX, minY, maxZ, minX, maxY, maxZ, 0.0F, 0.0F, 1.0F, red, green, blue, alpha);
     }
 
     private static void edge(PoseStack pose, VertexConsumer buffer,
                              double x1, double y1, double z1, double x2, double y2, double z2,
-                             float nx, float ny, float nz) {
-        vertex(pose, buffer, x1, y1, z1, nx, ny, nz);
-        vertex(pose, buffer, x2, y2, z2, nx, ny, nz);
+                             float nx, float ny, float nz,
+                             float red, float green, float blue, float alpha) {
+        vertex(pose, buffer, x1, y1, z1, nx, ny, nz, red, green, blue, alpha);
+        vertex(pose, buffer, x2, y2, z2, nx, ny, nz, red, green, blue, alpha);
     }
 
     private static void vertex(PoseStack pose, VertexConsumer buffer,
-                               double x, double y, double z, float nx, float ny, float nz) {
+                               double x, double y, double z, float nx, float ny, float nz,
+                               float red, float green, float blue, float alpha) {
         buffer.vertex(pose.last().pose(), (float) x, (float) y, (float) z)
-                .color(RED, GREEN, BLUE, ALPHA)
+                .color(red, green, blue, alpha)
                 .normal(pose.last().normal(), nx, ny, nz)
                 .endVertex();
     }

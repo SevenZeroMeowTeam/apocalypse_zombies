@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Rescale the visible sun/moon discs in the environment textures.
 
-Currently CELESTIAL_SCALE = 1.0 (vanilla size restored after 6.1.0 shipped 0.45 and the
-in-game sun/moon read as too small). Set it lower to shrink the discs; 1.0 restores the
-pristine textures byte-for-byte.
+Currently CELESTIAL_SCALE = 0.75 (6.3.1: 75% of the 6.1.0 / 6.0.0 disc). Set it to 1.0
+to restore the pristine textures byte-for-byte; lower shrinks the discs.
 
 Why this exists
 ---------------
@@ -46,18 +45,19 @@ except ImportError:  # pragma: no cover - explicit, never a silent fallback
     sys.exit("Pillow is required: python -m pip install pillow")
 
 # Must match SkyWeatherEffects#CELESTIAL_SCALE on the Java side.
-# 1.0 = vanilla size (restored); it is NOT allowed to be multiplied into the quad
-# constants there — screen size is quad_scale x disc_fraction, and the quad side must
-# stay at vanilla (sun 30, moon 20) so this module's custom moon keeps covering the
-# vanilla one it is drawn on top of.
-CELESTIAL_SCALE = 1.0
+# 0.75 = 75% disc (6.3.1); 1.0 restores the 6.1.0 / 6.0.0 disc byte-for-byte.
+# It is NOT allowed to be multiplied into the quad constants on the Java side —
+# screen size is quad_scale x disc_fraction, and the quad side must stay at vanilla
+# (sun 30, moon 20) so ClientEvents' custom moon keeps covering the vanilla one it
+# is drawn on top of.
+CELESTIAL_SCALE = 0.75
 # A pixel counts as visible above this alpha; below it the sprite is pure margin.
 ALPHA_VISIBLE = 8
 # Luminance threshold for the "bright disc" statistic (the sun sprite is a fully
 # opaque square, its visible body is only the bright part, not the whole canvas).
 LUMA_BRIGHT = 96
 
-ENV_DIR = Path("src/main/resources/assets/minecraft/textures/environment")
+ENV_DIR = Path("src/main/resources/assets/apocalypse_zombies/textures/environment")
 BACKUP_DIR = Path("tools/_backup_env")
 # file name -> (columns, rows) of its sprite grid
 TARGETS = {"sun.png": (1, 1), "moon_phases.png": (4, 2)}

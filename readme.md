@@ -78,11 +78,12 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 
 主世界天象与降水的写实化演出（纯客户端，资产全部内置，零外部依赖）：
 
-- **太阳**：写实日面（临边昏暗 + 光冕），黑底适配原版加性混合。
-- **月亮**：真实月面 8 相位（按原版 4×2 相位表几何合成）；血月等月相事件直接继承同一张写实月面。
+- **太阳**：写实日面（临边昏暗 + 光冕），黑底适配原版加性混合；6.3.2 起可见圆盘缩到 75%。
+- **月亮**：真实月面 8 相位（按原版 4×2 相位表几何合成）；血月等月相事件直接继承同一张写实月面；6.3.2 起可见圆盘缩到 75%。
 - **云**：俯视云层密度图，四向无缝平铺（平移交叉淡化消接缝）。
 - **雨 / 雪**：写实雨丝 / 柔焦雪花（纵向无缝）；雨天雾更浓更暗、雪天雾偏白、雷暴再加深，强度随雨势平滑过渡。
 - **辉光**：太阳 / 满月加性光晕，雨雪越大越淡；月亮事件激活时自动让位给血月演出，不打架。
+- **槽位强装（6.3.2）**：贴图走运行时注册（`SkyTextureOverrides`，`DynamicTexture` 顶进原版 `minecraft:textures/environment/*` 槽位），**不再依赖 `assets/minecraft/` 资源栈覆盖** —— `vanilla` / `programmer_art` / `high_contrast` 这些排在 `mod_resources` 之上的资源包（本实例 options.txt 实测如此）再也盖不回去；`sky.texture_override=false` 退回资源栈。日月缩放只动贴图圆盘（`tools/env_celestial_scale.py`，与 `SkyWeatherEffects.CELESTIAL_SCALE` 同步 0.75），quad 常量一律不动。
 - 生效范围：仅主世界（下界 / 末地 / 轨道维度不触发）；开关在 `config/apocalypse_zombies-client.toml` 的 `sky` 段（默认全开）。
 
 ### 月相事件（7 种）
@@ -278,10 +279,12 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 | `cat_girl` | 猫耳娘：`auto`（自主模式）、`mine_radius` / `mine_max_blocks`（一键挖掘的范围 / 上限）、`universal_tool`（全功能工具）、`mine_all` / `mine_protected`（挖什么 / 绝不挖什么）、`station_use` / `station_radius` / `station_self_craft`（工作方块） |
 | `ai` | 本机 **LM Studio** 助理（1.1.84 起）：`enabled` / `model` / `endpoint`（默认 `http://127.0.0.1:1234/v1`）/ `timeout_ms` / `num_ctx` / `json_schema` |
 | `player_mine` | **玩家一键挖掘**（1.1.81 起）：`enabled`（默认开）、`targets`（连带哪些方块：0 只矿石 / 1 矿石+自然方块 / 2 任何可挖方块）、`radius` / `max_blocks`（范围 / 上限 64）、`vein_only`（只连带连通矿脉）、`require_correct_tool`（工具不对口不连带）、`consume_durability`（扣耐久）、`sneak_disables`（潜行只挖一格）、`to_inventory`（产物进背包 —— 连带砸下来的那几格**和你亲手砸的那一格**都算，1.2.4 起）、`protected`（追加保护名单）、`highlight`（瞄准时把会连带的方块描边画出来，默认开）、`count`（瞄准时在准星下方显示「会连挖几格」，默认开） |
+| `player_fell` | **斧子一键砍伐**（6.3.0 起）：`enabled`（默认开）、`take_leaves`（连带清树冠，树叶不扣耐久，默认开）、`max_blocks`（原木+树叶合计上限，默认 128、最高 256）、`consume_durability`（每根原木扣 1 耐久，默认开）、`sneak_disables`（潜行只砍一格）、`to_inventory`（原木 / 树苗 / 苹果进背包）、`highlight` / `count`（绿色描边 + 准星下「会砍倒几格」）。斧头+原木的目标归它，一键挖掘自动让路 |
+| `compat` | **外家模组兼容**：`copper_recipe_dedup`（1.2.1 起，铜装备同形配方去重）、`restore_vanilla_recipes`（6.3.0 起，把 hcsurvival 用「1 个屏障」禁掉的原版石×5 / 木斧镐锄×3 假配方换回真原版配方；认不得的屏障假配方直接剔除） |
 | `orbital_strike` | **轨道打击遥控器**（1.2.5 起；2.0.0 起四种弹种）：`enabled`（总开关）、`radius`（基础选区半边长 1~96，各模式再乘倍率）、`damage`（中心伤害，半心单位）、`kill_chance`（每次命中秒杀几率 %）、`damage_mobs`、`destroy_blocks`、`destroy_mode`（`cube` / `column`）、`fall_ticks`、`cooldown`（冷却秒，按模式缩放）、`lock_ticks`（**前摇 tick，默认 140 = 7 s**）、`max_hardness`、`protected`、`cinematic_camera`、`break_bedrock`（**能否挖穿基岩，默认开**）、`default_mode`（`cannon` / `lance` / `gravity` / `storm` / `laser`）、`allow_mode_switch` |
 
 > **图形界面**：`模组列表 → 选中 Apocalypse Zombies → 配置`（1.1.79 起真能用了）——
-> 列出**全部 202 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
+> 列出**全部 232 项配置**，布尔点开/关、数字直接填、列表用逗号分隔，点「完成」立刻写回上面那个 TOML 文件。
 > 也就是说：界面和手改是**同一份配置**，不存在两套。
 
 > `specials.elite_spawn_weight` 改完要**重进世界**才生效 —— biome modifier 在加载时烘焙。
@@ -289,6 +292,147 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 6.3.2 — 2026-10-24（6.3.1 初版当天经五轮实机反馈迭代定稿）
+
+**修好「太阳 / 月亮 / 云朵显示成原版贴图」+ 日月缩小到 75%。**
+
+#### 根因：资源包顺序，不是贴图丢了
+
+- 6.1.0 起写实天空贴图一直以 `assets/minecraft/textures/environment/*` 随 jar 分发（本轮实测
+  6.3.0 jar 里五张俱全）。但 1.20.1 的资源查找按**资源栈尾部优先**（`FallbackResourceManager`
+  倒序遍历），而 `options.txt` 的 `resourcePacks` 数组**最后一个优先级最高** —— 本实例实测栈是
+  `[tacz_resources, mod_resources, vanilla, Moonlight, file/apocalypse_32x, high_contrast,
+  programmer_art]`：`vanilla` / `programmer_art` 都排在 `mod_resources` 之上，原版 32×32 的
+  太阳 / 月亮 / 云把内置高清贴图整组盖回去了。**方块贴图没事**是因为玩家自己的
+  `file/apocalypse_32x` 排在 vanilla 之上、且里面没有天空贴图 —— 这也解释了为什么只有天象露馅。
+- 也就是说：**从 6.1.0 起，这台实例上的天空贴图从未真正生效过**。
+
+#### 修法：贴图槽位运行时强装，不再赌资源包顺序
+
+- 五张贴图（太阳 / 八相位月面 / 云层 / 雨 / 雪）从 `assets/minecraft/` 迁到
+  `assets/apocalypse_zombies/textures/environment/`（原版命名空间目录整个退场）。
+- 新类 `client/sky/SkyTextureOverrides`：客户端 setup 与每次资源重载（含 F3+T）后，把五张 PNG
+  读成 `DynamicTexture` **直接注册进原版 `LevelRenderer` 绑定的五个槽位**
+  （`textures/environment/sun.png` 等）。`TextureManager.getTexture` 命中 `byPath` 就不再问资源栈，
+  `DynamicTexture.load()` 为空、`F3+T` 的 `reset()` 只会重新注册同一实例 —— 任何资源包都盖不动。
+- 云层槽位显式开 blur（原版 clouds 的 mcmeta 行为），其余按默认。
+- 新客户端开关 `sky.texture_override`（默认开）：关掉退回资源栈（原版 / 程序员艺术包 / 用户包按
+  options.txt 顺序生效）；切换即时生效，无需重启。仍受 `realistic_sky_effects` 总开关管辖。
+
+#### 日月缩小到 75%
+
+- `tools/env_celestial_scale.py` 的 `CELESTIAL_SCALE` 1.0 → **0.75**，从 `tools/_backup_env/`
+  原图重烘 `sun.png` / `moon_phases.png`：可见像素比 0.5625 = 0.75²（太阳 1048576 → 589824），
+  画布尺寸不变、圆盘居中，八相位共用的圆盘框统一缩放（月相间不跳位）。
+- 缩放只落在贴图圆盘上，`SUN_HALO_SIZE` / `MOON_BASE_SIZE` 等 **quad 常量一律不动**（6.1.1 的
+  教训：乘进 quad 会变 0.75² ≈ 56%，血月自绘月亮盖不住原版那层）；`SkyWeatherEffects.CELESTIAL_SCALE`
+  同步 0.75，仅作文档。云 / 雨 / 雪不缩放。
+
+#### 实机反馈：辉光双环 + 原版云（同版二修）
+
+实机截图确认槽位强装生效后仍有两个观感问题，根因都在「贴图 ≠ 原版渲染管线的假设」：
+
+- **太阳/月亮变成「大圈包小圈」**：辉光 quad（太阳 62 / 月亮 44 半径）原来直接拿本体贴图
+  （sun.png / 月亮满月格）全图拉伸 + 加性叠亮 —— 75% 圆盘跟着 quad 放大成第二颗天体：
+  太阳屏幕上 93 直径的大环包着 45 的本体盘；月亮更是**无论什么相位都叠一层 66 直径的满月格**
+  （截图里的巨大满月就是这层，月相还和本体对不上）。修法：新烘径向渐变
+  `halo.png`（`tools/env_halo_glow.py`，alpha = 0.9×(1−d)^2.2，色调仍走 setShaderColor：
+  太阳暖白 / 月亮冷蓝），辉光 quad 只画一圈柔光；本体就是原版 quad 里的写实日月。
+- **云是原版大块状**：1.20.1 `LevelRenderer#buildClouds` 的云网格 UV **硬编码 1/256**、
+  `scale(12,1,12)` —— 管线假设 256×256 贴图、**一像素 = 一格云（12 单位）**。6.1.0 的
+  1024² 密度图在这个管线下被当成「左上 256 区域放大 4 倍」，云形必然错。修法：
+  `tools/env_clouds_256.py` 把密度图 box 降采样到 256²（整周期缩小，四向无缝保留）+
+  alpha 对比度拉伸（低 46 / 高 200），云格占比 37%。
+- **雨雪无需改**：`renderSnowAndRain` 的 UV 是全图 0..1 按 1/4 步进滚动（分辨率无关），
+  128² 无缝雨雪贴图随槽位强装直接生效。
+
+#### 实机反馈三：云换成参考照片的离散积云（同版三修）
+
+- 上一轮从 6.1.0 密度图降采样的 256 云图，分布本身是「连绵云海」—— 从地面仰视糊成
+  一整片灰色厚层。用户给了两张高空积云参考照片（`dsh-image-gen/image-31fb79a4.png` /
+  `image-a516f86e.png`），要求云长成照片里「离散蓬松云团 + 大片蓝天间隙」的样子。
+- 新脚本 `tools/env_clouds_photo.py` **直接从参考照片提取云的分布**：云度场 =
+  亮度 − 0.8×蓝优势（云亮且不偏色，缝隙偏蓝暗），4× box 降采样到 256²、平移交叉淡化周期化、
+  自动阈值（软边 ±13）到目标覆盖率 45%。实测 solid 39.9% + 软边格 13.7%，2×2 平铺预览无接缝。
+  RGB 平白，立体明暗仍由原版 buildClouds 的顶/底/侧 vertex color 提供。
+- 换参考图：改脚本头部的 `PHOTO` 重跑即可；`env_clouds_256.py`（密度图降采样路线）保留。
+
+#### 实机反馈四：云块马赛克 → 1024 全分辨率照片云（同版四修，推翻 256 结论）
+
+- 256 云图实机是「一格 12 米」的马赛克方块。重新核对 `buildClouds` 的 UV 采样后确认
+  **此前「云必须 256×256」是误判**：UV = 格坐标/256、周期恒 3072 单位、**全图 0..1 连续采样**
+  —— 分辨率只决定 `1 纹素 = 3072/宽 单位` 的细节粒度（256 → 12 单位/px，1024 → 3 单位/px），
+  线性滤波下云边在格内平滑渐变。当年「1024 密度图不兼容」的实机大块云，其实是槽位尚未
+  强注册时看到的**原版 256 云**。
+- `env_clouds_photo.py` 升级为 **1024 全分辨率**：不降采样（保留照片絮状细边）、周期化
+  band 128（并修正交叉淡化权重方向——边缘取平移图、内部保原片，写反会假无缝）、
+  自动阈值覆盖率 45%（软边 ±8）。solid 42.1% + 软边 7.5%，2×2 平铺预览无缝。
+- `env_clouds_256.py`（降采样路线）已过时保留存档；实机验收点：云边蓬松无方块阶梯、
+  间隙呈大片蓝天、云团形态与参考照片一致。
+
+#### 实机反馈五：平板白纸 → 蓬松云朵（同版五修）
+
+- 1024 照片云实机仍读作「大片白色平板」：覆盖率 45% 的连绵分布 + **平白 RGB**（把照片
+  自带的明暗丢了）+ 原版云只有 4 单位厚，从地面/山腰看就是一张纸。
+- 三处一起修（`env_clouds_photo.py`）：
+  1. 覆盖率 45% → **30%**（实体 24.0% + 软边 15.5%），云团离散成朵、蓝天间隙大；
+  2. **RGB 不再平白**——用同一份周期化云度场驱动明暗（厚核亮白 252、薄边压到 ~200 灰白），
+     软边裙再乘 0.86~1.0 的暗裙（alpha 越低越暗），贴图自带「棉花团」立体光影，
+     与原版顶/底/侧 vertex color 的明暗叠加；
+  3. 软边带 0.06 → **0.12**（羽化更宽，云边蓬松）。
+- 提亮系数 `BRIGHTEN = 1.08` 补偿原版 vertex color 的整体压暗。
+
+#### 验证
+
+- 编译通过；75% 重烘报告可见像素比与理论值吻合（0.5625）；jar 内确认五张贴图只存在于
+  `apocalypse_zombies` 命名空间、`assets/minecraft/` 已无残留。
+- 实机验收点：进主世界看太阳 / 月亮为写实贴图且明显小于原版观感（75%）、云层为无缝密度图；
+  F3+T 后天象不变；`sky.texture_override=false` 后回到原版贴图。
+
+---
+
+### 6.3.0 — 2026-10-24
+
+**斧子一键砍伐整棵树 + 修好被 [硬核生存] 禁掉的原版石制 / 木制工具合成。**
+
+#### 斧子一键砍伐（`player_fell`）
+
+- 拿着**斧头**砍倒一格原木，同一棵树（同类原木连成的那一棵）跟着整棵下来：橡木 / 白桦一根直杆、
+  黑橡树 2×2、带枝杈的橡木都认 —— 6 邻连通、只认同种原木，**树与树没有原木相连就互不影响**。
+- `take_leaves`（默认开）：原木收完从原木边界向外清树冠（任何树种都算），树苗 / 苹果照常按掉落表出；
+  树叶**不扣耐久**（树冠动辄几十格，都扣一把斧头撑不完整棵树）。
+- `max_blocks` 默认 **128**（1~256，原木与树叶合计，含你砍的那一根）：砍到上限停手，超大的云杉
+  不会一次拆光；`consume_durability` 默认开（每根原木扣 1 耐久，斧头用坏即停）。
+- 潜行只砍一格；产物直接进背包（原木 / 树苗 / 苹果…，塞不下掉脚下）；瞄树时绿色描边 +
+  准星下「会砍倒 N 格」，画出来的与实际会砍的永远同一份（服务端客户端共用 `preview`）。
+- **目标划分**：斧头 + 原木归砍树，一键挖掘（`player_mine`）自动让路；没有斧头或砍树关着时，
+  一键挖掘照旧管原木。两套的产物兜袋机制各管各的表，互不串门。
+- 新类 `event/PlayerTreeFell` + `client/renderer/TreeFellHighlighter`（笔画与连挖高亮共用一套，
+  换树皮绿配色）。
+
+#### 原版工具配方修复（`compat.restore_vanilla_recipes`，默认开）
+
+- **病根**：[硬核生存] hcsurvival 把 `data/minecraft/recipes/` 下的**石质全套 5 件**
+  （剑 / 镐 / 斧 / 锹 / 锄）与**木斧 / 木镐 / 木锄** 3 件换成了「1 个屏障」的假配方 ——
+  屏障生存里拿不到，一辈子合不出来，配方书 / REI 里却照常显示，摆上真材料永远没有产物。
+  这就是「石制 / 木制工具无法合成」的真身；**铁制与木剑 / 木锹它没动**，本来就能合成
+  （0.19.2 的全部数据 + 代码注入逐个核对过，整合包其它 mod 与数据包也没碰）。
+- **修法**：配方加载完成后，把 `minecraft` 命名空间下「每个非空材料格都只认屏障」的假配方
+  换成代码重建的原版真配方（木 / 石 / 铁 × 剑 / 镐 / 斧 / 锹 / 锄 15 件，图案与材料逐格照抄
+  原版 jar —— 石质材料是 `#minecraft:stone_tool_materials` 标签不是只有圆石），id 原样顶回，
+  配方书解锁状态不受影响；认不得的屏障假配方直接剔除（生存里本来就合不出来）。
+- **为什么不赌数据包优先级**：两个模组写同一条 `minecraft:recipes/stone_axe.json` 时谁赢看
+  资源栈顺序，赌不起 —— 运行期 barrier 之后原地替换是确定性的（与铜装备去重同一条路）。
+- 关掉 `compat.restore_vanilla_recipes` 立即回到原样（假配方留着，工具依旧合不出来）。
+
+#### 门禁与配置
+
+- 新门禁 `tools/check_vanilla_recipe_restore.py`：Java 重建表 ↔ 原版 1.20.1 真配方逐格互核、
+  hcsurvival 屏障假配方清单全覆盖（它改版加新禁用会当场红）、铁制 / 木剑木锹未被触碰。
+- 新配置 9 项（`compat.restore_vanilla_recipes` + `player_fell` 段 8 项）：配置总数 223 → 232。
+
+---
 
 ### 6.2.1 — 2026-10-20
 

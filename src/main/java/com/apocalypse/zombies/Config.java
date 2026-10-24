@@ -266,6 +266,30 @@ public final class Config {
     /** 瞄准时在准星下方显示「这次会连挖几格」（纯本地观感，与描边各管各的）。 */
     public static final ForgeConfigSpec.BooleanValue PLAYER_MINE_COUNT;
 
+    // ---- 斧子一键砍伐（斧头砍倒一格原木，同一棵树跟着下来，6.3.0）。声明顺序 = 图形配置界面里的顺序。 ----
+
+    /** 总开关。默认开：拿着斧头砍树本来就该整棵下来。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_FELL_ENABLED;
+    /** 砍完原木连带清掉与树冠相连的树叶（树苗 / 苹果照常掉）。树叶不扣耐久。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_FELL_LEAVES;
+    /** 一次最多砍多少格（含玩家自己砍的那一根，原木与树叶合计，最高 256）。 */
+    public static final ForgeConfigSpec.IntValue PLAYER_FELL_MAX_BLOCKS;
+    /** 连带出来的每根原木都扣 1 点耐久（创造模式不扣，工具用坏就停手）。树叶不扣。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_FELL_DURABILITY;
+    /** 潜行时只砍你点的那一格（想单砍一根就蹲下）。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_FELL_SNEAK_DISABLES;
+    /** 产物直接进背包（原木 / 树苗 / 苹果…都算，塞不下掉在脚下）；false = 全部留在原地。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_FELL_TO_INVENTORY;
+
+    /** 瞄准会砍倒的方块时，把它们描边画出来（纯本地观感，不影响判定）。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_FELL_HIGHLIGHT;
+
+    /** 瞄准时在准星下方显示「这棵会砍下多少格」（纯本地观感，与描边各管各的）。 */
+    public static final ForgeConfigSpec.BooleanValue PLAYER_FELL_COUNT;
+
+    /** 兼容开关：恢复被外家模组用「屏障假配方」禁用的原版工具配方（compat 段）。 */
+    public static final ForgeConfigSpec.BooleanValue RESTORE_VANILLA_RECIPES;
+
     // ---- 持枪怪的贴身行为 + 死亡标记 ----
     /**
      * 枪手与目标贴到这么近时，把移动通道交还出去，由原版近战接手。
@@ -839,6 +863,15 @@ public final class Config {
                         "本模组物品」的配方从配方表里剔除，摆对图案必定出本模组的产物。",
                         "关掉就完全回到原样（两套同名配方并列，谁被命中看运气）。")
                 .define("copper_recipe_dedup", true);
+        RESTORE_VANILLA_RECIPES = b.comment("恢复被「屏障假配方」禁用的原版工具配方（[硬核生存] hcsurvival）。",
+                        "hcsurvival 把原版石质全套 5 件、木斧 / 木镐 / 木锄 3 件的原版配方整个换成「1 个屏障」",
+                        "—— 一辈子合不出来的假配方，把玩家推向它自己的燧石工具链；配方书 / REI 里看着",
+                        "能合成、实际上永远没有产物。打开时：配方加载完成后，把 minecraft 命名空间下",
+                        "「每个非空材料格都只认屏障（生存里拿不到 = 这条配方永远合不出来）」的假配方",
+                        "换成真正的原版配方（木 / 石 / 铁 × 剑 / 镐 / 斧 / 锹 / 锄，图案与材料逐格照抄原版）。",
+                        "假配方若不是这 15 件工具之一则直接剔除（生存里本来就合不出来，剔掉只是不再骗人）。",
+                        "关掉就完全回到原样（假配方留着，石制 / 木制工具依旧合不出来）。")
+                .define("restore_vanilla_recipes", true);
         b.pop();
 
         b.comment("相同物品一键采集。")
@@ -890,6 +923,34 @@ public final class Config {
         PLAYER_MINE_COUNT = b.comment("瞄准时在准星下方显示这次会连挖几格（含你瞄的那一格）。",
                         "只显示 2 格以上 —— 只砸一格的时候原版本来就是这样，不啰嗦。",
                         "与 highlight 各管各的：只想要数字就关 highlight，只想要框就关这个。")
+                .define("count", true);
+        b.pop();
+
+        b.comment("斧子一键砍伐：拿着斧头砍倒一格原木，同一棵树（同类原木连成的那一棵）跟着整棵下来。",
+                        "触发方式就是原版的「破坏方块」，没有按键没有命令；安全边界与一键挖掘共用一套：",
+                        "容器 / 方块实体 / 保护名单 / 流体 / 火 一律不碰。原木目标归砍树管，一键挖掘自动让路。")
+                .push("player_fell");
+        PLAYER_FELL_ENABLED = b.comment("总开关（默认开）。")
+                .define("enabled", true);
+        PLAYER_FELL_LEAVES = b.comment("砍完原木连带清掉与树冠相连的树叶（任何树种的叶子都算，树苗 / 苹果照常掉）。",
+                        "false = 只砍原木，树叶留给原版慢慢枯萎。树叶不扣耐久。")
+                .define("take_leaves", true);
+        PLAYER_FELL_MAX_BLOCKS = b.comment("一次最多砍多少格（含你自己砍的那一根，原木与树叶合计，最高 256）。",
+                        "黑森林大云杉 / 丛林巨型树那种上百格的，砍到上限就停手，剩下的自己动手。")
+                .defineInRange("max_blocks", 128, 1, 256);
+        PLAYER_FELL_DURABILITY = b.comment("连带下来的每根原木都扣 1 点耐久（创造模式不扣，工具用坏就停手）。",
+                        "树叶不扣 —— 树冠动辄几十格，都扣的话一把斧头撑不完整棵树。")
+                .define("consume_durability", true);
+        PLAYER_FELL_SNEAK_DISABLES = b.comment("潜行时只砍你点的那一格（想单砍一根原木就蹲下）。")
+                .define("sneak_disables", true);
+        PLAYER_FELL_TO_INVENTORY = b.comment("产物直接进背包（原木 / 树苗 / 苹果…都算，塞不下掉在脚下）。",
+                        "false = 全部留在原地（你自己砍的那一格照常按原版掉落）。")
+                .define("to_inventory", true);
+        PLAYER_FELL_HIGHLIGHT = b.comment("瞄准一棵树时，把「这斧头下去会跟着下来」的方块描边画出来。",
+                        "纯客户端观感，改它不影响服务端判定；联机时以你自己这份配置为准。")
+                .define("highlight", true);
+        PLAYER_FELL_COUNT = b.comment("瞄准时在准星下方显示这棵树会砍下多少格（含你瞄的那一格）。",
+                        "只显示 2 格以上；与 highlight 各管各的。")
                 .define("count", true);
         b.pop();
 

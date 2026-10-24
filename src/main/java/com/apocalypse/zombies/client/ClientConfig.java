@@ -22,7 +22,9 @@ import net.minecraftforge.fml.config.ModConfig;
  *
  * <p>v6.1 新增 {@code sky} 段：轻量天空/天气增强（总开关 + 太阳/月亮辉光 + 天气雾效），
  * v6.2 在同一段里加了植被色调（{@link com.apocalypse.zombies.client.VegetationTintEvents}）
- * 与全帧光照分级；渲染逻辑见 {@link com.apocalypse.zombies.client.sky.SkyWeatherEffects}。游戏内配置界面
+ * 与全帧光照分级；v6.3.1 加 {@code texture_override}（写实日月云雨雪强行装进原版槽位，
+ * 见 {@link com.apocalypse.zombies.client.sky.SkyTextureOverrides}）。渲染逻辑见
+ * {@link com.apocalypse.zombies.client.sky.SkyWeatherEffects}。游戏内配置界面
  * （ApocalypseConfigScreen）只遍历 COMMON 的 {@code Config.values()}，本 spec 的项
  * （和 films 一样）通过 {@code config/apocalypse_zombies-client.toml} 编辑。</p>
  */
@@ -43,6 +45,11 @@ public final class ClientConfig {
     public static final ForgeConfigSpec.BooleanValue VEGETATION_TINT;
     /** 全帧环境光分级：关卡渲染末尾一层极低 alpha 的暖/冷/血色偏，统一地面与植被观感。 */
     public static final ForgeConfigSpec.BooleanValue AMBIENT_LIGHT_GRADE;
+    /**
+     * 把本模组的写实太阳 / 月面 / 云层 / 雨雪强行装进原版 environment 槽位。
+     * 关掉 = 退回资源栈（原版、程序员艺术包、用户资源包按 options.txt 顺序生效）。
+     */
+    public static final ForgeConfigSpec.BooleanValue SKY_TEXTURE_OVERRIDE;
 
     static {
         ForgeConfigSpec.Builder builder = new ForgeConfigSpec.Builder();
@@ -88,6 +95,13 @@ public final class ClientConfig {
                         "light. Drawn during level rendering only, so the GUI and chat are never",
                         "tinted. Needs realistic_sky_effects.")
                 .define("ambient_light_grade", true);
+        SKY_TEXTURE_OVERRIDE = builder
+                .comment("Force this mod's realistic sun / moon / clouds / rain / snow into vanilla's",
+                        "environment texture slots (minecraft:textures/environment/*), so vanilla,",
+                        "programmer_art and high_contrast packs cannot cover them — those packs sit",
+                        "above mod_resources in the resource stack on this instance.",
+                        "False = fall back to the resource stack (vanilla discs). Needs realistic_sky_effects.")
+                .define("texture_override", true);
         builder.pop();
         SPEC = builder.build();
     }

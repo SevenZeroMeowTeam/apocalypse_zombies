@@ -204,5 +204,7 @@
   "sky.vegetation_tint": "Dry-season vegetation tint",
   "sky.vegetation_tint.tooltip": "Desaturate and warm the biome colour of grass, ferns and leaves. Biomes still differ; takes effect after chunks rebuild.",
   "sky.ambient_light_grade": "Ambient light grade",
-  "sky.ambient_light_grade.tooltip": "A very low-alpha full-frame colour grade: warm at dawn and dusk, cold blue at night, red during a blood moon. Never tints the GUI."
+  "sky.ambient_light_grade.tooltip": "A very low-alpha full-frame colour grade: warm at dawn and dusk, cold blue at night, red during a blood moon. Never tints the GUI.",
+  "hud.apocalypse_zombies.fell_count": "Felling: %s blocks",
+  "hud.apocalypse_zombies.fell_count_capped": "Felling: %s blocks (at cap)"
 }
