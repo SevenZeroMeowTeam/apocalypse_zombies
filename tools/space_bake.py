@@ -92,8 +92,11 @@ def build_program(ctx, vsrc: str, fsrc: str, uniforms: dict):
 
 def shader_sources() -> tuple[str, str]:
     """顶点着色器：把 MC 注入的 Position 属性改成本脚本用的名字（与 shader_preview.py 相同）。"""
-    vsrc = load(SHADERS / "core/orbit_sky.vsh")
-    fsrc = load(SHADERS / "core/orbit_sky.fsh")
+    # v6.1：改用专门的烘焙 shader（orbit_bake.fsh）——
+    # 它的调色/构图直接对标参考图（彩色星云 + 银河尘带 + 旋涡星系 + 高饱和地表），
+    # 而 orbit_sky.fsh 那份是「游戏内实时解析体」的调法。
+    vsrc = load(SHADERS / "core/orbit_bake.vsh")
+    fsrc = load(SHADERS / "core/orbit_bake.fsh")
     vsrc = vsrc.replace("in vec3 Position;", "in vec2 in_position;")
     vsrc = vsrc.replace("vUV = Position.xy;", "vUV = in_position;")
     vsrc = vsrc.replace("gl_Position = vec4(Position.xy, 0.9999, 1.0);",
@@ -149,7 +152,7 @@ def bake_panorama(ctx):
         "GameTime": 0.0,             # 定住闪烁与星云流动 → 结果可复现
         "BakeMode": 1.0,             # 1 = 等距柱状全景天空
         "BakePixel": TAU / float(width - 1),   # 一个纹素对应的角尺寸
-        "BakeUMapping": _u_mapping(width),
+        "BakeSize": (float(width), float(height)),
     })
     return render(ctx, prog, width, height, 3)
 
@@ -168,7 +171,7 @@ def bake_planet(ctx):
         "GameTime": 0.0,
         "BakeMode": 2.0,             # 2 = 等距柱状行星反照率
         "BakePixel": TAU / float(width - 1),
-        "BakeUMapping": _u_mapping(width),
+        "BakeSize": (float(width), float(height)),
     })
     return render(ctx, prog, width, height, 4)
 

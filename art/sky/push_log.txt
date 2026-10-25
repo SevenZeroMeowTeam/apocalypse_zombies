@@ -1,0 +1,4 @@
+gh auth git-credential store: line 1: gh: command not found
+To https://github.com/SevenZeroMeowTeam/apocalypse_zombies.git
+   160384b..dddfdf9  main -> main
+PUSH_EXIT=True
