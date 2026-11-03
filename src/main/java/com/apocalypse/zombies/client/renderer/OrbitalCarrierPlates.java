@@ -44,6 +44,12 @@ public final class OrbitalCarrierPlates {
      * 以前远景板是手画的电影板，和 SDF 炮完全是两回事，一眼就能看出不是同一件东西。</p>
      */
     private static final ResourceLocation TEX_CANNON = tex("gun_cannon_plate");
+    /**
+     * v6.1：轨道炮的「开火板」——同一构图、同一门炮，开火瞬间的状态
+     * （炮口爆闪 + 炮身后坐），由 tools/shader_preview.py 用 Fired&gt;0 离线渲出。
+     * 发射后从充能板交叉过来，参考包 SS-01 的装置贴图就是充能/开火分开的。
+     */
+    private static final ResourceLocation TEX_CANNON_FIRED = tex("gun_cannon_plate_fired");
     private static final ResourceLocation TEX_LANCE = tex("carrier_lance");
     private static final ResourceLocation TEX_SINGULARITY = tex("carrier_singularity");
     private static final ResourceLocation TEX_ASTEROID = tex("carrier_asteroid");
@@ -52,6 +58,7 @@ public final class OrbitalCarrierPlates {
     private static final ResourceLocation TEX_BEAM = tex("beam_strip");
 
     private static final RenderType RT_CANNON = RenderType.entityTranslucentEmissive(TEX_CANNON);
+    private static final RenderType RT_CANNON_FIRED = RenderType.entityTranslucentEmissive(TEX_CANNON_FIRED);
     private static final RenderType RT_LANCE = RenderType.entityTranslucentEmissive(TEX_LANCE);
     private static final RenderType RT_SINGULARITY = RenderType.entityTranslucentEmissive(TEX_SINGULARITY);
     private static final RenderType RT_ASTEROID = RenderType.entityTranslucentEmissive(TEX_ASTEROID);
@@ -277,7 +284,20 @@ public final class OrbitalCarrierPlates {
         }
 
         // —— 1. 电影板本体
-        {
+        // v6.1：轨道炮发射后交叉到「开火板」（炮口爆闪 + 后坐已烘在图里），6 tick 完成。
+        if (spec.style == Style.CANNON && fireAge >= 0.0D) {
+            float firedMix = (float) smooth((float) Mth.clamp(fireAge / 6.0D, 0.0D, 1.0D));
+            VertexConsumer plate = buffers.getBuffer(RT_CANNON);
+            texQuad(plate, matrix, center, rr, uu, halfW, halfH,
+                    (float) u0, (float) v0, (float) u1, (float) v1,
+                    1.0F, 1.0F, 1.0F, alpha * (1.0F - firedMix), fwd);
+            buffers.endBatch(RT_CANNON);
+            VertexConsumer fired = buffers.getBuffer(RT_CANNON_FIRED);
+            texQuad(fired, matrix, center, rr, uu, halfW, halfH,
+                    (float) u0, (float) v0, (float) u1, (float) v1,
+                    1.0F, 1.0F, 1.0F, alpha * firedMix, fwd);
+            buffers.endBatch(RT_CANNON_FIRED);
+        } else {
             VertexConsumer plate = buffers.getBuffer(spec.type);
             texQuad(plate, matrix, center, rr, uu, halfW, halfH,
                     (float) u0, (float) v0, (float) u1, (float) v1,

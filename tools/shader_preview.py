@@ -268,6 +268,111 @@ def preview_orbit_gun_fired(ctx, width, height):
                        {"Charge": 1.0, "Fired": 0.06})
 
 
+# ————————————————————————————————————————————————————————————
+#  轨道炮多机位时间轴（v6.1，与 OrbitalGunStage.CAM_TIMES / CAM_POSES 保持一致）
+# ————————————————————————————————————————————————————————————
+
+GUN_LOCK_TICKS = 140          # 与 Config.lock_ticks 默认一致
+GUN_FIRE_TICKS = 7
+GUN_WATCH_TICKS = 9
+GUN_LOCK_KEY_COUNT = 4
+# 前 4 个刻度 = 锁定时长的倍率；后 2 个 = 锁定结束后再过的 tick 数
+GUN_CAM_TIMES = [0.0, 0.20, 0.52, 1.0, GUN_FIRE_TICKS, GUN_FIRE_TICKS + GUN_WATCH_TICKS]
+# 每行 = px, py, pz, tx, ty, tz, tanHalf（炮身空间：炮轴 y=0，炮口 z=-18）
+GUN_CAM_POSES = [
+    (-34.0, 11.0, 4.0, -1.0, 0.0, -5.0, 0.50),    # M0 远景建立
+    (-30.0, 9.0, 1.0, -0.6, 0.0, -6.0, 0.46),     # M0→M1 边界
+    (-12.0, 3.5, -7.0, -0.4, 0.1, -10.0, 0.36),   # M1 沿炮身掠行
+    (-6.0, 2.0, -13.5, 0.0, 0.2, -16.5, 0.27),    # M2 炮口特写
+    (-14.0, 6.5, -3.0, 0.0, 0.2, -16.5, 0.36),    # M3 开火推离（拉到 23 单位外，白闪只占头 2 tick）
+    (-5.0, 15.0, 7.0, 0.0, -0.5, -24.0, 0.46),    # M4 目送
+]
+
+
+def gun_camera_at(elapsed, lock=GUN_LOCK_TICKS):
+    """按 OrbitalGunStage 的机位时间轴插值出 (px,py,pz,tx,ty,tz,tanHalf)。"""
+    def key_time(i):
+        return GUN_CAM_TIMES[i] * lock if i < GUN_LOCK_KEY_COUNT else lock + GUN_CAM_TIMES[i]
+
+    a = GUN_CAM_POSES[0]
+    b = GUN_CAM_POSES[0]
+    t = 0.0
+    for i in range(len(GUN_CAM_POSES) - 1):
+        t0, t1 = key_time(i), key_time(i + 1)
+        if t0 <= elapsed <= t1:
+            a, b = GUN_CAM_POSES[i], GUN_CAM_POSES[i + 1]
+            t = (elapsed - t0) / (t1 - t0) if t1 > t0 else 0.0
+            break
+        if elapsed < t0:
+            a = b = GUN_CAM_POSES[i]
+            break
+        a = b = GUN_CAM_POSES[i + 1]
+    s = t * t * (3.0 - 2.0 * t)
+    return [a[c] + (b[c] - a[c]) * s for c in range(7)]
+
+
+def _gun_uniforms_from_shot(shot, width, height, charge, fired):
+    """把一个机位快照转成 orbit_gun.fsh 的相机 uniforms（与 _gun_camera 同一套基向量）。"""
+    px, py, pz, tx, ty, tz, tan_half = shot
+    pos = (px, py, pz)
+    target = (tx, ty, tz)
+    fwd = [target[i] - pos[i] for i in range(3)]
+    n = math.sqrt(sum(c * c for c in fwd))
+    fwd = [c / n for c in fwd]
+    right = [-fwd[2], 0.0, fwd[0]]
+    n = math.sqrt(sum(c * c for c in right))
+    right = [c / n for c in right]
+    up = [
+        right[1] * fwd[2] - right[2] * fwd[1],
+        right[2] * fwd[0] - right[0] * fwd[2],
+        right[0] * fwd[1] - right[1] * fwd[0],
+    ]
+    return {
+        "CamPos": tuple(pos),
+        "CamForward": tuple(fwd),
+        "CamRight": tuple(right),
+        "CamUp": tuple(up),
+        "TanHalf": tan_half,
+        "Aspect": width / height,
+        "PixelSize": 2.0 * tan_half / height,
+        "Charge": charge,
+        "Fired": fired,
+        "GameTime": 7.5,
+        "Alpha": 1.0,
+    }
+
+
+def preview_orbit_gun_shots(ctx, width, height):
+    """轨道炮多机位剪辑：M0 远景 → M1 掠行 → M2 特写 → M3 开火 → M4 目送。
+
+    用的就是游戏里 v6.1 的同一条机位时间轴 —— 这里渲出来的每一帧
+    就是玩家在对应 tick 看到的画面构图。
+    """
+    shots = [
+        ("orbit_gun_m0", 0.10 * GUN_LOCK_TICKS),
+        ("orbit_gun_m1", 0.35 * GUN_LOCK_TICKS),
+        ("orbit_gun_m2", 0.78 * GUN_LOCK_TICKS),
+        ("orbit_gun_m3", GUN_LOCK_TICKS + 3.0),
+        ("orbit_gun_m4", GUN_LOCK_TICKS + 11.0),
+    ]
+    last = None
+    for name, elapsed in shots:
+        fired = max(0.0, elapsed - GUN_LOCK_TICKS) / 20.0
+        charge = min(1.0, elapsed / GUN_LOCK_TICKS)
+        uniforms = _gun_uniforms_from_shot(gun_camera_at(elapsed), width, height, charge, fired)
+        vsrc = load(SHADERS / "core/orbit_gun.vsh")
+        fsrc = load(SHADERS / "core/orbit_gun.fsh")
+        vsrc = vsrc.replace("in vec3 Position;", "in vec2 in_position;")
+        vsrc = vsrc.replace("vUV = Position.xy;", "vUV = in_position;")
+        vsrc = vsrc.replace("gl_Position = vec4(Position.xy, 0.9999, 1.0);",
+                            "gl_Position = vec4(in_position, 0.9999, 1.0);")
+        prog = build_program(ctx, vsrc, fsrc, uniforms)
+        path = render(ctx, prog, width, height, {}, name)
+        analyze_gun_png(path, name)
+        last = path
+    return last
+
+
 def analyze_gun_png(path, label="orbit_gun"):
     """用 Pillow 量一下渲染结果：覆盖率、亮度、剪影形状。"""
     from PIL import Image
@@ -685,6 +790,7 @@ PREVIEWS = {
     "hud": ("HUD 图形层（面板/圆盘/进度弧/准星/标尺）", preview_orbit_hud),
     "gun": ("轨道炮「弧光长矛」（解析 SDF 炮体 · 充能中）", preview_orbit_gun),
     "gun_fired": ("轨道炮：开火瞬间（闪光 + 后坐 + 弹道）", preview_orbit_gun_fired),
+    "gun_shots": ("轨道炮多机位剪辑（M0 远景 → M1 掠行 → M2 特写 → M3 开火 → M4 目送）", preview_orbit_gun_shots),
     "orbital": ("打击合成器（冲击帧 + 分级）", preview_orbital),
     "bloom": ("bloom 金字塔（5 级降采样 + 4 级升采样 + 合成）", preview_bloom),
 }

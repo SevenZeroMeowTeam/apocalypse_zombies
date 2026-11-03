@@ -659,6 +659,12 @@ public final class OrbitalSpaceStage {
                                      Matrix4f matrix, double[] eye, double[] fwd,
                                      double[] right, double[] up, double[] earth, double earthR,
                                      float alpha, double time, double phase) {
+        // v6.1：SDF 装置电影（OrbitalGunStage）开着时，几何炮台整体退场 ——
+        // 参考包 SS-01 的装置段从头到尾只有一门炮，这里也不能同时出现
+        // 「全屏 SDF 特写 + 远处线框炮台」两门。弹体飞行/命中段随特写淡出平滑接管。
+        float closeup = OrbitalGunStage.closeupAlpha();
+        float stageAlpha = alpha * (1.0F - closeup);
+
         double[] stationBase = offset(eye, fwd, right, up, 52.0D, 30.0D, 22.0D);
         double[] dir = norm(sub(earth, stationBase));
         float charge = stationCharge();
@@ -667,87 +673,89 @@ public final class OrbitalSpaceStage {
                 ? Math.max(0.0D, 1.0D - OrbitalStrikeClientState.impactAge() / 8.0D) * 1.6D * sceneScale
                 : 0.0D;
         double[] station = add(stationBase, mul(dir, -recoil));
-        renderDreadnought(pose, quads, lines, station, right, up, fwd, 1.15D * sceneScale, alpha, time, charge);
-
         // 炮管在充能时缓缓伸出、开火后坐回：炮口位置跟着变，充能不是「只亮一下」。
         double barrelLen = 7.6D + 2.4D * charge;
         double[] muzzle = add(station, mul(dir, barrelLen));
-        // 炮管：三条平行线（近似厚度）
-        for (double k : new double[]{-0.55D, 0.0D, 0.55D}) {
-            double[] offRight = mul(right, k);
-            double[] a = add(station, offRight);
-            double[] b = add(muzzle, offRight);
-            line(pose, lines, a[0], a[1], a[2], b[0], b[1], b[2],
-                    0.68F, 0.88F, 1.0F, alpha * 0.62F, 0, 0, 1);
-        }
-        // 滑动套环：随充能从炮尾推到炮口，像一发正在上膛的弹药。
-        double slide = 1.4D + (barrelLen - 3.0D) * charge;
-        double[] collar = add(station, mul(dir, slide));
-        solidBox(quads, matrix, collar, right, up, fwd,
-                0.98D * sceneScale, 0.98D * sceneScale, 0.52D * sceneScale,
-                0.55F, 0.60F, 0.66F, alpha);
-        // 炮管能量脉冲：四圈光沿炮管向炮口跑（充能读数）。
-        for (int i = 0; i < 4; i++) {
-            double f = (time * 0.014D + i * 0.25D) % 1.0D;
-            double[] p = add(station, mul(dir, 1.6D + (barrelLen - 1.6D) * f));
-            planeRing(pose, lines, p, right, up, (1.15D - 0.35D * f) * sceneScale,
-                    1.0F, 0.70F, 0.28F, alpha * (0.10F + 0.34F * charge) * (1.0F - (float) f * 0.55F));
-        }
-        // 炮口制退器：实心环座（线框炮管上的一个实体段落）
-        double[] brake = sub(muzzle, mul(dir, 1.6D * sceneScale));
-        solidBox(quads, matrix, brake, right, up, fwd,
-                1.4D * sceneScale, 1.4D * sceneScale, 1.6D * sceneScale,
-                0.44F, 0.50F, 0.56F, alpha);
-        planeRing(pose, lines, muzzle, right, up, 2.9D, 1.0F, 0.62F, 0.22F, alpha * 0.55F);
-        planeRing(pose, lines, brake, right, up, 2.2D, 1.0F, 0.82F, 0.45F, alpha * 0.30F);
-        // 炮口蓄能核：从暗到白热，开火前一帧最亮。
-        solidDisc(quads, matrix, muzzle, right, up, (0.55D + 1.55D * charge) * sceneScale,
-                1.0F, 0.80F, 0.46F, alpha * 0.55F * charge);
-        if (phase < 0.999D) {
-            planeRing(pose, lines, muzzle, right, up, 3.8D - 1.4D * charge,
-                    1.0F, 0.55F, 0.18F, alpha * (0.18F + 0.38F * charge));
+
+        if (stageAlpha > 0.02F) {
+            renderDreadnought(pose, quads, lines, station, right, up, fwd, 1.15D * sceneScale, stageAlpha, time, charge);
+            // 炮管：三条平行线（近似厚度）
+            for (double k : new double[]{-0.55D, 0.0D, 0.55D}) {
+                double[] offRight = mul(right, k);
+                double[] a = add(station, offRight);
+                double[] b = add(muzzle, offRight);
+                line(pose, lines, a[0], a[1], a[2], b[0], b[1], b[2],
+                        0.68F, 0.88F, 1.0F, stageAlpha * 0.62F, 0, 0, 1);
+            }
+            // 滑动套环：随充能从炮尾推到炮口，像一发正在上膛的弹药。
+            double slide = 1.4D + (barrelLen - 3.0D) * charge;
+            double[] collar = add(station, mul(dir, slide));
+            solidBox(quads, matrix, collar, right, up, fwd,
+                    0.98D * sceneScale, 0.98D * sceneScale, 0.52D * sceneScale,
+                    0.55F, 0.60F, 0.66F, stageAlpha);
+            // 炮管能量脉冲：四圈光沿炮管向炮口跑（充能读数）。
+            for (int i = 0; i < 4; i++) {
+                double f = (time * 0.014D + i * 0.25D) % 1.0D;
+                double[] p = add(station, mul(dir, 1.6D + (barrelLen - 1.6D) * f));
+                planeRing(pose, lines, p, right, up, (1.15D - 0.35D * f) * sceneScale,
+                        1.0F, 0.70F, 0.28F, stageAlpha * (0.10F + 0.34F * charge) * (1.0F - (float) f * 0.55F));
+            }
+            // 炮口制退器：实心环座（线框炮管上的一个实体段落）
+            double[] brake = sub(muzzle, mul(dir, 1.6D * sceneScale));
+            solidBox(quads, matrix, brake, right, up, fwd,
+                    1.4D * sceneScale, 1.4D * sceneScale, 1.6D * sceneScale,
+                    0.44F, 0.50F, 0.56F, stageAlpha);
+            planeRing(pose, lines, muzzle, right, up, 2.9D, 1.0F, 0.62F, 0.22F, stageAlpha * 0.55F);
+            planeRing(pose, lines, brake, right, up, 2.2D, 1.0F, 0.82F, 0.45F, stageAlpha * 0.30F);
+            // 炮口蓄能核：从暗到白热，开火前一帧最亮。
+            solidDisc(quads, matrix, muzzle, right, up, (0.55D + 1.55D * charge) * sceneScale,
+                    1.0F, 0.80F, 0.46F, stageAlpha * 0.55F * charge);
+            if (phase < 0.999D) {
+                planeRing(pose, lines, muzzle, right, up, 3.8D - 1.4D * charge,
+                        1.0F, 0.55F, 0.18F, stageAlpha * (0.18F + 0.38F * charge));
+            }
         }
 
         double[] contact = sub(earth, mul(dir, earthR * 0.94D));
         double[] slug = lerp3(muzzle, contact, smooth01(phase));
         if (phase > 0.01D) {
             // 弹体 + 尾焰
-            dot3(pose, lines, slug, 0.65D, 1.0F, 0.92F, 0.75F, alpha * 0.98F);
+            dot3(pose, lines, slug, 0.65D, 1.0F, 0.92F, 0.75F, stageAlpha * 0.98F);
             // 橙白高热弹芯：一条粗光束从炮口连到弹体（参考图里的橙色能量束）
             line(pose, lines, muzzle[0], muzzle[1], muzzle[2], slug[0], slug[1], slug[2],
-                    1.0F, 0.58F, 0.18F, alpha * 0.75F * (float) phase, 0, 0, 1);
+                    1.0F, 0.58F, 0.18F, stageAlpha * 0.75F * (float) phase, 0, 0, 1);
             line(pose, lines,
                     muzzle[0] - right[0] * 0.5D, muzzle[1] - right[1] * 0.5D, muzzle[2] - right[2] * 0.5D,
                     slug[0] - right[0] * 0.5D, slug[1] - right[1] * 0.5D, slug[2] - right[2] * 0.5D,
-                    1.0F, 0.86F, 0.55F, alpha * 0.55F * (float) phase, 0, 0, 1);
+                    1.0F, 0.86F, 0.55F, stageAlpha * 0.55F * (float) phase, 0, 0, 1);
             for (int i = 1; i <= 9; i++) {
                 double[] t = sub(slug, mul(dir, i * 2.4D));
                 double rr = Math.max(0.10D, 1.0D - i * 0.10D);
                 planeRing(pose, lines, t, right, up, rr, 1.0F, 0.58F, 0.20F,
-                        alpha * (0.55F - i * 0.05F) * (float) phase);
+                        stageAlpha * (0.55F - i * 0.05F) * (float) phase);
             }
             double[] tail = sub(slug, mul(dir, 26.0D));
             line(pose, lines, slug[0], slug[1], slug[2], tail[0], tail[1], tail[2],
-                    1.0F, 0.86F, 0.62F, alpha * 0.55F * (float) phase, 0, 0, 1);
+                    1.0F, 0.86F, 0.62F, stageAlpha * 0.55F * (float) phase, 0, 0, 1);
             // 马赫环：弹体尾流里一串交替大小的亮环（高速尾焰的经典特征）
             for (int d = 1; d <= 5; d++) {
                 double[] p = sub(slug, mul(dir, d * 3.4D));
                 double rr = d % 2 == 0 ? 0.85D : 0.55D;
                 planeRing(pose, lines, p, right, up, rr,
-                        1.0F, 0.70F, 0.32F, alpha * 0.50F * (float) phase * (1.0F - d * 0.15F));
+                        1.0F, 0.70F, 0.32F, stageAlpha * 0.50F * (float) phase * (1.0F - d * 0.15F));
             }
         }
         if (phase >= 0.999F) {
-            muzzleFlash(pose, lines, muzzle, right, up, alpha, time);
-            earthImpact(pose, lines, contact, right, up, alpha, OrbitalStrikeClientState.impactAge());
+            muzzleFlash(pose, lines, muzzle, right, up, stageAlpha, time);
+            earthImpact(pose, lines, contact, right, up, stageAlpha, OrbitalStrikeClientState.impactAge());
         }
         if (phase >= 0.999D) {
             // 命中：地球晨昏线附近的白闪 + 扩散环
             double pulse = 0.6D + 0.4D * Math.sin(time * 0.55D);
             planeRing(pose, lines, contact, right, up, 2.0D + 1.4D * pulse,
-                    1.0F, 1.0F, 1.0F, alpha * 0.80F);
+                    1.0F, 1.0F, 1.0F, stageAlpha * 0.80F);
             planeRing(pose, lines, contact, right, up, 5.0D + 3.0D * pulse,
-                    CYAN_R, CYAN_G, CYAN_B, alpha * 0.30F);
+                    CYAN_R, CYAN_G, CYAN_B, stageAlpha * 0.30F);
         }
     }
 
