@@ -60,7 +60,7 @@ LANG_KEYS = [
     'skyfall.strike.busy',
 ]
 
-EXPECTED_CONFIGS = 226
+EXPECTED_CONFIGS = 235
 FAILS = []
 
 
