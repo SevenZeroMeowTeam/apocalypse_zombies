@@ -73,10 +73,16 @@ def build_graph(scene, args):
     wf = cb.apply_params(wf, meta, params)
     add = json.dumps({"803": {"class_type": "LoraLoader", "inputs": {
         "lora_name": TURBO_LORA, "strength_model": 1.0, "strength_clip": 1.0,
-        "model": ["6", 0], "clip": ["13", 0]}}})
+        "model": ["6", 0], "clip": ["13", 0]}},
+        "804": {"class_type": "VAEDecodeTiled", "inputs": {
+            "samples": ["14", 0], "vae": ["11", 0],
+            "tile_size": 256, "overlap": 64,
+            "temporal_size": 24, "temporal_overlap": 8}}})
     wf = cb.mutate(wf, [f"9.inputs.steps={args.steps}"] + (
-        [f"13.inputs.clip_name={args.clip}"] if args.clip else []),
-                   ['9.inputs.model=["803",0]', '16.inputs.model=["803",0]'],
+        [f"13.inputs.clip_name={args.clip}"] if args.clip else []) + (
+        [f"6.inputs.unet_name={args.unet}"] if args.unet else []),
+                   ['9.inputs.model=["803",0]', '16.inputs.model=["803",0]',
+                    '91.inputs.images=["804",0]'],
                    json.loads(add))
     wf.pop("_meta", None)
     return wf
@@ -135,6 +141,7 @@ def main():
     ap.add_argument("--height", type=int, default=480)
     ap.add_argument("--steps", type=int, default=8)
     ap.add_argument("--clip", default=None, help="覆盖文本编码器文件名")
+    ap.add_argument("--unet", default=None, help="覆盖扩散模型文件名")
     ap.add_argument("--duration", type=float, default=5)
     ap.add_argument("--out", default="video")
     ap.add_argument("--wait", type=int, default=5400)

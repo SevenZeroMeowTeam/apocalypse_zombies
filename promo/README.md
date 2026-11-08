@@ -40,3 +40,28 @@ done
 - 帐号为非会员；并发任务数上限 1，所有生成必须串行。
 - 成片片段需在剪辑软件中按 01→08 顺序拼接；字卡建议停留 2-3 秒。
 - `../.libtv/project.json` 是画布目录绑定（含画布 uuid），勿删；`run/` 是任务日志。
+
+## ComfyUI 本地生成管线（2026-10-25 新增）
+
+模型：MiniMax H3（Comfy-Org/MiniMax-H3，hf-mirror 并发下载 56GB）+ 社区 Cobijada w4a8 混合量化 12.5GB，
+已装入 `F:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\models\`，便携包经 extra_model_paths.yaml 共享。
+
+工具链（本目录）：
+- `download_models.py`：hf-mirror 分块并发下载器（64MB 块 + .state.json 断点续传）
+- `gen_clip.py`：分镜批量图生视频（turbo 8 步 LoRA + VAEDecodeTiled 分块解码）
+- `supervise_scene.py`：监督器（服务挂掉自动重启、容错轮询、自动重提）
+- `stitch.py`：8 段成片统一 1280x720@30fps 拼接（字卡段补静音）
+
+运行环境：便携包 + DirectML（`--directml --cpu-vae --fp32-vae --force-fp16 --lowvram
+--disable-async-offload --cache-none --use-split-cross-attention`），已打 5 处补丁
+（详见记忆 comfyui-amd-setup.md）。
+
+**当前卡点**：服务进程在任务 ~28 分钟处被外部静默终止（无任何日志/事件痕迹，嫌疑 360/Process Lasso）。
+把 `python.exe` 与 `F:\ComfyUI_windows_portable_amd` 加入防护白名单后执行：
+
+```bash
+python promo/supervise_scene.py --scene 02 --rounds 3   # 自愈续跑，成功后换 03..07
+python promo/stitch.py                                   # 全部完成后拼接
+```
+
+备选：更新 AMD 显卡驱动后走 ROCm 路线；或回 LibTV 充值续跑 6 个分镜（命令见上节）。
