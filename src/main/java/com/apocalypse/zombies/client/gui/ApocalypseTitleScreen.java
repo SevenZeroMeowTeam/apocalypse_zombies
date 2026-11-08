@@ -1,6 +1,7 @@
 package com.apocalypse.zombies.client.gui;
 
 import com.apocalypse.zombies.ApocalypseZombies;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.Util;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -18,15 +19,17 @@ import net.minecraftforge.fml.ModList;
  * 末日风的标题界面。
  *
  * <p><b>背景与菜单一体</b>：背景图 {@code textures/gui/apocalypse_title.png}（1408×768 的
- * 《末日菜单》原图：紫电、末地废墟、标题字与四个石质按钮全都画在图里）。屏幕把自己那四个
- * 按钮<b>按图里那四个按钮的像素位置铺上去</b>（cover 变换同一套缩放），面是实心的，
- * 正好把图里烤死的按钮盖住 —— 逐像素重影没了，而布局、标题、底部版本行全部沿用参考图。</p>
+ * 《末日菜单》原图：紫电、末地废墟、标题字与四个石质按钮全都画在图里）。6.4.1 起四个按钮
+ * 改成 <b>2×2 网格</b>，四块实心石面正好把图里烤死的四个竖排按钮（含第一项的紫色饰框和那只
+ * 烤进图里的手形光标）整片盖住 —— 区域取 x 486..921、y 344..614（图内像素，cover 变换同一套
+ * 缩放），中间留 12 图素缝，悬停高亮不会咬到邻格。</p>
  *
  * <p>按钮样式对齐参考图：中性灰石面 + 顶面高光 + 深色描边 + 白字；悬停/键盘聚焦时外圈亮紫、
- * 文字转紫白（第一项在打开时默认聚焦，和参考图里「SINGLEPLAYER 亮紫框」一致）。
- * 底部左侧的版本/玩家名是动态绘制的（图上那行是占位符），只盖住文字那一段，
- * 右侧的 MOJANG 标志保持可见；中间两个链接（GitHub / 团队站）点击前走原版
- * {@link ConfirmLinkScreen} 确认。</p>
+ * 文字转紫白（第一项在打开时默认聚焦）。底部左侧的版本/玩家名是动态绘制的（图上那行是
+ * 占位符），只盖住文字那一段，右侧的 MOJANG 标志保持可见；GitHub / 团队站两个链接
+ * <b>紧跟在信息条右侧</b>排开（不再居中 —— 居中时会压到左侧那行字），GitHub 链接带
+ * octocat 图标（{@code textures/gui/github_mark.png}，tools/gen_github_mark.py 烘焙），
+ * 点击前走原版 {@link ConfirmLinkScreen} 确认。</p>
  *
  * <p>替换入口在 {@code ClientEvents#onScreenOpening}：原版要打开 {@link TitleScreen} 时换成本类。
  * 纯客户端，专用服务器不加载。</p>
@@ -39,20 +42,34 @@ public final class ApocalypseTitleScreen extends Screen {
     private static final int TEX_W = 1408;
     private static final int TEX_H = 768;
 
-    // ---- 参考图里四个按钮的像素矩形（用 PIL 从 末日菜单.png 量出来的）----
-    /** 按钮左/右边界（图内像素）。 */
-    private static final int BTN_X0 = 486;
-    private static final int BTN_X1 = 921;
-    /** 第一行顶边、行距、行高（向外各放 2~4 px，把图里的紫框一起盖住）。 */
-    private static final int BTN_TOP = 344;
-    private static final int BTN_PITCH = 70;
-    private static final int BTN_H = 60;
+    /** GitHub octocat 图标（16×16 烘焙，按 8×8 GUI 单位 blit；GUI scale 2 时 1:1 像素）。 */
+    private static final ResourceLocation GITHUB_ICON = new ResourceLocation(
+            ApocalypseZombies.MOD_ID, "textures/gui/github_mark.png");
+    private static final int ICON_SIZE = 8;
+
+    // ---- 图里烤死的四个按钮占用的区域（用 PIL 从 末日菜单.png 量出来的）----
+    /** 区域左/右边界（图内像素；含第一项紫色饰框与手形光标的横向范围）。 */
+    private static final int GRID_X0 = 486;
+    private static final int GRID_X1 = 921;
+    /** 区域上/下边界（四行按钮从 y 344 到 614）。 */
+    private static final int GRID_Y0 = 344;
+    private static final int GRID_Y1 = 614;
+    /** 2×2 格子之间的缝（图内像素），映射到屏幕后至少 4 GUI px。 */
+    private static final int GRID_GAP = 12;
 
     /** 参考图底部版本占位文字的右边界（图内像素）—— 只盖到这里，让右下 MOJANG 标志留着。 */
     private static final int BOTTOM_TEXT_RIGHT = 640;
+    /** 图里烤死的 MOJANG 标志左缘（红色方块起点，实测 1276；链接不得压进去）。 */
+    private static final int BAKED_MOJANG_LEFT = 1272;
 
     private static final String GITHUB_URL = "https://github.com/SevenZeroMeowTeam/apocalypse_zombies";
     private static final String TEAM_URL = "https://team.qlm.org.cn";
+
+    /** GitHub 身份由 octocat 图标承担，文字只留仓库路径 —— 底部一行才放得下两个地址。 */
+    private static final String GITHUB_LABEL = "SevenZeroMeowTeam/apocalypse_zombies";
+    private static final String TEAM_LABEL = "团队 · team.qlm.org.cn";
+    private static final String GITHUB_LABEL_SHORT = "GitHub";
+    private static final String TEAM_LABEL_SHORT = "Team";
 
     private static final int LINK_COLOR = 0xFFB9A8D0;
     private static final int LINK_HOVER = 0xFFE6CCFF;
@@ -64,24 +81,32 @@ public final class ApocalypseTitleScreen extends Screen {
 
     @Override
     protected void init() {
+        // 2×2 网格：整片铺满图里烤死的四个竖排按钮，一像素都不露出来
         int[] cover = coverRect();
-        int x0 = cover[0] + Math.round(BTN_X0 * cover[2] / (float) TEX_W);
-        int x1 = cover[0] + Math.round(BTN_X1 * cover[2] / (float) TEX_W);
-        int y0 = cover[1] + Math.round(BTN_TOP * cover[3] / (float) TEX_H);
-        int pitch = Math.round(BTN_PITCH * cover[3] / (float) TEX_H);
-        int h = Math.round(BTN_H * cover[3] / (float) TEX_H);
-        int w = Math.max(40, x1 - x0);
-        AbstractWidget first = new DoomButton(x0, y0, w, h, 0,
+        int x0 = cover[0] + Math.round(GRID_X0 * cover[2] / (float) TEX_W);
+        int x1 = cover[0] + Math.round(GRID_X1 * cover[2] / (float) TEX_W);
+        int y0 = cover[1] + Math.round(GRID_Y0 * cover[3] / (float) TEX_H);
+        int y1 = cover[1] + Math.round(GRID_Y1 * cover[3] / (float) TEX_H);
+        int gapX = Math.max(4, Math.round(GRID_GAP * cover[2] / (float) TEX_W));
+        int gapY = Math.max(4, Math.round(GRID_GAP * cover[3] / (float) TEX_H));
+        int bw = Math.max(40, (x1 - x0 - gapX) / 2);
+        int bh = Math.max(30, (y1 - y0 - gapY) / 2);
+        int colL = x0;
+        int colR = x1 - bw;
+        int rowT = y0;
+        int rowB = y1 - bh;
+
+        AbstractWidget first = new DoomButton(colL, rowT, bw, bh, 0,
                 Component.translatable("menu.apocalypse_zombies.singleplayer"),
                 () -> this.minecraft.setScreen(new SelectWorldScreen(this)));
         addRenderableWidget(first);
-        addRenderableWidget(new DoomButton(x0, y0 + pitch, w, h, 1,
+        addRenderableWidget(new DoomButton(colR, rowT, bw, bh, 1,
                 Component.translatable("menu.apocalypse_zombies.multiplayer"),
                 () -> this.minecraft.setScreen(new JoinMultiplayerScreen(this))));
-        addRenderableWidget(new DoomButton(x0, y0 + 2 * pitch, w, h, 2,
+        addRenderableWidget(new DoomButton(colL, rowB, bw, bh, 2,
                 Component.translatable("menu.apocalypse_zombies.options"),
                 () -> this.minecraft.setScreen(new OptionsScreen(this, this.minecraft.options))));
-        addRenderableWidget(new DoomButton(x0, y0 + 3 * pitch, w, h, 3,
+        addRenderableWidget(new DoomButton(colR, rowB, bw, bh, 3,
                 Component.translatable("menu.apocalypse_zombies.quit"),
                 () -> this.minecraft.stop()));
         // 打开就聚焦第一项：与参考图里 SINGLEPLAYER 的亮紫框一致（键盘操作也顺手）
@@ -91,19 +116,19 @@ public final class ApocalypseTitleScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         drawCoverBackground(graphics);
+        // 2×2 底板：垫在按钮后面，把格缝切过的烤死按钮文字/紫框 fringe 盖掉（只露深色缝）
+        int[] cover = coverRect();
+        int px0 = cover[0] + Math.round((GRID_X0 - 3) * cover[2] / (float) TEX_W);
+        int px1 = cover[0] + Math.round((GRID_X1 + 3) * cover[2] / (float) TEX_W);
+        int py0 = cover[1] + Math.round((GRID_Y0 - 3) * cover[3] / (float) TEX_H);
+        int py1 = cover[1] + Math.round((GRID_Y1 + 3) * cover[3] / (float) TEX_H);
+        graphics.fill(px0, py0, px1, py1, 0xFF1A1420);
         super.render(graphics, mouseX, mouseY, partialTick);
 
         // 底部信息条：只盖住图里那行版本占位文字（右下 MOJANG 标志保持可见）
-        int[] cover = coverRect();
-        int bakedRight = cover[0] + Math.round(BOTTOM_TEXT_RIGHT * cover[2] / (float) TEX_W);
-        String version = ModList.get().getModContainerById(ApocalypseZombies.MOD_ID)
-                .map(container -> container.getModInfo().getVersion().toString())
-                .orElse("?");
-        String player = this.minecraft.getUser().getName();
-        String left = "Apocalypse Zombies  |  Ver " + version + "  |  " + player;
-        int barRight = Math.max(bakedRight, 6 + this.font.width(left) + 8);
+        int barRight = leftBarRight();
         graphics.fill(0, this.height - 22, barRight, this.height, 0xE6000000);
-        graphics.drawString(this.font, left, 6, this.height - 15, LINK_COLOR, false);
+        graphics.drawString(this.font, leftText(), 6, this.height - 15, LINK_COLOR, false);
 
         drawLinks(graphics, mouseX, mouseY);
     }
@@ -122,38 +147,67 @@ public final class ApocalypseTitleScreen extends Screen {
         graphics.blit(BACKGROUND, c[0], c[1], c[2], c[3], 0.0F, 0.0F, TEX_W, TEX_H, TEX_W, TEX_H);
     }
 
-    /** 两个链接的布局：[x, y, githubWidth, gapWidth, teamWidth]。 */
+    /** 底部左侧那行动态文字（模组名 | 版本 | 玩家名）。 */
+    private String leftText() {
+        String version = ModList.get().getModContainerById(ApocalypseZombies.MOD_ID)
+                .map(container -> container.getModInfo().getVersion().toString())
+                .orElse("?");
+        String player = this.minecraft.getUser().getName();
+        return "Apocalypse Zombies  |  Ver " + version + "  |  " + player;
+    }
+
+    /** 左侧信息条的右缘（黑条画到这里为止）。 */
+    private int leftBarRight() {
+        return Math.max(
+                coverRect()[0] + Math.round(BOTTOM_TEXT_RIGHT * coverRect()[2] / (float) TEX_W),
+                6 + this.font.width(leftText()) + 8);
+    }
+
+    /**
+     * 底部链接布局：[x, y, githubW, teamW, gap, wide]。
+     * githubW 含 octocat 图标；链接一律跟在信息条右侧（不居中、不右靠，
+     * 既不压左侧那行字也不压烤死的 MOJANG 标志）。宽标签放不下时退短标签。
+     */
     private int[] linkLayout() {
-        boolean wide = this.width >= 720;
-        String github = wide ? "GitHub · SevenZeroMeowTeam/apocalypse_zombies" : "GitHub";
-        String team = wide ? "团队 · team.qlm.org.cn" : "Team";
-        String gap = "    ";
-        int gw = this.font.width(github);
-        int gapW = this.font.width(gap);
+        int x = leftBarRight() + 16;
+        int gap = 20;
+        int wideGw = ICON_SIZE + 3 + this.font.width(GITHUB_LABEL);
+        int wideTw = this.font.width(TEAM_LABEL);
+        int mojangLeft = coverRect()[0] + Math.round(BAKED_MOJANG_LEFT * coverRect()[2] / (float) TEX_W);
+        boolean wide = x + wideGw + gap + wideTw <= Math.min(this.width - 4, mojangLeft - 8);
+        String github = wide ? GITHUB_LABEL : GITHUB_LABEL_SHORT;
+        String team = wide ? TEAM_LABEL : TEAM_LABEL_SHORT;
+        int gw = wide ? wideGw : ICON_SIZE + 3 + this.font.width(github);
         int tw = this.font.width(team);
-        int total = gw + gapW + tw;
-        int x = (this.width - total) / 2;
         int y = this.height - 15;
-        return new int[]{x, y, gw, gapW, tw, wide ? 1 : 0};
+        return new int[]{x, y, gw, tw, gap, wide ? 1 : 0};
     }
 
     private void drawLinks(GuiGraphics graphics, int mouseX, int mouseY) {
         int[] l = linkLayout();
-        boolean wide = l[5] == 1;
-        String github = wide ? "GitHub · SevenZeroMeowTeam/apocalypse_zombies" : "GitHub";
-        String team = wide ? "团队 · team.qlm.org.cn" : "Team";
+        String github = l[5] == 1 ? GITHUB_LABEL : GITHUB_LABEL_SHORT;
+        String team = l[5] == 1 ? TEAM_LABEL : TEAM_LABEL_SHORT;
+        int x = l[0];
         int y = l[1];
-        boolean hoverGithub = inLink(mouseX, mouseY, l[0], y, l[2]);
-        boolean hoverTeam = inLink(mouseX, mouseY, l[0] + l[2] + l[3], y, l[4]);
-        graphics.drawString(this.font, github, l[0], y, hoverGithub ? LINK_HOVER : LINK_COLOR, true);
+        int iconX = x;
+        int textX = x + ICON_SIZE + 3;
+        int teamX = x + l[2] + l[4];
+
+        boolean hoverGithub = inLink(mouseX, mouseY, x, y, l[2]);
+        boolean hoverTeam = inLink(mouseX, mouseY, teamX, y, l[3]);
+
+        // octocat 图标：悬停时染紫（blit 前后换 shader 颜色，只影响这一张）
+        RenderSystem.setShaderColor(1.0F, hoverGithub ? 0.72F : 1.0F, 1.0F, 1.0F);
+        graphics.blit(GITHUB_ICON, iconX, y, ICON_SIZE, ICON_SIZE, 0.0F, 0.0F, 16, 16, 16, 16);
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+
+        graphics.drawString(this.font, github, textX, y, hoverGithub ? LINK_HOVER : LINK_COLOR, true);
         if (hoverGithub) {
-            graphics.fill(l[0], y + 9, l[0] + l[2], y + 10, LINK_UNDERLINE);
+            graphics.fill(textX, y + 9, textX + this.font.width(github), y + 10, LINK_UNDERLINE);
         }
-        graphics.drawString(this.font, team, l[0] + l[2] + l[3], y,
-                hoverTeam ? LINK_HOVER : LINK_COLOR, true);
+        graphics.drawString(this.font, team, teamX, y, hoverTeam ? LINK_HOVER : LINK_COLOR, true);
         if (hoverTeam) {
-            int tx = l[0] + l[2] + l[3];
-            graphics.fill(tx, y + 9, tx + l[4], y + 10, LINK_UNDERLINE);
+            graphics.fill(teamX, y + 9, teamX + l[3], y + 10, LINK_UNDERLINE);
         }
     }
 
@@ -170,12 +224,14 @@ public final class ApocalypseTitleScreen extends Screen {
             return false;
         }
         int[] l = linkLayout();
-        if (inLink((int) mouseX, (int) mouseY, l[0], l[1], l[2])) {
+        int mx = (int) mouseX;
+        int my = (int) mouseY;
+        if (inLink(mx, my, l[0], l[1], l[2])) {
             openLink(GITHUB_URL);
             return true;
         }
-        int tx = l[0] + l[2] + l[3];
-        if (inLink((int) mouseX, (int) mouseY, tx, l[1], l[4])) {
+        int teamX = l[0] + l[2] + l[4];
+        if (inLink(mx, my, teamX, l[1], l[3])) {
             openLink(TEAM_URL);
             return true;
         }

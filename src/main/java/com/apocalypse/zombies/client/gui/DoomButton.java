@@ -50,10 +50,11 @@ public class DoomButton extends AbstractWidget {
         graphics.fill(crackX2, y + h - 10, crackX2 + 18, y + h - 9, c);
         graphics.fill(crackX2 + 6, y + h - 16, crackX2 + 7, y + h - 10, c);
 
-        // 文字：按钮够大时 2 倍像素字（与参考图的分辨率感一致），否则原尺寸
+        // 文字：按钮够大时用倍缩像素字（2× 对应参考图那种分辨率感；标题界面 2×2 大格
+        // 高度 ≥ 72 时用 3×，否则字在大格里显得空）
         Component msg = getMessage();
         int color = hover ? 0xFFE6CCFF : 0xFFFFFFFF;
-        int scale = h >= 34 ? 2 : 1;
+        int scale = h >= 72 ? 3 : (h >= 34 ? 2 : 1);
         var pose = graphics.pose();
         pose.pushPose();
         pose.translate(x + w / 2.0F, y + (h - 8.0F * scale) / 2.0F, 0.0F);
