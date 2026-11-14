@@ -35,6 +35,8 @@ mods.toml 里那条 `mandatory=true` 的 geckolib 依赖因此必须先解决，
 ----
     python tools/deploy_netease.py              # 构建 + 自检 + 部署
     python tools/deploy_netease.py --no-build   # 只做出货与部署（复用已有产物）
+    python tools/deploy_netease.py --no-deploy  # 构建 + 包内自检（第 1-3 组），不装机
+                                                # 网易实例不在本机 / 只想出货产物时用
 
 装完由 MCStudio 启动一次 Java 版 1.20 客户端，再回读 **DEBUG 级**日志验收
 （`logs/latest.log` 是 INFO 级，**永远没有**模组发现段 —— 拿它判断会误判成「模组没加载」）：
@@ -236,6 +238,7 @@ def deploy(jar_paths):
 
 def main():
     print('网易 Java 版出货（中国版 1.20 = MC 1.20.1 + Forge 47.3.0）')
+    no_deploy = '--no-deploy' in sys.argv
     version = read_version()
     geckolib_version = read_geckolib_version()
     jar_name = '%s%s-netease.jar' % (PREFIX, version)
@@ -255,6 +258,11 @@ def main():
         return
     inspect(jar_path, dev_jar, dep_path, geckolib_version)
     if not os.path.isfile(dep_path):
+        finish()
+        return
+    if no_deploy:
+        print('== 3/4 部署 ==  （--no-deploy，跳过装机；两个产物就在 %s）' % LIBS_DEP.replace('\\', '/'))
+        print('== 4/4 验收指引 ==  （未装机，无日志可读；装机后按常规标准验收）')
         finish()
         return
     deploy([jar_path, dep_path])

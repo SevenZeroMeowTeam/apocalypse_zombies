@@ -15,6 +15,19 @@
 > （443 条目 · md5 `69531785e71b8ac219634657781b169b`）。
 > 下面 1.1.46 段的取证、字节比对结论与未决事项都不变；产物版本号一律跟 `gradle.properties` 的 `mod_version` 走。
 
+> **追加（6.4.1，2026-11-14）**：本线 rebase 跟进 main（1.1.47 → 6.4.1，跨 172 个提交）后重发一次 ——
+> `python tools/deploy_netease.py --no-deploy` **包内自检 12 项全过**（装机校验跳过：网易实例已不在本机）。
+> 产物 `apocalypse_zombies-6.4.1-netease.jar`（**38,238,105 B · 776 条目**，md5 `b7ca40531493…`，
+> 与 `build/libs/` 下同名包逐字节相同）+ `geckolib-forge-1.20.1-4.8.4.jar`（443 条目，
+> md5 `69531785e71b8ac219634657781b169b`，与 1.1.47 时代导出的**同一个上游构建**）。真机验收待网易实例恢复后补。
+> API 面已核验（2026-11-15）：全项目 Forge import **46 → 67 个**，1.1.47 之后**新增 21 个 Forge API**
+> （客户端渲染/事件为主：`ScreenEvent`、`RegisterShadersEvent`、`ConfigScreenHandler`、`ForgeTier`、`Tags`、
+> `PlayerInteractEvent` 等，完整清单见提交记录）。对照 Forge 官方 changelog
+> （`maven.minecraftforge.net` 各版本目录的 `forge-1.20.1-<ver>-changelog.txt`）：
+> **47.4.0 = 47.3.39 + MC 上游 rebase，Forge API 零增删**；这 21 个类在 47.0 → 47.3.39 全程只见修改、不见新增
+> ⇒ **全部在平台 47.3.0 已存在**，47.4.0 编译 → 47.3.0 运行无 API 面风险（同一 GeckoLib 4.8.4）。
+> **--no-deploy**：本次给脚本加的参数 —— 只构建 + 包内自检（第 1-3 组共 12 项），跳过装机与部署后校验（13-15 项）。
+
 - **网易产物**：`build/netease/apocalypse_zombies-1.1.46-netease.jar`（2,072,194 B · 259 条目），由 `neteaseJar`
   （Copy 改名，**不重新打包**）产出 ⇒ 与 `build/libs/apocalypse_zombies-1.1.46.jar` **逐字节相同**
   （条目名集合相同、逐条目 CRC 全同 —— 脚本里是硬断言）。
@@ -37,7 +50,7 @@
 - **本地包 ≠ CI 发布件（别当同一份比对）**：包内 `META-INF/NOTICE.md` 与仓库根 `NOTICE.md`
   **逐字节一致**（md5 `8afdb6b5346aac68a75defef465044d3`，含 GeckoLib 署名）—— 这条署名只存在于工作区那份
   `NOTICE.md`（未提交），所以本地打出来的包带上它，CI 从已提交源码出的发布件没有它。
-  这也正是「网易线只在工作区」的可见后果。
+  这也正是「网易线只在工作区」的可见后果。（该状态 2026-11-14 起已解除，见本节末尾）
 - **API 面核验（本次改动的 5 个类逐个查 import）**：全是 1.20.1 原生 `net.minecraft.*` + `software.bernie.geckolib.*`，
   **零 Forge API** ⇒ 开发机 47.4.23 编译出来的包，在平台 47.3.0 上**无 API 面风险**（同一 MC 版本、同一 GeckoLib 4.8.4）。
   这是「换版本要不要重新适配」的判据：只看改动类是否引入 Forge API，不引入就不需要。
@@ -69,7 +82,8 @@
   将来要做差异化构建（例如网易版剥掉借用资源）就在该任务的 `from` 里加过滤。
 - **客户端本身可用（排除环境问题）**：18:14:30 那次会话（当时 `mods/` 里没有我们的包）走到
   `Setting user: 七零喵团队` → 18:15:45「加入了游戏」，正常进世界。
-- 本页与 `tools/deploy_netease.py`、`build.gradle` 的网易改动**只在工作区**：不提交、不推送。
+- ~~本页与 `tools/deploy_netease.py`、`build.gradle` 的网易改动**只在工作区**：不提交、不推送。~~
+  **2026-11-14 起该临时状态解除**：网易线维护在 `feat/netease-java-adapt` 分支（rebase 跟进 main，不进 main）。
 
 ---
 
@@ -151,8 +165,8 @@ python tools/deploy_netease.py --no-build # 复用已有产物，只做出货与
 1. **包内自检**：硬断言**本模组 jar 内不含 `META-INF/jarjar/`**（含了就会静默退出）；`mods.toml`
    仍是 `modId=apocalypse_zombies` + `geckolib` 且 `mandatory=true`；依赖 jar 的 modId/版本自洽、
    抽样含 SRG 符号（证明是线上生产版而非开发编译版）、自带 `LICENSE`。
-2. **装载**：`mods/` 里旧的 `apocalypse_zombies-*` / `geckolib-*` 一律挪成 `.old.bak`（非 `.jar`
-   后缀，Forge 不扫），拷入两个新包并逐字节复核 md5，最后断言"恰好一个模组 + 一个依赖"。
+2. **装载**：`mods/` 里旧的 `apocalypse_zombies-*` / `geckolib-*` 一律挪到 mods/ **同级**的 `mods_backup/`
+   （保最新 3 份；在 `mods/` 外面，Forge 不扫），拷入两个新包并逐字节复核 md5，最后断言"恰好一个模组 + 一个依赖"。
    > 游戏没退出时 jar 被进程持久持有（禁删/改名），脚本会**拒绝继续**而不是留下新旧两份同 modId 的包。
 3. **验收指引**：打印客户端日志路径与通过标准。
 
@@ -164,7 +178,7 @@ python tools/deploy_netease.py --no-build # 复用已有产物，只做出货与
 
 - GeckoLib 4.8.4 是 **MIT**：随包分发**合法**，前提是附许可与版权声明。
   导出的依赖 jar 顶层自带 `LICENSE`（`deploy_netease.py` 会断言这一点），`NOTICE.md` 里也单独记一笔。
-- 本模组 jar 目前是**开发包**（含 TaCZ 借用音效与转录动画，CC BY-NC-ND）。
+- 本模组 jar 目前是**开发包**（含 TaCZ 转录动画这一项借用，CC BY-NC-ND；音效自 1.1.93 起为自备录音）。
   **要上架网易平台必须改用 clean 基线**（见下节待办）。
 
 ## 五、未决事项 / 后续轨道

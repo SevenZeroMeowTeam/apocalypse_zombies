@@ -28,7 +28,7 @@
 
 构建：`./gradlew clean build cleanJar borrowedPack neteaseLibs` —— 产物在 `build/libs/`，依赖 jar 在 `build/netease/`。
 
-> 网易版用的是**默认 jar（开发包）**，因此同样含 TaCZ 借用内容，同样**不得商用、不得公开分发**。
+> 网易版用的是**默认 jar（开发包）**，因此含 TaCZ 转录动画这一项借用内容（音效自 1.1.93 起为自备录音），同样**不得商用、不得公开分发**。
 > 要上架网易平台须改用 clean 基线，见 `docs/wiki/10-网易Java版适配.md` 的未决事项。
 > ⚠ 依赖**不要**用 jar-in-jar 内嵌（网易客户端会静默退出），见同文档第三节。
 
