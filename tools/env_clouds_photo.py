@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Bake the sky cloud map from a real reference photo (user-supplied), full 1024 res.
 
+!! 6.4.2: 出货云图已回退为 6.1.0 的无缝云层（git `dddfdf9:assets/minecraft/textures/
+environment/clouds.png`，用户偏好那种连续云海）。重跑本脚本会覆盖掉出货资产 ——
+只在用户明确要「照片蓬松云」时用。
+
 Goal (6.3.1, after two field reports): puffy cumulus like the reference photo,
 not a mosaic of 12-unit blocks.
 

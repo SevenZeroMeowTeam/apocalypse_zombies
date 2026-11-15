@@ -5,7 +5,7 @@ Forge 1.20.1 的末日僵尸模组。僵尸按全局等级与尸潮波次逐阶�
 
 | | |
 |---|---|
-| **当前版本** | `6.4.1` |
+| **当前版本** | `6.4.2` |
 | **Minecraft** | 1.20.1 |
 | **Forge** | 47.4.0+（开发机运行实例 47.4.27） |
 | **GeckoLib** | 4.8.4 —— **硬依赖**（`mandatory=true`），由玩家自行安装，本模组不捆绑 |
@@ -298,6 +298,18 @@ cp build/libs/apocalypse_zombies-<ver>.jar \
 ---
 
 ## 更新日志
+
+### 6.4.2 — 2026-11-15
+
+**云层样式回退到 6.1.0。**
+
+- `assets/apocalypse_zombies/textures/environment/clouds.png` 恢复为 6.1.0 的无缝云层
+  （逐字节取自 git `dddfdf9:assets/minecraft/textures/environment/clouds.png`，1024²、
+  覆盖率约 50%、RGB 206–252 自带明暗、镜像四拼无缝），替换 6.3.1 起的照片提取蓬松云
+  （30% 离散朵状）。槽位强装机制不变，`sky.texture_override=false` 仍退回原版。
+- `tools/env_clouds_photo.py` 头部加警告：重跑会覆盖出货云图，仅在被要求「照片蓬松云」时使用。
+
+---
 
 ### 6.4.1 — 2026-11-08
 
